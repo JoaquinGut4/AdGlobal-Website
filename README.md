@@ -22,11 +22,13 @@ mi-plataforma-web/
 ├── frontend/
 │   ├── web_publica/              # ✅ Landing pública (React + Vite + TS + Tailwind v4)
 │   │   ├── public/
-│   │   │   ├── assets/           # Imágenes y videos organizados por categoría
 │   │   │   └── .htaccess         # Config Apache/LiteSpeed para Webuzo
 │   │   ├── src/
+│   │   │   ├── assets/
+│   │   │   │   ├── hero/         # (manual) video y póster del Hero
+│   │   │   │   └── servicios/    # ✨ Imágenes y videos por servicio (automático)
 │   │   │   ├── components/       # Navbar, Hero, Servicios, FAQ, Cotización, Footer...
-│   │   │   ├── config/site.ts    # Configuración y helpers (WhatsApp, assets)
+│   │   │   ├── config/site.ts    # Configuración y helpers (WhatsApp, medios)
 │   │   │   ├── data/             # Contenido editable (servicios, FAQ, clientes, contacto)
 │   │   │   ├── App.tsx
 │   │   │   └── main.tsx
@@ -74,8 +76,8 @@ Solo las variables con prefijo `VITE_` se exponen al navegador. Se configuran en
 | Variable | Descripción | Por defecto |
 | --- | --- | --- |
 | `VITE_SITE_URL` | URL pública final (canonical/SEO) | `https://adglobalperu.com` |
-| `VITE_WHATSAPP_NUMBER` | WhatsApp de atención (solo dígitos) | `51957586421` |
-| `VITE_CONTACT_PHONE_DISPLAY` | Teléfono mostrado en pantalla | `+51 957 586 421` |
+| `VITE_WHATSAPP_NUMBER` | WhatsApp de atención (solo dígitos) | `51908838291` |
+| `VITE_CONTACT_PHONE_DISPLAY` | Teléfono mostrado en pantalla | `+51 908 838 291` |
 | `VITE_CONTACT_EMAIL` | Correo de atención al cliente | `atencionalcliente@adglobalperu.com` |
 | `VITE_API_URL` | (Fase 2) URL base del backend | vacío |
 
@@ -136,10 +138,44 @@ los recursos con hash durante 1 año.
 
 Sin tocar los componentes, el contenido se actualiza en:
 
-- `src/data/servicios.ts` — servicios, fotos, videos, especificaciones.
+- `src/data/servicios.ts` — textos, especificaciones y características de cada servicio.
 - `src/data/contenido.ts` — métricas, FAQs, clientes, datos de contacto y redes.
 - `src/config/site.ts` — teléfono/WhatsApp, correo y URL (o vía `.env`).
-- `public/assets/` — imágenes y videos por categoría (`pantallas-led`, `laptops`, etc.).
+
+### Imágenes y videos de "Nuestros Servicios" (automático)
+
+Los medios se leen **solos** desde `src/assets/servicios/<carpeta>/`; no hay que
+editar código. Deja los archivos en su carpeta, guarda y aparecen en la web.
+
+| Servicio | Carpeta(s) |
+| --- | --- |
+| Pantallas LED y Televisores | `pantallas-led`, `televisores` |
+| Laptops y Computadores | `laptops`, `computadoras` |
+| Equipos Audiovisuales | `audiovisuales` |
+| Tablets | `tablets` |
+| Impresoras Multifuncionales | `impresoras` |
+| Desarrollo Web | `desarrollo-web` |
+
+Reglas:
+
+- **Fotos:** `jpg`, `jpeg`, `png`, `webp`, `avif`, `gif`, `svg`.
+  **Videos:** `mp4`, `webm`, `mov`, `ogv`, `m4v`.
+- **Portada de la tarjeta:** el archivo que empiece por `portada.` o `cover.`
+  (ej. `portada.webp`); si no existe, se usa la primera imagen.
+- **Orden:** alfabético natural. Usa prefijos `01-`, `02-` para forzar un orden.
+- **Texto de cada foto/video:** se deriva del nombre del archivo
+  (`muro-led-auditorio.jpg` → "Muro led auditorio"). Para sobrescribirlo, crea un
+  `_captions.json` dentro de la carpeta:
+
+  ```json
+  { "1.jpg": "Muro LED en auditorio corporativo" }
+  ```
+
+- Añadir/eliminar archivos se refleja al instante en `npm run dev` y en cada
+  `npm run build`. La lógica está en `src/data/media.ts`.
+
+> El video y el póster del **Hero** sí son manuales: `src/assets/hero/` y se
+> referencian en `src/data/contenido.ts`.
 
 ## Roadmap
 

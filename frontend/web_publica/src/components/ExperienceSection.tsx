@@ -253,8 +253,7 @@ export const ExperienceSection: React.FC = () => {
             <div>
               <h4 className="text-lg font-bold text-white">Garantía de Continuidad Operativa</h4>
               <p className="text-sm text-slate-300">
-                Cada evento cuenta con personal técnico certificado in-situ y equipos de respaldo
-                en caliente (hot-swap).
+                Cada evento cuenta con personal técnico certificado y equipos de alta calidad.
               </p>
             </div>
           </div>

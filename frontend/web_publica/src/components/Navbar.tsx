@@ -69,7 +69,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenQuote }) => {
               href={whatsappLink('Hola AD GLOBAL, deseo más información.')}
               target="_blank"
               rel="noopener noreferrer"
-              className="hidden sm:inline-flex items-center gap-1.5 text-xs text-slate-300 hover:text-white transition-colors mr-2"
+              className="hidden xl:inline-flex items-center gap-1.5 text-xs text-slate-300 hover:text-white transition-colors mr-2"
               title="Escríbenos por WhatsApp"
             >
               <PhoneCall className="w-3.5 h-3.5 text-blue-400" />

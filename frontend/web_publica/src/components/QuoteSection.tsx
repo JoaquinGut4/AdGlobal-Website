@@ -322,7 +322,7 @@ export const QuoteSection: React.FC<QuoteSectionProps> = ({ preselectedServiceId
                       value={formData.telefono}
                       onChange={(e) => handleChange('telefono', e.target.value)}
                       onBlur={() => handleBlur('telefono')}
-                      placeholder="+51 987 654 321"
+                      placeholder="+51 908838291"
                       className={inputClass('telefono')}
                     />
                     {renderError('telefono')}
@@ -486,7 +486,11 @@ export const QuoteSection: React.FC<QuoteSectionProps> = ({ preselectedServiceId
                     <span>{CONTACTO_INFO.schedule.weekdays}</span>
                   </div>
                   <div className="text-slate-400 pl-5">{CONTACTO_INFO.schedule.saturdays}</div>
-                  <div className="text-slate-400 pl-5">{CONTACTO_INFO.schedule.emergencies}</div>
+                  {CONTACTO_INFO.schedule.emergencies && (
+                    <div className="text-slate-400 pl-5">
+                      {CONTACTO_INFO.schedule.emergencies}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
