@@ -36,8 +36,17 @@ mi-plataforma-web/
 │   │   ├── package.json
 │   │   └── vite.config.ts
 │   │
-│   └── panel_admin/              # (Fase 3) Dashboard administrativo
-│       └── assets/
+│   └── panel_admin/              # 🚧 Panel administrativo (React + Vite + TS + Tailwind v4)
+│       ├── public/               # favicon y .htaccess (SPA + noindex)
+│       ├── src/
+│       │   ├── components/       # layout (Sidebar/Topbar), ui, modales y login
+│       │   ├── pages/            # Dashboard, Cotizaciones, Inventario, Presupuestos, Clientes, Tickets
+│       │   ├── data/             # contenido editable y datos semilla
+│       │   ├── hooks/            # useAuth, useLocalStorage
+│       │   ├── context/          # ToastContext
+│       │   ├── config/           # site.ts, navigation.ts
+│       │   └── types/            # tipos compartidos
+│       └── package.json
 │
 ├── requirements.txt              # (Fase 2) Dependencias de Python
 └── README.md
@@ -177,9 +186,37 @@ Reglas:
 > El video y el póster del **Hero** sí son manuales: `src/assets/hero/` y se
 > referencian en `src/data/contenido.ts`.
 
+## Panel administrativo (`frontend/panel_admin`)
+
+Frontend interno construido con el **mismo stack** de la web pública (React 19, Vite 8,
+TypeScript y Tailwind CSS v4). Reproduce la maqueta de `Prototipo admin/` de forma modular.
+
+Incluye:
+
+- **Login corporativo** con validación, sesión persistente y credenciales demo.
+- **Dashboard** con distribución de flota, comparativo alquiler vs ventas y estado de almacén.
+- **Cotizaciones Web** (bandeja completa, cambio de estado y respuesta por WhatsApp).
+- **Control de Inventario** (filtros, búsqueda, distribución por alquiler/oficina/taller).
+- **Presupuestos & Proformas**, **Directorio de Clientes** y **Tickets de Soporte**.
+- Modales de **apertura de ticket** y **cotización** con notificaciones (toast).
+
+Desarrollo local:
+
+```bash
+cd frontend/panel_admin
+npm install
+cp .env.example .env     # ajusta nombre, URL de la web pública y API
+npm run dev              # http://localhost:3001
+```
+
+> Los datos de ejemplo se guardan en `localStorage` mientras el backend (Fase 2) no esté
+> conectado. La capa de datos está aislada en `src/data/` y `src/hooks/`, lista para
+> reemplazarse por llamadas a la API (`VITE_API_URL`).
+
 ## Roadmap
 
 - **Fase 1 — Web pública** ✅ (este entregable)
 - **Fase 2 — Backend (Python):** API pública (catálogo/clientes), modelos SQLAlchemy,
   autenticación JWT, conexión MySQL/PostgreSQL.
-- **Fase 3 — Panel admin:** dashboard protegido, gestión de equipos y usuarios.
+- **Fase 3 — Panel admin:** 🚧 frontend en `frontend/panel_admin` (login, dashboard,
+  cotizaciones, inventario, presupuestos, clientes y tickets). Pendiente: conexión con la API.

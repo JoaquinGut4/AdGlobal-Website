@@ -1,0 +1,149 @@
+import { ArrowLeft, LogOut, X } from 'lucide-react';
+import { AdGlobalLogo } from '@/components/AdGlobalLogo';
+import { ADMIN_CONFIG } from '@/config/site';
+import { NAV_ITEMS } from '@/config/navigation';
+import type { AuthSession } from '@/hooks/useAuth';
+import type { AdminSection } from '@/types';
+
+interface SidebarProps {
+  activeNav: AdminSection;
+  onNavigate: (section: AdminSection) => void;
+  onLogout: () => void;
+  session: AuthSession;
+  pendientesCotizaciones: number;
+  ticketsActivos: number;
+  inventarioCategorias: number;
+  /** Visible en móvil (drawer). */
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export function Sidebar({
+  activeNav,
+  onNavigate,
+  onLogout,
+  session,
+  pendientesCotizaciones,
+  ticketsActivos,
+  inventarioCategorias,
+  isOpen,
+  onClose,
+}: SidebarProps) {
+  const initial = session.usuario.slice(0, 2).toUpperCase();
+
+  return (
+    <>
+      {/* Backdrop móvil */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-slate-900/40 backdrop-blur-xs lg:hidden"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 w-64 bg-white border-r border-slate-200/90 flex flex-col shrink-0 z-40 shadow-xs transition-transform duration-200 lg:translate-x-0 ${
+          isOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        {/* Brand / Logo */}
+        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+          <AdGlobalLogo variant="brand" height={30} />
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Cerrar menú"
+            className="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Sidebar Nav Items */}
+        <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
+          <div className="px-3 pb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            Menú Principal
+          </div>
+
+          {NAV_ITEMS.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeNav === item.id;
+
+            let badge: { text: string; tone: 'alert' | 'ok' } | null = null;
+            if (item.id === 'cotizaciones' && pendientesCotizaciones > 0) {
+              badge = { text: String(pendientesCotizaciones), tone: 'alert' };
+            } else if (item.id === 'tickets' && ticketsActivos > 0) {
+              badge = { text: String(ticketsActivos), tone: 'alert' };
+            } else if (item.id === 'inventario') {
+              badge = { text: `${inventarioCategorias} Cat.`, tone: 'ok' };
+            }
+
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onNavigate(item.id)}
+                aria-current={isActive ? 'page' : undefined}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs transition-all cursor-pointer ${
+                  isActive
+                    ? 'bg-[#2B5C94] text-white shadow-sm font-bold'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50 font-semibold'
+                }`}
+              >
+                <span className="flex items-center gap-3">
+                  <Icon className="w-4 h-4" />
+                  <span>{item.label}</span>
+                </span>
+                {badge && (
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                      isActive
+                        ? 'bg-white/20 text-white'
+                        : badge.tone === 'alert'
+                          ? 'bg-amber-100 text-amber-700'
+                          : 'bg-emerald-50 text-emerald-700 font-mono'
+                    }`}
+                  >
+                    {badge.text}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+
+          <a
+            href={ADMIN_CONFIG.publicSiteUrl}
+            className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all cursor-pointer"
+          >
+            <ArrowLeft className="w-4 h-4 text-slate-400" />
+            <span>Volver a la Web</span>
+          </a>
+        </nav>
+
+        {/* User Card at bottom of sidebar */}
+        <div className="p-3 border-t border-slate-100">
+          <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between">
+            <div className="flex items-center gap-2.5 overflow-hidden">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#2B5C94] to-[#3878BE] text-white flex items-center justify-center font-bold text-xs shrink-0">
+                {initial}
+              </div>
+              <div className="overflow-hidden">
+                <p className="text-xs font-bold text-slate-800 truncate">{session.usuario}</p>
+                <p className="text-[10px] text-slate-400 truncate">{session.email}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onLogout}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+              title="Cerrar sesión"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </aside>
+    </>
+  );
+}
