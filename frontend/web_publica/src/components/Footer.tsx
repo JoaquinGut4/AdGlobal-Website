@@ -1,185 +1,52 @@
 import React, { useState } from 'react';
-import { AdGlobalLogo } from './AdGlobalLogo';
 import { InfoModal } from './InfoModal';
-import { CONTACTO_INFO } from '@/data/contenido';
-import { SITE, whatsappLink } from '@/config/site';
 
-interface FooterProps {
-  onSelectService?: (serviceId: string) => void;
-}
+type ModalType = 'privacy' | 'terms' | null;
 
-export const Footer: React.FC<FooterProps> = ({ onSelectService }) => {
-  const [modalType, setModalType] = useState<'about' | 'privacy' | 'terms' | null>(null);
+export const Footer: React.FC = () => {
+  const [modal, setModal] = useState<ModalType>(null);
   const year = new Date().getFullYear();
-
-  const handleServiceClick = (serviceId: string) => {
-    if (onSelectService) {
-      onSelectService(serviceId);
-    } else {
-      const el = document.getElementById('servicios');
-      if (el) el.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
+  const link = 'text-muted transition-colors duration-150 hover:text-ink';
 
   return (
-    <footer className="bg-[#233A5E] text-white pt-14 pb-8 border-t border-white/10">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Brand Logo */}
-        <div className="mb-10">
-          <a href="#inicio" className="inline-block" aria-label="AD GLOBAL - Volver al inicio">
-            <AdGlobalLogo variant="white" height={40} />
+    <footer>
+      <div className="wrap grid gap-5 py-10 text-small sm:grid-cols-[1fr_auto_1fr] sm:items-center sm:gap-8">
+        <p className="text-ink">AD GLOBAL · Alquiler y venta de tecnología</p>
+
+        <nav aria-label="Enlaces del pie" className="flex flex-wrap gap-x-6 gap-y-2 sm:justify-self-center">
+          <a href="#servicios" className={link}>
+            Servicios
           </a>
-        </div>
+          <a href="#nosotros" className={link}>
+            Nosotros
+          </a>
+          <a href="#preguntas" className={link}>
+            Preguntas
+          </a>
+          <a href="#contacto" className={link}>
+            Contacto
+          </a>
+        </nav>
 
-        {/* 4 Columns Layout */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 pb-12">
-          {/* Column 1: Nuestros servicios */}
-          <div>
-            <h3 className="text-base font-bold text-white mb-5 tracking-wide">
-              Nuestros servicios
-            </h3>
-            <ul className="space-y-3 text-sm text-slate-100">
-              <li>
-                <button
-                  onClick={() => handleServiceClick('pantallas-led')}
-                  className="hover:text-sky-300 transition-colors text-left"
-                >
-                  Pantallas LED y Televisores
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => handleServiceClick('laptops-computadores')}
-                  className="hover:text-sky-300 transition-colors text-left"
-                >
-                  Laptops y Computadores
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => handleServiceClick('equipos-audiovisuales')}
-                  className="hover:text-sky-300 transition-colors text-left"
-                >
-                  Equipos Audiovisuales
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => handleServiceClick('tablets')}
-                  className="hover:text-sky-300 transition-colors text-left"
-                >
-                  Tablets
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => handleServiceClick('impresoras-multifuncionales')}
-                  className="hover:text-sky-300 transition-colors text-left"
-                >
-                  Impresoras Multifuncionales
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => handleServiceClick('desarrollo-web')}
-                  className="hover:text-sky-300 transition-colors text-left"
-                >
-                  Desarrollo Web
-                </button>
-              </li>
-            </ul>
-          </div>
-
-          {/* Column 2: Compañía */}
-          <div>
-            <h3 className="text-base font-bold text-white mb-5 tracking-wide">Compañía</h3>
-            <ul className="space-y-3 text-sm text-slate-100">
-              <li>
-                <button
-                  onClick={() => setModalType('about')}
-                  className="hover:text-sky-300 transition-colors text-left"
-                >
-                  Acerca de nosotros
-                </button>
-              </li>
-              <li>
-                <a href="#faqs" className="hover:text-sky-300 transition-colors block text-left">
-                  Preguntas frecuentes
-                </a>
-              </li>
-            </ul>
-          </div>
-
-          {/* Column 3: Contáctanos */}
-          <div>
-            <h3 className="text-base font-bold text-white mb-5 tracking-wide">Contáctanos</h3>
-            <div className="space-y-2 text-sm text-slate-100 font-normal">
-              <p>
-                <a
-                  href={whatsappLink('Hola AD GLOBAL, deseo más información.')}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:text-sky-300 transition-colors"
-                >
-                  {SITE.phoneDisplay}
-                </a>
-              </p>
-              <p className="pt-2">
-                <a href={`mailto:${SITE.email}`} className="hover:text-sky-300 transition-colors">
-                  {SITE.email}
-                </a>
-              </p>
-              <p className="pt-2 text-slate-200 leading-snug">{CONTACTO_INFO.address.full}</p>
-            </div>
-          </div>
-
-          {/* Column 4: Legal */}
-          <div>
-            <h3 className="text-base font-bold text-white mb-5 tracking-wide">Legal</h3>
-            <ul className="space-y-3 text-sm text-slate-100">
-              <li>
-                <button
-                  onClick={() => setModalType('privacy')}
-                  className="hover:text-sky-300 transition-colors text-left"
-                >
-                  Política de privacidad
-                </button>
-              </li>
-              <li>
-                <button
-                  onClick={() => setModalType('terms')}
-                  className="hover:text-sky-300 transition-colors text-left"
-                >
-                  Términos y condiciones
-                </button>
-              </li>
-            </ul>
-          </div>
-        </div>
-
-        {/* Divider and Bottom Copyright Bar */}
-        <div className="pt-8 border-t border-white/20 flex flex-col md:flex-row items-center justify-between text-xs text-slate-300 gap-4">
-          <p>
-            © {year} AD Global. Todos los derechos reservados. |{' '}
-            <button
-              onClick={() => setModalType('privacy')}
-              className="hover:text-white transition-colors underline"
-            >
-              Política de Privacidad
-            </button>{' '}
-            |{' '}
-            <button
-              onClick={() => setModalType('terms')}
-              className="hover:text-white transition-colors underline"
-            >
-              Términos y Condiciones
-            </button>
-          </p>
-          <p className="text-slate-400">Lima, Perú · Cobertura Nacional e Internacional</p>
-        </div>
+        <p className="text-muted sm:justify-self-end">
+          © {year} AD GLOBAL ·{' '}
+          <button
+            onClick={() => setModal('privacy')}
+            className="underline underline-offset-4 transition-colors hover:text-ink"
+          >
+            Privacidad
+          </button>{' '}
+          ·{' '}
+          <button
+            onClick={() => setModal('terms')}
+            className="underline underline-offset-4 transition-colors hover:text-ink"
+          >
+            Términos
+          </button>
+        </p>
       </div>
 
-      <InfoModal type={modalType} onClose={() => setModalType(null)} />
+      <InfoModal type={modal} onClose={() => setModal(null)} />
     </footer>
   );
 };

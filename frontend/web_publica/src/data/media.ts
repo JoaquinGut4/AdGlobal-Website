@@ -1,5 +1,5 @@
 /**
- * Escaneo automático de los medios (fotos y videos) de "Nuestros Servicios".
+ * Escaneo automático de los medios (fotos y videos) de "Servicios".
  *
  * ¿Dónde pongo los archivos?
  *   src/assets/servicios/<carpeta>/
@@ -8,14 +8,10 @@
  *  - Se detectan solos en desarrollo y en el build (Vite `import.meta.glob`).
  *  - Fotos:  jpg, jpeg, png, webp, avif, gif, svg
  *  - Videos: mp4, webm, mov, ogv, m4v
- *  - Portada de la tarjeta: el archivo que empiece por `portada.` o `cover.`;
- *    si no existe, se usa la primera imagen.
+ *  - Portada: el archivo que empiece por `portada.` o `cover.`; si no, la primera foto.
  *  - Orden: alfabético natural. Usa prefijos `01-`, `02-` para forzar el orden.
  *  - Texto (caption): se deriva del nombre del archivo. Puedes sobrescribirlo
- *    creando un `_captions.json` dentro de la carpeta, con:
- *      { "archivo.jpg": "Texto de la foto" }
- *
- * Los componentes (ServicesSection / ServiceModal) NO necesitan cambios.
+ *    creando un `_captions.json` dentro de la carpeta: { "archivo.jpg": "Texto" }
  */
 
 import type { ServiceMedia } from './servicios';
@@ -36,11 +32,13 @@ const CAPTION_MODULES = import.meta.glob('../assets/servicios/*/_captions.json',
 
 /** Carpetas de las que se alimenta cada servicio (por `id`). */
 const SERVICE_FOLDERS: Record<string, string[]> = {
-  'pantallas-led': ['pantallas-led', 'televisores'],
   'laptops-computadores': ['laptops', 'computadoras'],
-  'equipos-audiovisuales': ['audiovisuales'],
   tablets: ['tablets'],
   'impresoras-multifuncionales': ['impresoras'],
+  proyectores: ['proyectores'],
+  'equipos-audiovisuales': ['audiovisuales'],
+  'totems-digitales': ['Totems'],
+  'pantallas-led': ['pantallas-led', 'televisores'],
   'desarrollo-web': ['desarrollo-web'],
 };
 
@@ -94,6 +92,10 @@ const captionFromFilename = (file: string): string => {
   return text.charAt(0).toUpperCase() + text.slice(1);
 };
 
+/** Un caption solo sirve si aporta información real (no "1", "Vp2", "Img3"). */
+const isInformative = (caption: string): boolean =>
+  caption.length >= 4 && !/^[a-z]{0,3}\d+$/i.test(caption.replace(/\s+/g, ''));
+
 export interface ServiceMediaResult {
   featuredImage?: string;
   gallery: ServiceMedia[];
@@ -116,10 +118,12 @@ export const getServiceMedia = (serviceId: string, serviceTitle: string): Servic
 
   const counters = { image: 0, video: 0 };
   const gallery: ServiceMedia[] = files.map((file) => {
-    let caption = CAPTIONS[file.folder]?.[file.name] ?? captionFromFilename(file.name);
+    const raw = CAPTIONS[file.folder]?.[file.name] ?? captionFromFilename(file.name);
+    let caption = isInformative(raw) ? raw : '';
     if (!caption) {
       counters[file.type] += 1;
-      caption = `${serviceTitle}${counters[file.type] > 1 ? ` ${counters[file.type]}` : ''}`;
+      const kind = file.type === 'video' ? 'Video' : '';
+      caption = counters[file.type] > 1 || kind ? `${serviceTitle}${kind ? ` · ${kind}` : ''}` : serviceTitle;
     }
     return { type: file.type, url: file.url, caption };
   });

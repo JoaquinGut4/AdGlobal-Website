@@ -1,18 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import {
-  Send,
-  Phone,
-  Mail,
-  MapPin,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
-  ExternalLink,
-  Share2,
-} from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { AlertCircle, CheckCircle2, Mail, MapPin, Phone, Send } from 'lucide-react';
 import { SERVICIOS_DATA } from '@/data/servicios';
 import { CONTACTO_INFO } from '@/data/contenido';
 import { SITE, whatsappLink } from '@/config/site';
+import contactBg from '@/assets/servicios/pantallas-led/PantallasLED 1.jpeg';
 
 interface QuoteSectionProps {
   preselectedServiceId?: string;
@@ -29,50 +20,50 @@ interface FormState {
   mensaje: string;
 }
 
-interface FormErrors {
-  nombre?: string;
-  empresa?: string;
-  correo?: string;
-  telefono?: string;
-  servicioId?: string;
-  ciudad?: string;
-  mensaje?: string;
-}
+type FormErrors = Partial<Record<keyof FormState, string>>;
+
+const EMPTY_FORM: FormState = {
+  nombre: '',
+  empresa: '',
+  correo: '',
+  telefono: '',
+  servicioId: 'pantallas-led',
+  fechas: '',
+  ciudad: 'Lima',
+  mensaje: '',
+};
 
 const buildWhatsAppMessage = (data: FormState): string => {
-  const serviceTitle = SERVICIOS_DATA.find((s) => s.id === data.servicioId)?.title ?? data.servicioId;
+  const serviceTitle =
+    SERVICIOS_DATA.find((service) => service.id === data.servicioId)?.title ?? data.servicioId;
   const lines = [
-    '*Solicitud de Cotización - AD GLOBAL*',
+    '*Solicitud de cotización · AD GLOBAL*',
     '',
     `*Nombre:* ${data.nombre}`,
     `*Empresa / RUC:* ${data.empresa}`,
     `*Correo:* ${data.correo}`,
     `*Teléfono:* ${data.telefono}`,
     `*Servicio:* ${serviceTitle}`,
-    `*Ciudad / Región:* ${data.ciudad}`,
+    `*Ciudad:* ${data.ciudad}`,
   ];
-  if (data.fechas.trim()) lines.push(`*Fechas / Duración:* ${data.fechas}`);
+  if (data.fechas.trim()) lines.push(`*Fechas:* ${data.fechas}`);
   lines.push('', `*Detalles:* ${data.mensaje}`);
   return lines.join('\n');
 };
 
+const SOCIAL = [
+  { label: 'Facebook', href: CONTACTO_INFO.social.facebook },
+  { label: 'Instagram', href: CONTACTO_INFO.social.instagram },
+  { label: 'LinkedIn', href: CONTACTO_INFO.social.linkedin },
+  { label: 'TikTok', href: CONTACTO_INFO.social.tiktok },
+];
+
 export const QuoteSection: React.FC<QuoteSectionProps> = ({ preselectedServiceId }) => {
-  const [formData, setFormData] = useState<FormState>({
-    nombre: '',
-    empresa: '',
-    correo: '',
-    telefono: '',
-    servicioId: preselectedServiceId || 'pantallas-led',
-    fechas: '',
-    ciudad: 'Lima',
-    mensaje: '',
-  });
-
+  const [formData, setFormData] = useState<FormState>(EMPTY_FORM);
   const [errors, setErrors] = useState<FormErrors>({});
-  const [touched, setTouched] = useState<{ [key: string]: boolean }>({});
-  const [submittedData, setSubmittedData] = useState<FormState | null>(null);
+  const [touched, setTouched] = useState<Partial<Record<keyof FormState, boolean>>>({});
+  const [submitted, setSubmitted] = useState<FormState | null>(null);
 
-  // Sync when preselectedServiceId changes externally
   useEffect(() => {
     if (preselectedServiceId) {
       setFormData((prev) => ({ ...prev, servicioId: preselectedServiceId }));
@@ -80,25 +71,25 @@ export const QuoteSection: React.FC<QuoteSectionProps> = ({ preselectedServiceId
   }, [preselectedServiceId]);
 
   const validate = (data: FormState): FormErrors => {
-    const errs: FormErrors = {};
-    if (!data.nombre.trim()) errs.nombre = 'El nombre completo es requerido';
-    if (!data.empresa.trim()) errs.empresa = 'El nombre o RUC de la empresa es requerido';
-    if (!data.correo.trim()) {
-      errs.correo = 'El correo electrónico corporativo es requerido';
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.correo)) {
-      errs.correo = 'Ingresa un correo electrónico válido (ej. contacto@empresa.com)';
-    }
-    if (!data.telefono.trim()) {
-      errs.telefono = 'El teléfono de contacto es requerido';
-    } else if (data.telefono.replace(/\D/g, '').length < 7) {
-      errs.telefono = 'Ingresa un número telefónico válido (mínimo 7 dígitos)';
-    }
-    if (!data.servicioId) errs.servicioId = 'Selecciona un servicio';
-    if (!data.ciudad.trim()) errs.ciudad = 'Indica la ciudad del evento o proyecto';
-    if (!data.mensaje.trim() || data.mensaje.length < 10) {
-      errs.mensaje = 'Por favor describe brevemente tus requerimientos (mínimo 10 caracteres)';
-    }
-    return errs;
+    const next: FormErrors = {};
+    if (!data.nombre.trim()) next.nombre = 'Escribe tu nombre completo.';
+    if (!data.empresa.trim()) next.empresa = 'Escribe la empresa o el RUC.';
+    if (!data.correo.trim()) next.correo = 'Escribe tu correo corporativo.';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.correo))
+      next.correo = 'Ingresa un correo válido.';
+    if (!data.telefono.trim()) next.telefono = 'Escribe un teléfono de contacto.';
+    else if (data.telefono.replace(/\D/g, '').length < 7)
+      next.telefono = 'Ingresa al menos 7 dígitos.';
+    if (!data.ciudad.trim()) next.ciudad = 'Indica la ciudad del proyecto.';
+    if (!data.mensaje.trim() || data.mensaje.length < 10)
+      next.mensaje = 'Describe tus requerimientos (mínimo 10 caracteres).';
+    return next;
+  };
+
+  const handleChange = (field: keyof FormState, value: string) => {
+    const next = { ...formData, [field]: value };
+    setFormData(next);
+    if (touched[field]) setErrors(validate(next));
   };
 
   const handleBlur = (field: keyof FormState) => {
@@ -106,445 +97,295 @@ export const QuoteSection: React.FC<QuoteSectionProps> = ({ preselectedServiceId
     setErrors(validate(formData));
   };
 
-  const handleChange = (field: keyof FormState, value: string) => {
-    const next = { ...formData, [field]: value };
-    setFormData(next);
-    if (touched[field]) {
-      setErrors(validate(next));
-    }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const allTouched = Object.keys(formData).reduce((acc, k) => ({ ...acc, [k]: true }), {});
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    const allTouched = Object.keys(formData).reduce(
+      (acc, key) => ({ ...acc, [key]: true }),
+      {} as Record<string, boolean>
+    );
     setTouched(allTouched);
-
     const validationErrors = validate(formData);
     setErrors(validationErrors);
 
     if (Object.keys(validationErrors).length === 0) {
-      // Open WhatsApp with the quote details pre-filled
       window.open(
         whatsappLink(buildWhatsAppMessage(formData)),
         '_blank',
         'noopener,noreferrer'
       );
-      setSubmittedData({ ...formData });
+      setSubmitted({ ...formData });
     }
   };
 
   const resetForm = () => {
-    setSubmittedData(null);
-    setFormData({
-      nombre: '',
-      empresa: '',
-      correo: '',
-      telefono: '',
-      servicioId: 'pantallas-led',
-      fechas: '',
-      ciudad: 'Lima',
-      mensaje: '',
-    });
+    setSubmitted(null);
+    setFormData(EMPTY_FORM);
     setTouched({});
     setErrors({});
   };
 
-  const selectedSubmittedService = submittedData
-    ? SERVICIOS_DATA.find((s) => s.id === submittedData.servicioId)
+  const submittedService = submitted
+    ? SERVICIOS_DATA.find((service) => service.id === submitted.servicioId)
     : undefined;
 
-  const inputClass = (field: keyof FormState) =>
-    `w-full px-4 py-3 rounded-xl bg-white/5 border text-white placeholder:text-slate-500 text-sm focus:outline-none focus:ring-2 transition-all ${
-      touched[field] && errors[field as keyof FormErrors]
+  const fieldClass = (field: keyof FormState) =>
+    `w-full rounded-[2px] border bg-ground-2 px-4 py-3 text-body text-ink placeholder:text-muted/60 transition-colors focus:border-transparent focus:outline-none focus:ring-2 ${
+      touched[field] && errors[field]
         ? 'border-rose-500 focus:ring-rose-400'
-        : 'border-white/15 focus:ring-sky-400 focus:border-transparent'
+        : 'border-line focus:ring-accent'
     }`;
 
-  const renderError = (field: keyof FormState) =>
-    touched[field] && errors[field as keyof FormErrors] ? (
-      <p className="mt-1 text-xs text-rose-400 flex items-center gap-1">
-        <AlertCircle className="w-3.5 h-3.5" />
-        {errors[field as keyof FormErrors]}
+  const fieldError = (field: keyof FormState) =>
+    touched[field] && errors[field] ? (
+      <p className="mt-2 flex items-center gap-1.5 text-small text-rose-400">
+        <AlertCircle className="h-3.5 w-3.5" />
+        {errors[field]}
       </p>
     ) : null;
 
   return (
-    <section id="contacto" className="py-24 bg-slate-900 text-white relative overflow-hidden">
-      <div className="absolute inset-0 pointer-events-none opacity-25">
-        <div className="absolute -top-40 -left-40 w-96 h-96 bg-[#2B5C94] rounded-full blur-[140px]" />
-        <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-[#162947] rounded-full blur-[140px]" />
+    <section id="contacto" className="section relative overflow-hidden">
+      <div className="absolute inset-0" aria-hidden="true">
+        <img
+          src={contactBg}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          className="h-full w-full object-cover"
+        />
+        <div className="absolute inset-0 bg-ground/88" />
       </div>
 
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Section Header */}
-        <div className="max-w-3xl mb-16">
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-sky-400 mb-3">
-            <span className="w-5 h-0.5 bg-sky-400" />
-            <span>Atención Inmediata</span>
-          </div>
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white mb-4 text-balance">
-            Panel de Cotización y Contacto
-          </h2>
-          <p className="text-base sm:text-lg text-slate-300 leading-relaxed font-normal">
-            Completa tus datos y enviaremos tu solicitud directamente a nuestro WhatsApp. Recibe
-            una propuesta técnica-comercial formal en menos de 2 horas. Asesoría directa para
-            Lima, provincias y proyectos internacionales.
-          </p>
-        </div>
+      <div className="wrap relative">
+        <h2 className="heading mb-[clamp(2rem,4vw,3.5rem)] max-w-[16ch] text-ink" data-reveal>
+          Pide tu cotización
+        </h2>
 
-        {/* Two-Column Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 items-stretch">
-          {/* Left Column: Interactive Form */}
-          <div className="lg:col-span-7 bg-[#132034] rounded-2xl p-6 sm:p-10 border border-white/10 shadow-2xl flex flex-col justify-between">
-            {submittedData ? (
-              /* Success Screen */
-              <div className="text-center py-8 my-auto space-y-6 animate-in fade-in duration-300 flex-1 flex flex-col justify-center">
-                <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center mx-auto">
-                  <CheckCircle2 className="w-10 h-10" />
+        <div className="grid12 gap-y-8">
+          {/* Panel de cotización */}
+          <div className="panel col-span-12 p-[clamp(1.5rem,3vw,2.75rem)] lg:col-span-7">
+            {submitted ? (
+              <div className="flex flex-col items-start gap-6">
+                <div className="flex items-center gap-3 text-accent">
+                  <CheckCircle2 className="h-8 w-8" />
+                  <h3 className="title text-ink">Solicitud lista para enviar</h3>
                 </div>
-                <div>
-                  <h3 className="text-2xl font-bold text-white mb-2">
-                    ¡Solicitud Lista para Enviar!
-                  </h3>
-                  <p className="text-slate-300 text-sm max-w-md mx-auto leading-relaxed">
-                    Estimado/a <strong className="text-white">{submittedData.nombre}</strong> de{' '}
-                    <strong className="text-white">{submittedData.empresa}</strong>, hemos abierto
-                    WhatsApp con los detalles de tu requerimiento para{' '}
-                    <strong className="text-sky-300">{selectedSubmittedService?.title}</strong>. Si
-                    no se abrió automáticamente, usa el botón de abajo.
-                  </p>
-                </div>
-
-                <div className="p-4 rounded-xl bg-white/5 border border-white/10 text-left text-xs space-y-2 max-w-md mx-auto font-mono">
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Destino/Ciudad:</span>
-                    <span className="text-white">{submittedData.ciudad}</span>
-                  </div>
-                  {submittedData.fechas && (
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">Fechas tentativas:</span>
-                      <span className="text-white">{submittedData.fechas}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Canal de respuesta:</span>
-                    <span className="text-white">{submittedData.correo}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">Tiempo estimado:</span>
-                    <span className="text-emerald-400 font-bold">&lt; 2 horas</span>
-                  </div>
-                </div>
-
-                <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4">
+                <p className="max-w-[52ch] text-body leading-relaxed text-muted">
+                  {submitted.nombre} de {submitted.empresa}: abrimos WhatsApp con el detalle de tu
+                  requerimiento de <span className="text-ink">{submittedService?.title}</span>. Si
+                  no se abrió, usa el botón.
+                </p>
+                <div className="flex flex-wrap gap-3">
                   <a
-                    href={whatsappLink(buildWhatsAppMessage(submittedData))}
+                    href={whatsappLink(buildWhatsAppMessage(submitted))}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-bold text-sm text-white transition-colors"
+                    className="btn btn--primary"
                   >
-                    <span>Abrir WhatsApp ({SITE.phoneDisplay})</span>
+                    Abrir WhatsApp
                   </a>
-
-                  <button
-                    onClick={resetForm}
-                    className="w-full sm:w-auto px-6 py-3 rounded-xl bg-white/10 hover:bg-white/15 text-sm font-semibold text-white transition-colors"
-                  >
+                  <button onClick={resetForm} className="btn btn--ghost">
                     Nueva cotización
                   </button>
                 </div>
               </div>
             ) : (
-              /* Actual Form */
-              <form
-                onSubmit={handleSubmit}
-                className="space-y-6 sm:space-y-7 flex-1 flex flex-col justify-between"
-                noValidate
-              >
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                  {/* Nombre */}
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-2">
-                      Nombre Completo <span className="text-sky-400">*</span>
+              <form onSubmit={handleSubmit} className="space-y-6" noValidate>
+                <div className="grid12 gap-y-6">
+                  <div className="col-span-12 sm:col-span-6">
+                    <label htmlFor="q-nombre" className="mb-2 block text-small text-muted">
+                      Nombre completo
                     </label>
                     <input
+                      id="q-nombre"
                       type="text"
                       value={formData.nombre}
                       onChange={(e) => handleChange('nombre', e.target.value)}
                       onBlur={() => handleBlur('nombre')}
-                      placeholder="Ej. Carlos Mendoza"
-                      className={inputClass('nombre')}
+                      placeholder="Carlos Mendoza"
+                      className={fieldClass('nombre')}
                     />
-                    {renderError('nombre')}
+                    {fieldError('nombre')}
                   </div>
 
-                  {/* Empresa */}
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-2">
-                      Empresa / Institución / RUC <span className="text-sky-400">*</span>
+                  <div className="col-span-12 sm:col-span-6">
+                    <label htmlFor="q-empresa" className="mb-2 block text-small text-muted">
+                      Empresa o RUC
                     </label>
                     <input
+                      id="q-empresa"
                       type="text"
                       value={formData.empresa}
                       onChange={(e) => handleChange('empresa', e.target.value)}
                       onBlur={() => handleBlur('empresa')}
-                      placeholder="Ej. Minera Sur SAC / 20601234567"
-                      className={inputClass('empresa')}
+                      placeholder="Minera Sur SAC · 20601234567"
+                      className={fieldClass('empresa')}
                     />
-                    {renderError('empresa')}
+                    {fieldError('empresa')}
                   </div>
-                </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                  {/* Correo */}
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-2">
-                      Correo Corporativo <span className="text-sky-400">*</span>
+                  <div className="col-span-12 sm:col-span-6">
+                    <label htmlFor="q-correo" className="mb-2 block text-small text-muted">
+                      Correo corporativo
                     </label>
                     <input
+                      id="q-correo"
                       type="email"
                       value={formData.correo}
                       onChange={(e) => handleChange('correo', e.target.value)}
                       onBlur={() => handleBlur('correo')}
                       placeholder="contacto@tuempresa.com"
-                      className={inputClass('correo')}
+                      className={fieldClass('correo')}
                     />
-                    {renderError('correo')}
+                    {fieldError('correo')}
                   </div>
 
-                  {/* Teléfono */}
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-2">
-                      Teléfono / WhatsApp Móvil <span className="text-sky-400">*</span>
+                  <div className="col-span-12 sm:col-span-6">
+                    <label htmlFor="q-telefono" className="mb-2 block text-small text-muted">
+                      Teléfono o WhatsApp
                     </label>
                     <input
+                      id="q-telefono"
                       type="tel"
                       value={formData.telefono}
                       onChange={(e) => handleChange('telefono', e.target.value)}
                       onBlur={() => handleBlur('telefono')}
-                      placeholder="+51 908838291"
-                      className={inputClass('telefono')}
+                      placeholder="+51 900 000 000"
+                      className={fieldClass('telefono')}
                     />
-                    {renderError('telefono')}
+                    {fieldError('telefono')}
                   </div>
-                </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                  {/* Servicio de interés */}
-                  <div className="sm:col-span-2">
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-2">
-                      Servicio de Interés <span className="text-sky-400">*</span>
+                  <div className="col-span-12 sm:col-span-7">
+                    <label htmlFor="q-servicio" className="mb-2 block text-small text-muted">
+                      Servicio de interés
                     </label>
                     <select
+                      id="q-servicio"
                       value={formData.servicioId}
                       onChange={(e) => handleChange('servicioId', e.target.value)}
-                      onBlur={() => handleBlur('servicioId')}
-                      className="w-full px-4 py-3 rounded-xl bg-[#1a2d48] border border-white/15 text-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-400 cursor-pointer"
+                      className="w-full cursor-pointer rounded-[2px] border border-line bg-ground-2 px-4 py-3 text-body text-ink focus:outline-none focus:ring-2 focus:ring-accent"
                     >
-                      {SERVICIOS_DATA.map((srv) => (
-                        <option key={srv.id} value={srv.id} className="bg-[#101b2c] text-white">
-                          {srv.title}
+                      {SERVICIOS_DATA.map((service) => (
+                        <option key={service.id} value={service.id} className="bg-ground-2">
+                          {service.title}
                         </option>
                       ))}
                     </select>
                   </div>
 
-                  {/* Ciudad */}
-                  <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-2">
-                      Ciudad / Región <span className="text-sky-400">*</span>
+                  <div className="col-span-12 sm:col-span-5">
+                    <label htmlFor="q-ciudad" className="mb-2 block text-small text-muted">
+                      Ciudad
                     </label>
                     <input
+                      id="q-ciudad"
                       type="text"
                       value={formData.ciudad}
                       onChange={(e) => handleChange('ciudad', e.target.value)}
                       onBlur={() => handleBlur('ciudad')}
-                      placeholder="Lima, Arequipa, etc."
-                      className={inputClass('ciudad')}
+                      placeholder="Lima"
+                      className={fieldClass('ciudad')}
                     />
-                    {renderError('ciudad')}
+                    {fieldError('ciudad')}
+                  </div>
+
+                  <div className="col-span-12">
+                    <label htmlFor="q-fechas" className="mb-2 block text-small text-muted">
+                      Fechas o duración
+                    </label>
+                    <input
+                      id="q-fechas"
+                      type="text"
+                      value={formData.fechas}
+                      onChange={(e) => handleChange('fechas', e.target.value)}
+                      placeholder="Del 15 al 18 de noviembre, o alquiler mensual"
+                      className={fieldClass('fechas')}
+                    />
+                  </div>
+
+                  <div className="col-span-12">
+                    <label htmlFor="q-mensaje" className="mb-2 block text-small text-muted">
+                      Detalles del requerimiento
+                    </label>
+                    <textarea
+                      id="q-mensaje"
+                      rows={4}
+                      value={formData.mensaje}
+                      onChange={(e) => handleChange('mensaje', e.target.value)}
+                      onBlur={() => handleBlur('mensaje')}
+                      placeholder="Cantidades y especificaciones: 20 laptops Core i7, 1 pantalla LED, tablets, consolas de audio…"
+                      className={`${fieldClass('mensaje')} min-h-[120px] resize-y`}
+                    />
+                    {fieldError('mensaje')}
                   </div>
                 </div>
 
-                {/* Fechas tentativas */}
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-2">
-                    Fechas tentativas del evento o duración del alquiler
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.fechas}
-                    onChange={(e) => handleChange('fechas', e.target.value)}
-                    placeholder="Ej. Del 15 al 18 de Noviembre (4 días) o Alquiler mensual de 3 meses"
-                    className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/15 text-white placeholder:text-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-sky-400"
-                  />
-                </div>
-
-                {/* Mensaje */}
-                <div className="flex-1 flex flex-col">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-2">
-                    Detalles del Requerimiento Técnico <span className="text-sky-400">*</span>
-                  </label>
-                  <textarea
-                    rows={5}
-                    value={formData.mensaje}
-                    onChange={(e) => handleChange('mensaje', e.target.value)}
-                    onBlur={() => handleBlur('mensaje')}
-                    placeholder="Indica cantidades aproximadas (ej. 20 laptops Core i7, 1 pantalla LED, tablets, consolas de audio), especificaciones de software, o requerimientos especiales de instalación..."
-                    className={`${inputClass('mensaje')} flex-1 min-h-[140px] py-3.5`}
-                  />
-                  {renderError('mensaje')}
-                </div>
-
-                {/* Submit button */}
-                <button
-                  type="submit"
-                  className="w-full py-4 px-6 rounded-xl font-bold text-white bg-[#2B5C94] hover:bg-[#346db0] active:scale-[0.99] transition-all duration-200 shadow-xl shadow-[#2B5C94]/30 flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <span>Enviar por WhatsApp</span>
-                  <Send className="w-4 h-4" />
+                <button type="submit" className="btn btn--primary btn--full">
+                  Enviar por WhatsApp
+                  <Send className="h-4 w-4" />
                 </button>
               </form>
             )}
           </div>
 
-          {/* Right Column: Contact Data & Social Networks */}
-          <div className="lg:col-span-5 space-y-8">
-            {/* Direct Contact Card */}
-            <div className="bg-[#14233c] rounded-2xl p-7 border border-white/10 space-y-6">
-              <h3 className="text-xl font-bold text-white tracking-tight pb-3 border-b border-white/10">
-                Canales de Atención Directa
-              </h3>
+          {/* Canal de atención */}
+          <div className="col-span-12 lg:col-span-5">
+            <div className="bg-paper p-[clamp(1.5rem,3vw,2.5rem)] text-paper-ink">
+              <h3 className="title">Canal de atención</h3>
 
-              {/* Central y Teléfonos */}
-              <div className="space-y-3">
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                  Teléfonos de Contacto
-                </p>
-                <div className="space-y-2 font-mono text-sm">
-                  {CONTACTO_INFO.phones.map((phone, i) => (
-                    <a
-                      key={i}
-                      href={
-                        phone.isWhatsApp
-                          ? whatsappLink('Hola AD GLOBAL, deseo más información.')
-                          : `tel:${phone.raw}`
-                      }
-                      target={phone.isWhatsApp ? '_blank' : undefined}
-                      rel={phone.isWhatsApp ? 'noopener noreferrer' : undefined}
-                      className="flex items-center justify-between p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/15 transition-colors group"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Phone className="w-4 h-4 text-sky-400" />
-                        <span className="font-semibold text-white group-hover:text-sky-300 transition-colors">
-                          {phone.display}
-                        </span>
-                      </div>
-                      {phone.isWhatsApp && (
-                        <span className="text-[11px] font-sans font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-800/40 px-2 py-0.5 rounded">
-                          WhatsApp
-                        </span>
-                      )}
-                    </a>
-                  ))}
-                </div>
-              </div>
+              <div className="mt-7 space-y-5 text-body">
+                <a
+                  href={whatsappLink('Hola AD GLOBAL, deseo más información.')}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 text-paper-ink"
+                >
+                  <Phone className="h-5 w-5 shrink-0" />
+                  <span className="figure">{SITE.phoneDisplay}</span>
+                </a>
 
-              {/* Correo electrónico */}
-              <div>
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                  Correo Electrónico
-                </p>
                 <a
                   href={`mailto:${SITE.email}`}
-                  className="flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 text-sm text-sky-300 font-mono transition-colors"
+                  className="flex items-center gap-3 break-all text-paper-ink"
                 >
-                  <Mail className="w-4 h-4 text-sky-400" />
+                  <Mail className="h-5 w-5 shrink-0" />
                   <span>{SITE.email}</span>
                 </a>
-              </div>
 
-              {/* Dirección */}
-              <div>
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                  Oficina Principal
+                <p className="flex items-start gap-3 text-paper-muted">
+                  <MapPin className="mt-0.5 h-5 w-5 shrink-0" />
+                  <span>{CONTACTO_INFO.address.full}</span>
                 </p>
-                <div className="flex items-start gap-3 p-3 rounded-xl bg-white/5 border border-white/5 text-sm text-slate-300">
-                  <MapPin className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
-                  <p className="leading-snug">{CONTACTO_INFO.address.full}</p>
+
+                <div className="text-paper-muted">
+                  <p>{CONTACTO_INFO.schedule.weekdays}</p>
+                  <p>{CONTACTO_INFO.schedule.saturdays}</p>
                 </div>
               </div>
 
-              {/* Horario de Atención */}
-              <div>
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
-                  Horarios y Guardias Técnicas
-                </p>
-                <div className="p-3 rounded-xl bg-white/5 border border-white/5 text-xs text-slate-300 space-y-1.5">
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                    <span>{CONTACTO_INFO.schedule.weekdays}</span>
-                  </div>
-                  <div className="text-slate-400 pl-5">{CONTACTO_INFO.schedule.saturdays}</div>
-                  {CONTACTO_INFO.schedule.emergencies && (
-                    <div className="text-slate-400 pl-5">
-                      {CONTACTO_INFO.schedule.emergencies}
-                    </div>
-                  )}
-                </div>
-              </div>
+              <a
+                href={whatsappLink('Hola AD GLOBAL, deseo cotizar equipos para un proyecto.')}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn--dark btn--full mt-8"
+              >
+                Escribir por WhatsApp
+              </a>
             </div>
 
-            {/* Redes Sociales */}
-            <div className="bg-[#14233c] rounded-2xl p-7 border border-white/10 space-y-4">
-              <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                <h4 className="text-sm font-bold uppercase tracking-wider text-white flex items-center gap-2">
-                  <Share2 className="w-4 h-4 text-sky-400" />
-                  <span>Síguenos en Redes Sociales</span>
-                </h4>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2.5 pt-2">
+            <div className="mt-6 flex flex-wrap gap-x-8 gap-y-3 text-small">
+              {SOCIAL.map((item) => (
                 <a
-                  href={CONTACTO_INFO.social.facebook}
+                  key={item.label}
+                  href={item.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 p-3 rounded-xl bg-white/5 hover:bg-[#1877F2]/20 hover:border-[#1877F2]/40 border border-white/5 text-xs font-bold text-slate-200 hover:text-white transition-all"
+                  className="link text-muted"
                 >
-                  <span>Facebook</span>
-                  <ExternalLink className="w-3 h-3 text-slate-400" />
+                  {item.label}
                 </a>
-
-                <a
-                  href={CONTACTO_INFO.social.instagram}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 p-3 rounded-xl bg-white/5 hover:bg-[#E4405F]/20 hover:border-[#E4405F]/40 border border-white/5 text-xs font-bold text-slate-200 hover:text-white transition-all"
-                >
-                  <span>Instagram</span>
-                  <ExternalLink className="w-3 h-3 text-slate-400" />
-                </a>
-
-                <a
-                  href={CONTACTO_INFO.social.linkedin}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 p-3 rounded-xl bg-white/5 hover:bg-[#0A66C2]/20 hover:border-[#0A66C2]/40 border border-white/5 text-xs font-bold text-slate-200 hover:text-white transition-all"
-                >
-                  <span>LinkedIn</span>
-                  <ExternalLink className="w-3 h-3 text-slate-400" />
-                </a>
-
-                <a
-                  href={CONTACTO_INFO.social.tiktok}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 p-3 rounded-xl bg-white/5 hover:bg-slate-700/40 hover:border-slate-500 border border-white/5 text-xs font-bold text-slate-200 hover:text-white transition-all"
-                >
-                  <span>TikTok</span>
-                  <ExternalLink className="w-3 h-3 text-slate-400" />
-                </a>
-              </div>
+              ))}
             </div>
           </div>
         </div>

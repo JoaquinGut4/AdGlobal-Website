@@ -8,184 +8,220 @@ export interface ServiceMedia {
 
 export interface ServiceItem {
   id: string;
-  slug: string;
+  /** Nombre corto, el que se muestra como título del panel. */
   title: string;
-  shortDescription: string;
-  fullDescription: string;
+  /** Etiqueta breve de familia, se usa como dato secundario. */
   category: string;
-  /** Imagen de portada de la tarjeta. Si se omite, se muestra un degradado. */
+  fullDescription: string;
+  /** Imagen de portada. Si se omite, se muestra un degradado plano. */
   featuredImage?: string;
   gallery: ServiceMedia[];
   features: string[];
-  specs: {
-    label: string;
-    value: string;
-  }[];
+  specs: { label: string; value: string }[];
   idealFor: string[];
 }
 
 export const SERVICIOS_DATA: ServiceItem[] = [
   {
-    id: 'pantallas-led',
-    slug: 'pantallas-led',
-    title: 'Pantallas LED y Televisores',
-    shortDescription:
-      'Módulos LED gigantes de alta resolución y televisores Smart 4K de 55" a 85" con pedestales para stands, ferias y auditorios.',
-    fullDescription:
-      'Disponemos de la última generación en tecnología de visualización LED diseñada específicamente para congresos de alto nivel, ferias internacionales, lanzamientos de producto y escenarios multitudinarios. Asimismo, ofrecemos televisores Smart TV 4K de 55", 65", 75" y 85" con pedestales de diseño y soportes profesionales para stands y salas de reuniones.',
-    category: 'Visual & Pantallas',
-    ...getServiceMedia('pantallas-led', 'Pantallas LED y Televisores'),
-    features: [
-      'Pixel Pitch ultrafino: P1.9 indoor, P2.6 y P3.9 outdoor de alto brillo (5500 nits)',
-      'Televisores Smart 4K UHD desde 55" hasta 85" con pedestales de altura regulable',
-      'Procesadores de video de vanguardia con conmutación sin latencia y soporte 4K HDR',
-      'Módulos de cambio rápido magnéticos con redundancia de señal y energía',
-      'Personal técnico certificado presente durante todo el montaje, prueba y evento en vivo',
-    ],
-    specs: [
-      { label: 'Pixel LED', value: '1.9mm / 2.6mm / 3.9mm' },
-      { label: 'Smart TVs 4K', value: '55", 65", 75" y 85" UHD' },
-      { label: 'Frecuencia de Actualización', value: '3,840 Hz' },
-      { label: 'Procesamiento', value: 'Procesadores 4K HDR profesionales' },
-    ],
-    idealFor: [
-      'Convenciones corporativas',
-      'Congresos internacionales',
-      'Ferias comerciales y exposiciones',
-      'Stands para ferias comerciales y exposiciones',
-      'Conferencias magistrales, asambleas ',
-      'Lanzamientos de marca',
-    ],
-  },
-  {
     id: 'laptops-computadores',
-    slug: 'laptops-computadores',
-    title: 'Laptops y Computadores',
-    shortDescription:
-      'Flotas de laptops corporativas de alto rendimiento, workstations y equipos para capacitaciones y eventos.',
+    title: 'Laptops y computadoras',
+    category: 'Cómputo',
     fullDescription:
-      'Ofrecemos soluciones integrales de cómputo para empresas y eventos con flotas homogéneas de laptops profesionales (Dell, HP, Lenovo, Advance y Apple). Entregamos equipos completamente configurados, antivirus corporativo y soporte técnico inmediato.',
-    category: 'Cómputo & TI',
-    ...getServiceMedia('laptops-computadores', 'Laptops y Computadores'),
+      'Alquilamos y vendemos flotas de laptops y computadoras de escritorio Dell, HP, Lenovo y Apple. Entregamos cada equipo con el sistema operativo, el software y el antivirus configurados para su empresa, con soporte técnico inmediato durante todo el plazo.',
+    ...getServiceMedia('laptops-computadores', 'Laptops y computadoras'),
     features: [
       'Procesadores Intel Core i5, i7, i9 y Apple Silicon (M2/M3)',
-      'Memoria RAM de 16GB a 64GB y unidades SSD y HDD',
+      'Memoria de 16 GB a 64 GB y almacenamiento SSD',
+      'Windows 11 o macOS actualizado, con paquete Office si se solicita',
+      'Antivirus corporativo y configuración de red incluidas',
     ],
     specs: [
-      { label: 'Procesadores', value: 'Intel Core i5/i7/i9 (Gen 11-14) / Apple M2 Pro/Max' },
-      { label: 'Memoria RAM', value: '16GB / 32GB / 64GB' },
-      { label: 'Almacenamiento', value: '250GB a 2TB' },
-      { label: 'Pantallas', value: '14" / 15.6" / 16" FHD & QHD' },
+      { label: 'Procesadores', value: 'Intel Core i5 / i7 / i9 y Apple M2 / M3' },
+      { label: 'Memoria', value: '16 GB / 32 GB / 64 GB' },
+      { label: 'Almacenamiento', value: '250 GB a 2 TB SSD' },
+      { label: 'Pantallas', value: '14" / 15.6" / 16" FHD y QHD, o monitor 21.5"–27"' },
     ],
     idealFor: [
-      'Capacitaciones corporativas',
-      'Talleres intensivos',
-      'Hackathons, bootcamps y certámenes de innovación tecnológica',
-      'Salas de prensa y centros de acreditación de eventos',
-    ],
-  },
-  {
-    id: 'equipos-audiovisuales',
-    slug: 'equipos-audiovisuales',
-    title: 'Equipos Audiovisuales',
-    shortDescription:
-      'Sistemas de sonido profesional, microfonía inalámbrica, consolas digitales, iluminación escénica y transmisión en vivo para conferencias y eventos.',
-    fullDescription:
-      'Equipamiento audiovisual completo de estándar para conferencias, foros y eventos masivos. Incluye microfonía inalámbrica, sistemas de sonido, consolas digitales, focos de iluminación y conmutación de video.',
-    category: 'Audio & Iluminación',
-    ...getServiceMedia('equipos-audiovisuales', 'Equipos Audiovisuales'),
-    features: [
-      'Microfonía de mano, corbateros y vinchas inalámbricas de largo alcance',
-      'Consolas digitales de mezcla con procesamiento DSP para alta inteligibilidad de voz',
-      'Iluminación para escenarios, reflectores perimetrales y cabezales móviles',
-    ],
-    specs: [
-      { label: 'Marcas de Audio', value: 'Yamaha / Shure / JBL / Sennheiser' },
-      { label: 'Canales de Mezcla', value: 'Hasta 32 canales digitales simultáneos' },
-      { label: 'Iluminación', value: 'LED RGBW / Cabezales móviles Beam' },
-      { label: 'Soporte', value: 'Operador técnico presencial 100% garantizado' },
-    ],
-    idealFor: [
-      'Asambleas corporativas y juntas de accionistas',
-      'Lanzamientos de productos y cócteles institucionales',
-      'Talleres interactivos y conferencias magistrales',
+      'Capacitaciones y talleres corporativos',
+      'Hackathons, bootcamps y certámenes',
+      'Salas de prensa y centros de acreditación',
+      'Oficinas y proyectos temporales',
     ],
   },
   {
     id: 'tablets',
-    slug: 'tablets',
     title: 'Tablets',
-    shortDescription:
-      'Flotas de tablets iPad, Microsoft y Android de última generación con atriles y soportes, registro y encuestas en ferias y congresos.',
+    category: 'Móvil',
     fullDescription:
-      'Ponemos a su disposición lotes homogéneos de tablets Apple, Lenovo y Samsung configuradas para recepción de asistentes, lectura de credenciales QR, encuestas interactivas o firma electrónica. Incluyen pedestales de piso de alta seguridad, fundas reforzadas y soporte técnico.',
-    category: 'Móvil & Acreditación',
+      'Lotes homogéneos de tablets Apple, Samsung y Lenovo configuradas para recepción de asistentes, lectura de credenciales QR, encuestas interactivas o firma electrónica. Incluyen soportes de seguridad con cerradura, fundas reforzadas y cargadores múltiples.',
     ...getServiceMedia('tablets', 'Tablets'),
     features: [
-      'Modelos Apple, Lenovo y Samsung de alto rendimiento',
+      'Modelos Apple iPad, Samsung Galaxy Tab y Lenovo de alto rendimiento',
       'Soportes con cerradura de seguridad y ángulo regulable',
       'Batería de larga duración y cargadores múltiples incluidos',
+      'Configuración de apps, formularios y perfiles de uso',
     ],
     specs: [
-      { label: 'Pantalla', value: '10.2" / 10.9" / 11" Retina & AMOLED' },
-      { label: 'Sistemas Operativos', value: 'iPadOS / Android / Windows' },
-      { label: 'Conectividad', value: 'Wi-Fi 6 + opción chip 4G/5G LTE' },
+      { label: 'Pantalla', value: '10.2" / 10.9" / 11" Retina y AMOLED' },
+      { label: 'Sistemas', value: 'iPadOS / Android / Windows' },
+      { label: 'Conectividad', value: 'Wi-Fi 6 y opción 4G / 5G LTE' },
       { label: 'Seguridad', value: 'Carcasas de seguridad y cable reforzado' },
     ],
     idealFor: [
       'Mesas de bienvenida y acreditación de congresos',
-      'Encuestas de satisfacción y recojo de leads comerciales en ferias',
+      'Encuestas de satisfacción y captura de leads',
       'Capacitaciones con evaluaciones interactivas',
     ],
   },
   {
     id: 'impresoras-multifuncionales',
-    slug: 'impresoras-multifuncionales',
-    title: 'Impresoras Multifuncionales',
-    shortDescription:
-      'Equipos láser de alta velocidad, escaneo duplex y copiado masivo.',
+    title: 'Impresoras multifuncionales',
+    category: 'Oficina',
     fullDescription:
-      'Garantice la continuidad operativa y la gestión documental de su oficina temporal, evento o proyecto con nuestras impresoras multifuncionales láser de alta demanda (HP, Canon y Xerox). Nuestro servicio incluye transporte (encaso lo necesite) e instalación en red.',
-    category: 'Impresión & Oficina',
-    ...getServiceMedia('impresoras-multifuncionales', 'Impresoras Multifuncionales'),
+      'Impresoras multifuncionales láser de alta demanda, en monocromo o color, dimensionadas según el volumen de la operación. Entregamos el equipo instalado en red, con tóner y suministros incluidos, para garantizar la continuidad documental de su oficina temporal o permanente.',
+    ...getServiceMedia('impresoras-multifuncionales', 'Impresoras multifuncionales'),
     features: [
-      'Velocidades de hasta 55 páginas por minuto en color y monocromo',
+      'Equipos multifuncionales de alta velocidad, monocromo y color',
       'Alimentador automático de documentos a doble cara',
-      'Conectividad Ethernet Gigabit, Wi-Fi seguro e impresión móvil',
+      'Conectividad de red, Wi-Fi e impresión móvil',
+      'Instalación en red y suministros incluidos',
     ],
     specs: [
-      { label: 'Velocidad de Impresión', value: '35 a 55 ppm (Páginas por minuto)' },
-      { label: 'Resolución Óptica', value: '1,200 x 1,200 dpi de precisión láser' },
-      { label: 'Formatos Soportados', value: 'A4, Carta, Oficio, A3 y Tabloide' },
+      { label: 'Velocidad', value: 'Alta velocidad, según modelo' },
+      { label: 'Resolución', value: 'Alta resolución láser' },
+      { label: 'Formatos', value: 'A4, oficio y hasta A3' },
+      { label: 'Funciones', value: 'Impresión, copia, escaneo y fax' },
     ],
     idealFor: [
-      'Salas de redacción y centros de prensa en cumbres de gobierno',
-      'Oficinas de obra, faenas mineras y plantas industriales temporales',
+      'Oficinas y centros de documentación',
+      'Salas de redacción y centros de prensa',
+      'Oficinas de obra y faenas mineras temporales',
+    ],
+  },
+  {
+    id: 'proyectores',
+    title: 'Proyectores',
+    category: 'Visual',
+    fullDescription:
+      'Proyectores de alto brillo para auditorios, salas de capacitación, museos y eventos, seleccionados según el tamaño del espacio y las condiciones de luz. Entregamos el proyector con la pantalla o el muro de proyección, los cables y la configuración de la señal, además del operador técnico cuando el montaje lo exige.',
+    ...getServiceMedia('proyectores', 'Proyectores'),
+    features: [
+      'Proyectores de alto brillo, láser y LCD, según el espacio',
+      'Pantallas de trípode, eléctricas y muros de proyección',
+      'Conversión y distribución de señal HDMI, SDI y VGA',
+      'Alineación y calibración en sitio antes de cada evento',
+    ],
+    specs: [
+      { label: 'Luminosidad', value: 'Alta luminosidad, según modelo' },
+      { label: 'Resolución', value: 'Full HD y 4K' },
+      { label: 'Tecnología', value: 'Láser y LCD' },
+      { label: 'Proyección', value: 'Tiro largo y tiro corto' },
+    ],
+    idealFor: [
+      'Auditorios y salas de capacitación',
+      'Museos, ferias y activaciones',
+      'Aulas y salas de reunión',
+    ],
+  },
+  {
+    id: 'equipos-audiovisuales',
+    title: 'Equipos audiovisuales',
+    category: 'Audio',
+    fullDescription:
+      'Equipamiento audiovisual completo para conferencias, foros y eventos masivos. Incluye microfonía inalámbrica, sistemas de sonido, consolas digitales, iluminación escénica y conmutación de video, dimensionado según el aforo y el tipo de evento, con operador técnico presencial.',
+    ...getServiceMedia('equipos-audiovisuales', 'Equipos audiovisuales'),
+    features: [
+      'Microfonía de mano, corbateros y vinchas inalámbricas de largo alcance',
+      'Consolas digitales con procesamiento para alta inteligibilidad',
+      'Iluminación de escenario, reflectores y cabezales móviles',
+      'Conmutación y transmisión de video para eventos híbridos',
+    ],
+    specs: [
+      { label: 'Audio', value: 'Sonido profesional y microfonía inalámbrica' },
+      { label: 'Mezcla', value: 'Consolas digitales, según requerimiento' },
+      { label: 'Iluminación', value: 'Iluminación LED y cabezales móviles' },
+      { label: 'Soporte', value: 'Operador técnico presencial incluido' },
+    ],
+    idealFor: [
+      'Asambleas corporativas y juntas de accionistas',
+      'Lanzamientos de producto y cócteles institucionales',
+      'Conferencias magistrales y eventos híbridos',
+    ],
+  },
+  {
+    id: 'totems-digitales',
+    title: 'Tótems digitales',
+    category: 'Visual',
+    fullDescription:
+      'Tótems digitales táctiles y de señalización para atención al público, registro de visitantes, encuestas y catálogos. Se entregan configurados con su contenido, con pedestal de piso o de mesa, y conectados a su red o con conectividad propia.',
+    ...getServiceMedia('totems-digitales', 'Tótems digitales'),
+    features: [
+      'Pantallas táctiles capacitivas de 43" a 55" con marco delgado',
+      'Contenido de señalización, encuestas, fichas y directorios',
+      'Pedestal de piso o de mesa con cómputo integrado',
+      'Gestión remota del contenido y actualizaciones programadas',
+    ],
+    specs: [
+      { label: 'Pantalla', value: '43" / 49" / 55" táctil capacitiva' },
+      { label: 'Resolución', value: 'Full HD 1080p' },
+      { label: 'Formato', value: 'Tótem de piso y de mesa' },
+      { label: 'Conectividad', value: 'Wi-Fi, Ethernet y reproductor integrado' },
+    ],
+    idealFor: [
+      'Registro y acreditación de visitantes',
+      'Ferias y activaciones de marca',
+      'Catálogos y directorios en oficinas',
+    ],
+  },
+  {
+    id: 'pantallas-led',
+    title: 'Pantallas LED y televisores',
+    category: 'Visual',
+    fullDescription:
+      'Visualización LED de última generación para congresos, ferias internacionales, lanzamientos y escenarios multitudinarios, en formatos indoor y outdoor según el espacio. También ofrecemos televisores Smart 4K con pedestales y soportes profesionales para stands y salas de reuniones.',
+    ...getServiceMedia('pantallas-led', 'Pantallas LED y televisores'),
+    features: [
+      'Módulos LED indoor y outdoor de alto brillo y cambio rápido',
+      'Televisores Smart 4K con pedestales de altura regulable',
+      'Procesadores de video 4K HDR con conmutación sin latencia',
+      'Redundancia de señal para montajes críticos',
+    ],
+    specs: [
+      { label: 'Pantalla LED', value: 'Alta resolución, indoor y outdoor' },
+      { label: 'Televisores', value: 'Smart 4K, según tamaño requerido' },
+      { label: 'Refresco', value: 'Alto refresco, según modelo' },
+      { label: 'Procesamiento', value: 'Procesadores 4K HDR' },
+    ],
+    idealFor: [
+      'Convenciones corporativas y congresos internacionales',
+      'Ferias comerciales y stands',
+      'Conferencias magistrales y asambleas',
+      'Lanzamientos de marca',
     ],
   },
   {
     id: 'desarrollo-web',
-    slug: 'desarrollo-web',
-    title: 'Desarrollo Web y Soluciones Digitales',
-    shortDescription:
-      'Plataformas web corporativas, landing pages para eventos, sistemas de logistica/inventario y aplicaciones web a medida.',
+    title: 'Desarrollo web y soluciones digitales',
+    category: 'Digital',
     fullDescription:
-      'Complementamos su infraestructura física con soluciones tecnológicas digitales de vanguardia. Diseñamos y desarrollamos plataformas web corporativas de alto rendimiento, sistemas de registro y acreditación con código QR para congresos, landing pages de captación con analítica avanzada e intranets empresariales.',
-    category: 'Software & Digital',
-    ...getServiceMedia('desarrollo-web', 'Desarrollo Web y Soluciones Digitales'),
+      'Complementamos su infraestructura física con soluciones digitales. Diseñamos plataformas web corporativas, sistemas de registro y acreditación con código QR para congresos, landing pages de captación con analítica e intranets empresariales.',
+    ...getServiceMedia('desarrollo-web', 'Desarrollo web'),
     features: [
-      'Desarrollo con tecnologías modernas: React, TypeScript, Next.js, Node.js, Tailwind CSS, entre otros',
-      'Sistemas de registro en línea, generación de credenciales y lectura QR para eventos',
-      'Arquitectura segura en la nube con certificado SSL y alto rendimiento',
+      'Desarrollo con React, TypeScript, Next.js, Node.js y Tailwind CSS',
+      'Sistemas de registro en línea, credenciales y lectura QR',
+      'Plataformas de logística e inventario a medida',
+      'Arquitectura segura en la nube con certificado SSL',
     ],
     specs: [
-      { label: 'Frameworks', value: 'React / Next.js / Node.js / Express' },
-      { label: 'Base de Datos', value: 'PostgreSQL / MySQL / MongoDB' },
-      { label: 'Rendimiento', value: 'Core Web Vitals > 95/100 en Google PageSpeed' },
+      { label: 'Stack', value: 'React / Next.js / Node.js / Express' },
+      { label: 'Bases de datos', value: 'PostgreSQL / MySQL / MongoDB' },
+      { label: 'Rendimiento', value: 'Core Web Vitals sobre 95/100 en PageSpeed' },
+      { label: 'Entrega', value: 'Repositorio propio y soporte post-lanzamiento' },
     ],
     idealFor: [
-      'Empresas o Mipymes que requieren modernizar su portal web corporativo',
-      'Eventos que necesitan plataforma de registro de asistentes y emisión de boletos',
+      'Empresas y mipymes que modernizan su portal corporativo',
+      'Eventos con registro de asistentes y emisión de boletos',
+      'Operaciones que requieren logística e inventario a medida',
     ],
   },
 ];

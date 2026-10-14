@@ -22,5 +22,8 @@ env/
 .DS_Store
 Thumbs.db
 
+# Artefactos de la skill de diseño
+.taste-skill/
+
 # Logs
 *.log

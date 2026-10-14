@@ -1,6 +1,0 @@
-{
-  "name": "AD GLOBAL - Alquiler y Venta de Tecnología",
-  "description": "Alquiler y venta de equipos tecnológicos para empresas, eventos y proyectos. Pantallas LED gigantes, laptops, impresoras y desarrollo web con cobertura nacional e internacional.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

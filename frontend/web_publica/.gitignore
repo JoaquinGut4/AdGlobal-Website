@@ -5,6 +5,9 @@ node_modules/
 dist/
 build/
 
+# Paquete de despliegue
+*.zip
+
 # Variables de entorno
 .env
 .env.local

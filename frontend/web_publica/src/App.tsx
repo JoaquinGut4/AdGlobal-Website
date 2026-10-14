@@ -2,65 +2,48 @@ import { useState } from 'react';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
 import { ServicesSection } from './components/ServicesSection';
-import { ExperienceSection } from './components/ExperienceSection';
+import { AboutSection } from './components/AboutSection';
+import { StatsSection } from './components/StatsSection';
+import { PartnersSection } from './components/PartnersSection';
+import { ClientsSection } from './components/ClientsSection';
 import { FAQSection } from './components/FAQSection';
-import { ClientsMarquee } from './components/ClientsMarquee';
 import { QuoteSection } from './components/QuoteSection';
 import { WhatsAppFloat } from './components/WhatsAppFloat';
 import { Footer } from './components/Footer';
+import { useReveal } from './hooks/useReveal';
 
 export default function App() {
-  const [selectedQuoteService, setSelectedQuoteService] = useState<string>('pantallas-led');
+  const [openService, setOpenService] = useState('pantallas-led');
+  const [quoteService, setQuoteService] = useState('pantallas-led');
 
-  const handleOpenQuote = (serviceId?: string) => {
-    if (serviceId) {
-      setSelectedQuoteService(serviceId);
-    }
-    const quoteElement = document.getElementById('contacto');
-    if (quoteElement) {
-      quoteElement.scrollIntoView({ behavior: 'smooth' });
-    }
+  useReveal();
+
+  const goToQuote = (serviceId?: string) => {
+    if (serviceId) setQuoteService(serviceId);
+    document.getElementById('contacto')?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const handleSelectServiceFromFooter = (serviceId: string) => {
-    setSelectedQuoteService(serviceId);
-    const servicesSection = document.getElementById('servicios');
-    if (servicesSection) {
-      servicesSection.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
+  /** Abre un servicio y, si ya estaba abierto, lo contrae. */
+  const toggleService = (id: string) =>
+    setOpenService((current) => (current === id ? '' : id));
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-800 flex flex-col font-sans selection:bg-[#2B5C94] selection:text-white">
-      {/* 0. Header / Navbar */}
-      <Navbar onOpenQuote={handleOpenQuote} />
+    <div className="min-h-[100svh] bg-ground text-ink">
+      <Navbar onQuote={() => goToQuote()} />
 
-      {/* Main Content Sections */}
-      <main className="flex-1">
-        {/* 1. Banner Hero */}
-        <Hero onOpenQuote={() => handleOpenQuote()} />
-
-        {/* 2. Nuestros Servicios (interactiva con galería & modal) */}
-        <ServicesSection onQuoteService={handleOpenQuote} />
-
-        {/* 3. Experiencia (estadísticas interactivas con contadores animados) */}
-        <ExperienceSection />
-
-        {/* 4. Preguntas Frecuentes (acordeón accesible, buscador y JSON-LD) */}
+      <main>
+        <Hero onQuote={() => goToQuote()} />
+        <ServicesSection openId={openService} onToggle={toggleService} onQuote={goToQuote} />
+        <AboutSection />
+        <StatsSection />
+        <PartnersSection />
+        <ClientsSection />
         <FAQSection />
-
-        {/* 5. Nuestros Clientes (carrusel infinito automático) */}
-        <ClientsMarquee />
-
-        {/* 6. Panel de Cotizar + Redes Sociales */}
-        <QuoteSection preselectedServiceId={selectedQuoteService} />
+        <QuoteSection preselectedServiceId={quoteService} />
       </main>
 
-      {/* Floating WhatsApp Button */}
       <WhatsAppFloat />
-
-      {/* 7. Footer */}
-      <Footer onSelectService={handleSelectServiceFromFooter} />
+      <Footer />
     </div>
   );
 }
