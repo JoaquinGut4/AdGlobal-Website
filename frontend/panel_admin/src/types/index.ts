@@ -123,6 +123,30 @@ export interface InventarioRegistro {
   observaciones: string;
 }
 
+export type AlquilerEstado = 'Reservado' | 'Activo' | 'Por vencer' | 'Vencido' | 'Devuelto';
+
+export interface AlquilerRegistro {
+  id: string;
+  contrato: string;
+  cliente: string;
+  ruc: string;
+  proyecto: string;
+  categoria: string;
+  equipo: string;
+  sku: string;
+  numeroSerial: string;
+  cantidad: number;
+  fechaInicio: string;
+  fechaFin: string;
+  ubicacion: string;
+  responsable: string;
+  telefono: string;
+  tarifa: number;
+  deposito: number;
+  estado: AlquilerEstado;
+  observaciones: string;
+}
+
 /** Cliente corporativo del directorio. */
 export interface ClienteCorporativo {
   id: string;

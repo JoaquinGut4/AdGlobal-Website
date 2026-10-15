@@ -22,4 +22,5 @@ export const STORAGE_KEYS = {
   tickets: 'adglobal_tickets',
   inventario: 'adglobal_inventory',
   inventarioCategorias: 'adglobal_inventory_categories',
+  alquileres: 'adglobal_rentals',
 } as const;
