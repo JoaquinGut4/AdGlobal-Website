@@ -8,7 +8,6 @@ interface DashboardPageProps {
   cotizaciones: Cotizacion[];
   onToggleStatus: (id: string) => void;
   onVerFiltro: (filtro: InventarioFiltro) => void;
-  onVerCotizaciones: () => void;
   onVerInventario: () => void;
 }
 
@@ -16,7 +15,6 @@ export function DashboardPage({
   cotizaciones,
   onToggleStatus,
   onVerFiltro,
-  onVerCotizaciones,
   onVerInventario,
 }: DashboardPageProps) {
   return (
@@ -29,7 +27,6 @@ export function DashboardPage({
         <RecentQuotes
           cotizaciones={cotizaciones}
           onToggleStatus={onToggleStatus}
-          onVerTodas={onVerCotizaciones}
         />
         <WarehouseStatus />
       </div>

@@ -62,7 +62,7 @@ export function LoginScreen({ onAuthenticate }: LoginScreenProps) {
               Acceso al Sistema Administrativo
             </h1>
             <p className="text-xs text-slate-500 mt-1.5">
-              Panel de control, cotizaciones e inventario de {ADMIN_CONFIG.name}
+              Panel de control, pedidos e inventario de {ADMIN_CONFIG.name}
             </p>
           </div>
 

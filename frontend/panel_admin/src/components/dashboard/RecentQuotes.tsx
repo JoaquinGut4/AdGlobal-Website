@@ -4,10 +4,9 @@ import type { Cotizacion } from '@/types';
 interface RecentQuotesProps {
   cotizaciones: Cotizacion[];
   onToggleStatus: (id: string) => void;
-  onVerTodas: () => void;
 }
 
-export function RecentQuotes({ cotizaciones, onToggleStatus, onVerTodas }: RecentQuotesProps) {
+export function RecentQuotes({ cotizaciones, onToggleStatus }: RecentQuotesProps) {
   return (
     <div className="lg:col-span-2 bg-white rounded-2xl p-6 border border-slate-200/90 shadow-xs space-y-4">
       <div className="flex items-center justify-between">
@@ -19,13 +18,9 @@ export function RecentQuotes({ cotizaciones, onToggleStatus, onVerTodas }: Recen
             Atención prioritaria para alquiler corporativo de equipamiento
           </p>
         </div>
-        <button
-          type="button"
-          onClick={onVerTodas}
-          className="text-xs font-bold text-[#2B5C94] hover:underline cursor-pointer"
-        >
-          Ver todas ({cotizaciones.length})
-        </button>
+        <span className="rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-500">
+          {cotizaciones.length} solicitudes
+        </span>
       </div>
 
       <div className="divide-y divide-slate-100">

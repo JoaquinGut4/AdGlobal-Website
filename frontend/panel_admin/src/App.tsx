@@ -1,20 +1,19 @@
 import { useState } from 'react';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { LoginScreen } from '@/components/login/LoginScreen';
-import { QuoteModal } from '@/components/modals/QuoteModal';
+import { OrderModal } from '@/components/modals/OrderModal';
 import { TicketModal } from '@/components/modals/TicketModal';
 import { useToast } from '@/context/ToastContext';
 import { STORAGE_KEYS } from '@/config/site';
 import { COTIZACIONES_SEED } from '@/data/cotizaciones';
 import { INVENTARIO_DATA } from '@/data/inventario';
+import { PEDIDOS_SEED } from '@/data/pedidos';
 import { TICKETS_SEED, siguienteCodigoTicket, siguienteEstadoTicket } from '@/data/tickets';
 import { useAuth } from '@/hooks/useAuth';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { marcaTemporalHoy } from '@/lib/utils';
-import { AlquileresPage } from '@/pages/AlquileresPage';
 import { ClientesPage } from '@/pages/ClientesPage';
 import { ConfiguracionPage } from '@/pages/ConfiguracionPage';
-import { CotizacionesPage } from '@/pages/CotizacionesPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { GestionWebPage } from '@/pages/GestionWebPage';
 import { InventarioPage } from '@/pages/InventarioPage';
@@ -22,14 +21,14 @@ import { MovimientosPage } from '@/pages/MovimientosPage';
 import { PedidosPage } from '@/pages/PedidosPage';
 import { ReportesPage } from '@/pages/ReportesPage';
 import { TicketsPage } from '@/pages/TicketsPage';
-import { VentasPage } from '@/pages/VentasPage';
 import type { NuevoTicketInput } from '@/components/modals/TicketModal';
-import type { NuevaCotizacionInput } from '@/components/modals/QuoteModal';
+import type { NuevoPedidoInput } from '@/components/modals/OrderModal';
 import type {
   AdminSection,
   Cotizacion,
   InventarioCategoria,
   InventarioFiltro,
+  PedidoRegistro,
   SupportTicket,
 } from '@/types';
 
@@ -45,15 +44,15 @@ export default function App() {
     COTIZACIONES_SEED
   );
   const [tickets, setTickets] = useLocalStorage<SupportTicket[]>(STORAGE_KEYS.tickets, TICKETS_SEED);
+  const [pedidos, setPedidos] = useLocalStorage<PedidoRegistro[]>(STORAGE_KEYS.pedidos, PEDIDOS_SEED);
   const [inventarioCategorias, setInventarioCategorias] = useLocalStorage<InventarioCategoria[]>(
     STORAGE_KEYS.inventarioCategorias,
     [],
   );
 
   const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
-  const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
+  const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
 
-  const pendientesCotizaciones = cotizaciones.filter((c) => c.status === 'pendiente').length;
   const ticketsActivos = tickets.filter((t) => t.estado !== 'Resuelto').length;
 
   const handleLogout = () => {
@@ -72,28 +71,6 @@ export default function App() {
           : cotizacion
       )
     );
-  };
-
-  const crearCotizacion = (input: NuevaCotizacionInput) => {
-    const nueva: Cotizacion = {
-      id: `cot-${Date.now().toString().slice(-6)}`,
-      nombre: input.nombre,
-      empresa: input.empresa,
-      correo: input.correo,
-      telefono: input.telefono || '+51 900 000 000',
-      servicioId: input.servicioId,
-      fechas: input.fechas || 'Próximos días',
-      ciudad: input.ciudad || 'Lima',
-      mensaje:
-        input.mensaje || 'Apertura directa de cotización desde panel administrativo.',
-      createdAt: marcaTemporalHoy(),
-      status: 'pendiente',
-    };
-
-    setCotizaciones((prev) => [nueva, ...prev]);
-    setIsQuoteModalOpen(false);
-    setActiveNav('cotizaciones');
-    notify(`Cotización aperturada exitosamente para ${nueva.empresa}.`);
   };
 
   const avanzarTicket = (id: string) => {
@@ -123,6 +100,40 @@ export default function App() {
     notify(`Ticket ${nuevo.codigo} aperturado con éxito para ${nuevo.area}.`);
   };
 
+  const siguienteNumeroPedido = () => {
+    const year = new Date().getFullYear();
+    const maxSequence = pedidos.reduce((max, pedido) => {
+      const match = pedido.numeroPedido.match(/(\d+)$/);
+      return Math.max(max, match ? Number(match[1]) : 0);
+    }, 0);
+    return `PED-${year}-${String(maxSequence + 1).padStart(3, '0')}`;
+  };
+
+  const abrirPedido = () => {
+    setActiveNav('pedidos');
+    setIsOrderModalOpen(true);
+  };
+
+  const crearPedido = (input: NuevoPedidoInput) => {
+    const nuevo: PedidoRegistro = {
+      id: `ped-${Date.now()}`,
+      numeroPedido: siguienteNumeroPedido(),
+      fechaPedido: new Intl.DateTimeFormat('es-PE', {
+        dateStyle: 'short',
+        timeStyle: 'short',
+      }).format(new Date()),
+      usuario: session.usuario,
+      ...input,
+      estado: 'Nuevo',
+      ...(input.tipo === 'Alquiler' ? { estadoAlquiler: 'Reservado' as const } : {}),
+    };
+
+    setPedidos((current) => [nuevo, ...current]);
+    setIsOrderModalOpen(false);
+    setActiveNav('pedidos');
+    notify(`Pedido ${nuevo.numeroPedido} aperturado correctamente.`);
+  };
+
   const irAInventarioConFiltro = (filtro: InventarioFiltro) => {
     setInventarioFiltro(filtro);
     setActiveNav('inventario');
@@ -140,16 +151,7 @@ export default function App() {
             cotizaciones={cotizaciones}
             onToggleStatus={toggleCotizacionStatus}
             onVerFiltro={irAInventarioConFiltro}
-            onVerCotizaciones={() => setActiveNav('cotizaciones')}
             onVerInventario={() => setActiveNav('inventario')}
-          />
-        );
-      case 'cotizaciones':
-        return (
-          <CotizacionesPage
-            cotizaciones={cotizaciones}
-            onToggleStatus={toggleCotizacionStatus}
-            onOpenQuote={() => setIsQuoteModalOpen(true)}
           />
         );
       case 'inventario':
@@ -163,12 +165,8 @@ export default function App() {
             }
           />
         );
-      case 'alquileres':
-        return <AlquileresPage />;
-      case 'ventas':
-        return <VentasPage />;
       case 'pedidos':
-        return <PedidosPage />;
+        return <PedidosPage pedidos={pedidos} onOpenOrder={abrirPedido} />;
       case 'movimientos':
         return <MovimientosPage />;
       case 'tickets':
@@ -197,9 +195,8 @@ export default function App() {
         onNavigate={setActiveNav}
         onLogout={handleLogout}
         onOpenTicket={() => setIsTicketModalOpen(true)}
-        onOpenQuote={() => setIsQuoteModalOpen(true)}
+        onOpenOrders={abrirPedido}
         session={session}
-        pendientesCotizaciones={pendientesCotizaciones}
         ticketsActivos={ticketsActivos}
         inventarioCategorias={INVENTARIO_DATA.length + inventarioCategorias.length}
       >
@@ -212,10 +209,12 @@ export default function App() {
         onCreate={crearTicket}
       />
 
-      <QuoteModal
-        isOpen={isQuoteModalOpen}
-        onClose={() => setIsQuoteModalOpen(false)}
-        onCreate={crearCotizacion}
+      <OrderModal
+        isOpen={isOrderModalOpen}
+        onClose={() => setIsOrderModalOpen(false)}
+        onCreate={crearPedido}
+        usuario={session.usuario}
+        siguienteNumero={siguienteNumeroPedido()}
       />
     </>
   );

@@ -11,9 +11,8 @@ interface AdminLayoutProps {
   onNavigate: (section: AdminSection) => void;
   onLogout: () => void;
   onOpenTicket: () => void;
-  onOpenQuote: () => void;
+  onOpenOrders: () => void;
   session: AuthSession;
-  pendientesCotizaciones: number;
   ticketsActivos: number;
   inventarioCategorias: number;
   children: ReactNode;
@@ -24,9 +23,8 @@ export function AdminLayout({
   onNavigate,
   onLogout,
   onOpenTicket,
-  onOpenQuote,
+  onOpenOrders,
   session,
-  pendientesCotizaciones,
   ticketsActivos,
   inventarioCategorias,
   children,
@@ -57,7 +55,6 @@ export function AdminLayout({
         onNavigate={handleNavigate}
         onLogout={onLogout}
         session={session}
-        pendientesCotizaciones={pendientesCotizaciones}
         ticketsActivos={ticketsActivos}
         inventarioCategorias={inventarioCategorias}
         isOpen={isSidebarOpen}
@@ -75,7 +72,7 @@ export function AdminLayout({
           title={current.title}
           onToggleSidebar={() => setIsSidebarOpen(true)}
           onOpenTicket={onOpenTicket}
-          onOpenQuote={onOpenQuote}
+          onOpenOrders={onOpenOrders}
         />
 
         <main className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl w-full mx-auto">{children}</main>

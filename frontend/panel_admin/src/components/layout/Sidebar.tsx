@@ -10,7 +10,6 @@ interface SidebarProps {
   onNavigate: (section: AdminSection) => void;
   onLogout: () => void;
   session: AuthSession;
-  pendientesCotizaciones: number;
   ticketsActivos: number;
   inventarioCategorias: number;
   /** Visible en móvil (drawer). */
@@ -26,7 +25,6 @@ export function Sidebar({
   onNavigate,
   onLogout,
   session,
-  pendientesCotizaciones,
   ticketsActivos,
   inventarioCategorias,
   isOpen,
@@ -111,9 +109,7 @@ export function Sidebar({
             const isActive = activeNav === item.id;
 
             let badge: { text: string; tone: 'alert' | 'ok' } | null = null;
-            if (item.id === 'cotizaciones' && pendientesCotizaciones > 0) {
-              badge = { text: String(pendientesCotizaciones), tone: 'alert' };
-            } else if (item.id === 'tickets' && ticketsActivos > 0) {
+            if (item.id === 'tickets' && ticketsActivos > 0) {
               badge = { text: String(ticketsActivos), tone: 'alert' };
             } else if (item.id === 'inventario') {
               badge = { text: `${inventarioCategorias} Cat.`, tone: 'ok' };

@@ -4,10 +4,10 @@ interface TopbarProps {
   title: string;
   onToggleSidebar: () => void;
   onOpenTicket: () => void;
-  onOpenQuote: () => void;
+  onOpenOrders: () => void;
 }
 
-export function Topbar({ title, onToggleSidebar, onOpenTicket, onOpenQuote }: TopbarProps) {
+export function Topbar({ title, onToggleSidebar, onOpenTicket, onOpenOrders }: TopbarProps) {
   return (
     <header className="bg-white border-b border-slate-200/90 px-4 sm:px-6 py-3.5 flex items-center justify-between gap-3 sticky top-0 z-20">
       <div className="flex items-center gap-3 min-w-0">
@@ -69,7 +69,7 @@ export function Topbar({ title, onToggleSidebar, onOpenTicket, onOpenQuote }: To
         {/* Pedidos */}
         <button
           type="button"
-          onClick={onOpenQuote}
+          onClick={onOpenOrders}
           title="Pedidos"
           className="inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-lg bg-[#2B5C94] hover:bg-[#1F4778] active:scale-95 text-white text-xs font-bold transition-all shadow-xs cursor-pointer group shrink-0"
         >

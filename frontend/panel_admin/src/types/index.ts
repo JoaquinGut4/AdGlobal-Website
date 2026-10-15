@@ -6,9 +6,6 @@
 export type AdminSection =
   | 'dashboard'
   | 'inventario'
-  | 'alquileres'
-  | 'ventas'
-  | 'cotizaciones'
   | 'pedidos'
   | 'clientes'
   | 'movimientos'
@@ -125,58 +122,45 @@ export interface InventarioRegistro {
 
 export type AlquilerEstado = 'Reservado' | 'Activo' | 'Por vencer' | 'Vencido' | 'Devuelto';
 
-export interface AlquilerRegistro {
-  id: string;
-  contrato: string;
-  cliente: string;
-  ruc: string;
-  proyecto: string;
-  categoria: string;
-  equipo: string;
-  sku: string;
-  numeroSerial: string;
-  cantidad: number;
-  fechaInicio: string;
-  fechaFin: string;
-  ubicacion: string;
-  responsable: string;
-  telefono: string;
-  tarifa: number;
-  deposito: number;
-  estado: AlquilerEstado;
-  observaciones: string;
-}
-
-export type VentaEstado =
-  | 'Confirmada'
-  | 'En preparación'
-  | 'Despachada'
-  | 'Entregada'
-  | 'Anulada';
-
 export type VentaPagoEstado = 'Pendiente' | 'Parcial' | 'Pagado';
 
-export interface VentaRegistro {
+export type PedidoTipo = 'Alquiler' | 'Venta';
+
+export type PedidoEstado =
+  | 'Nuevo'
+  | 'En revisión'
+  | 'Confirmado'
+  | 'En preparación'
+  | 'Atendido'
+  | 'Cancelado';
+
+export interface PedidoRegistro {
   id: string;
-  pedido: string;
-  factura: string;
+  numeroPedido: string;
+  fechaPedido: string;
+  usuario: string;
   cliente: string;
   ruc: string;
+  tipo: PedidoTipo;
   categoria: string;
-  equipo: string;
-  sku: string;
-  numeroSerial: string;
   cantidad: number;
-  fechaVenta: string;
-  fechaEntrega: string;
+  equipos: string;
+  duracion: string;
   ubicacion: string;
-  vendedor: string;
-  formaPago: string;
-  total: number;
-  saldo: number;
-  estadoPago: VentaPagoEstado;
-  estado: VentaEstado;
+  responsable: string;
+  monto: number;
+  prioridad: 'Alta' | 'Media' | 'Baja';
+  estado: PedidoEstado;
   observaciones: string;
+  fechaInicio?: string;
+  fechaFin?: string;
+  deposito?: number;
+  estadoAlquiler?: AlquilerEstado;
+  factura?: string;
+  formaPago?: string;
+  fechaEntrega?: string;
+  saldo?: number;
+  estadoPago?: VentaPagoEstado;
 }
 
 /** Cliente corporativo del directorio. */
