@@ -1,148 +1,85 @@
 import { useState } from 'react';
-import type { FormEvent } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 import { ClipboardPlus } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
-import type { PedidoRegistro, PedidoTipo, VentaPagoEstado } from '@/types';
+import type { MotivoTraslado, PedidoRegistro } from '@/types';
 
-export interface NuevoPedidoInput {
-  cliente: string;
-  ruc: string;
-  tipo: PedidoTipo;
-  categoria: string;
-  cantidad: number;
-  equipos: string;
-  duracion: string;
-  ubicacion: string;
-  responsable: string;
-  monto: number;
-  prioridad: PedidoRegistro['prioridad'];
-  observaciones: string;
-  fechaInicio?: string;
-  fechaFin?: string;
-  deposito?: number;
-  factura?: string;
-  formaPago?: string;
-  fechaEntrega?: string;
-  saldo?: number;
-  estadoPago?: VentaPagoEstado;
-}
+export type NuevoPedidoInput = Omit<PedidoRegistro, 'id' | 'numeroPedido'>;
 
 interface OrderModalProps {
   isOpen: boolean;
   onClose: () => void;
   onCreate: (input: NuevoPedidoInput) => void;
-  usuario: string;
-  siguienteNumero: string;
 }
 
-const CATEGORIAS = [
-  'Laptops',
-  'Computadoras',
-  'Monitores',
-  'Tablets',
-  'Televisores',
-  'Impresoras',
-  'Proyectores',
+const DIRECCION_PARTIDA = 'Av. Húsares de Junín 527, Jesús María, Lima, Lima';
+
+const MOTIVOS: MotivoTraslado[] = [
+  'Venta',
+  'Venta con entrega a terceros',
+  'Venta sujeta a confirmación del cliente',
+  'Compra',
+  'Alquiler',
+  'Devolución',
+  'Traslado entre establecimientos de una misma empresa',
+  'Reemplazo de bienes',
+  'Transformación',
+  'Recojo de bienes transformados',
+  'Traslado por emisor itinerante de comprobantes de pago',
+  'Traslado a zona primaria',
+  'Importación',
+  'Exportación',
 ];
 
 const FIELD_CLASS =
   'w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#2B5C94]';
 
-export function OrderModal({
-  isOpen,
-  onClose,
-  onCreate,
-  usuario,
-  siguienteNumero,
-}: OrderModalProps) {
-  const [cliente, setCliente] = useState('');
-  const [ruc, setRuc] = useState('');
-  const [tipo, setTipo] = useState<PedidoTipo>('Alquiler');
-  const [categoria, setCategoria] = useState(CATEGORIAS[0]);
-  const [cantidad, setCantidad] = useState('1');
-  const [equipos, setEquipos] = useState('');
-  const [duracion, setDuracion] = useState('');
-  const [ubicacion, setUbicacion] = useState('');
-  const [responsable, setResponsable] = useState('');
-  const [monto, setMonto] = useState('');
-  const [prioridad, setPrioridad] = useState<PedidoRegistro['prioridad']>('Media');
+export function OrderModal({ isOpen, onClose, onCreate }: OrderModalProps) {
+  const [fechaEmision, setFechaEmision] = useState(() => new Date().toISOString().slice(0, 10));
+  const [destinatarioTipo, setDestinatarioTipo] = useState<'Persona natural' | 'Empresa'>('Empresa');
+  const [destinatario, setDestinatario] = useState('');
+  const [direccion, setDireccion] = useState('');
+  const [distrito, setDistrito] = useState('');
+  const [provincia, setProvincia] = useState('');
+  const [departamento, setDepartamento] = useState('');
+  const [descripcionProductos, setDescripcionProductos] = useState('');
+  const [cantidadProductos, setCantidadProductos] = useState('1');
+  const [motivoTraslado, setMotivoTraslado] = useState<MotivoTraslado>('Venta');
   const [observaciones, setObservaciones] = useState('');
-  const [fechaInicio, setFechaInicio] = useState('');
-  const [fechaFin, setFechaFin] = useState('');
-  const [deposito, setDeposito] = useState('');
-  const [factura, setFactura] = useState('Por emitir');
-  const [formaPago, setFormaPago] = useState('Transferencia bancaria');
-  const [fechaEntrega, setFechaEntrega] = useState('');
-  const [saldo, setSaldo] = useState('');
-  const [estadoPago, setEstadoPago] = useState<VentaPagoEstado>('Pendiente');
-
-  const handleTypeChange = (nextType: PedidoTipo) => {
-    setTipo(nextType);
-    if (nextType === 'Venta' && !duracion.trim()) setDuracion('Entrega única');
-    if (nextType === 'Alquiler' && duracion === 'Entrega única') setDuracion('');
-  };
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
-    const baseInput: NuevoPedidoInput = {
-      cliente: cliente.trim(),
-      ruc: ruc.trim(),
-      tipo,
-      categoria,
-      cantidad: Number(cantidad),
-      equipos: equipos.trim(),
-      duracion: duracion.trim(),
-      ubicacion: ubicacion.trim(),
-      responsable: responsable.trim(),
-      monto: Number(monto),
-      prioridad,
+    const direccionLlegada = [
+      `${destinatarioTipo}: ${destinatario.trim()}`,
+      `Dirección: ${direccion.trim()}`,
+      `Distrito: ${distrito.trim()}`,
+      `Provincia: ${provincia.trim()}`,
+      `Departamento: ${departamento.trim()}`,
+    ].join(' · ');
+
+    onCreate({
+      fechaEmision,
+      direccionPartida: DIRECCION_PARTIDA,
+      direccionLlegada,
+      descripcionProductos: descripcionProductos.trim(),
+      cantidadProductos: Number(cantidadProductos),
+      unidadMedida: 'UND',
+      motivoTraslado,
       observaciones: observaciones.trim(),
-    };
+    });
 
-    onCreate(
-      tipo === 'Alquiler'
-        ? {
-            ...baseInput,
-            fechaInicio,
-            fechaFin,
-            deposito: Number(deposito || 0),
-          }
-        : {
-            ...baseInput,
-            factura: factura.trim() || 'Por emitir',
-            formaPago,
-            fechaEntrega,
-            saldo: Number(saldo || monto),
-            estadoPago,
-          },
-    );
-
-    setCliente('');
-    setRuc('');
-    setTipo('Alquiler');
-    setCategoria(CATEGORIAS[0]);
-    setCantidad('1');
-    setEquipos('');
-    setDuracion('');
-    setUbicacion('');
-    setResponsable('');
-    setMonto('');
-    setPrioridad('Media');
+    setFechaEmision(new Date().toISOString().slice(0, 10));
+    setDestinatarioTipo('Empresa');
+    setDestinatario('');
+    setDireccion('');
+    setDistrito('');
+    setProvincia('');
+    setDepartamento('');
+    setDescripcionProductos('');
+    setCantidadProductos('1');
+    setMotivoTraslado('Venta');
     setObservaciones('');
-    setFechaInicio('');
-    setFechaFin('');
-    setDeposito('');
-    setFactura('Por emitir');
-    setFormaPago('Transferencia bancaria');
-    setFechaEntrega('');
-    setSaldo('');
-    setEstadoPago('Pendiente');
   };
-
-  const fechaActual = new Intl.DateTimeFormat('es-PE', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date());
 
   return (
     <Modal
@@ -150,136 +87,69 @@ export function OrderModal({
       onClose={onClose}
       labelledBy="order-modal-title"
       title="Aperturar pedido"
-      subtitle="Registra una solicitud de alquiler o venta de equipos"
+      subtitle="Datos para la emisión y traslado de los productos"
       icon={<ClipboardPlus className="h-4 w-4" />}
       headerClass="bg-[#2B5C94]"
       panelClass="max-w-4xl"
     >
       <form onSubmit={handleSubmit} className="flex-1 space-y-5 overflow-y-auto p-5 sm:p-6">
-        <div className="grid grid-cols-1 gap-3 rounded-xl border border-blue-100 bg-blue-50/60 p-4 sm:grid-cols-3">
-          <ReadOnlyField label="Número de pedido" value={siguienteNumero} />
-          <ReadOnlyField label="Fecha del pedido" value={fechaActual} />
-          <ReadOnlyField label="Usuario" value={usuario} />
-          <p className="text-[10px] text-slate-500 sm:col-span-3">
-            Estos datos se asignarán automáticamente al guardar el pedido.
-          </p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Fecha de emisión" required>
+            <input type="date" required value={fechaEmision} onChange={(event) => setFechaEmision(event.target.value)} className={FIELD_CLASS} />
+          </Field>
+          <Field label="Dirección de partida">
+            <textarea rows={2} value={DIRECCION_PARTIDA} readOnly className={`${FIELD_CLASS} bg-slate-100 text-slate-600`} />
+          </Field>
         </div>
 
-        <div>
+        <section className="rounded-xl border border-blue-100 bg-blue-50/40 p-4">
           <h4 className="mb-3 text-xs font-bold uppercase tracking-wider text-[#2B5C94]">
-            Cliente y operación
+            Dirección de llegada
           </h4>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Field label="Cliente / Empresa" required wide>
-              <input required value={cliente} onChange={(e) => setCliente(e.target.value)} placeholder="Nombre o razón social" className={FIELD_CLASS} />
-            </Field>
-            <Field label="RUC" required>
-              <input required inputMode="numeric" minLength={11} maxLength={11} value={ruc} onChange={(e) => setRuc(e.target.value.replace(/\D/g, ''))} placeholder="11 dígitos" className={FIELD_CLASS} />
-            </Field>
-            <Field label="Tipo" required>
-              <select value={tipo} onChange={(e) => handleTypeChange(e.target.value as PedidoTipo)} className={FIELD_CLASS}>
-                <option value="Alquiler">Alquiler</option>
-                <option value="Venta">Venta</option>
+            <Field label="Tipo de destinatario" required>
+              <select value={destinatarioTipo} onChange={(event) => setDestinatarioTipo(event.target.value as 'Persona natural' | 'Empresa')} className={FIELD_CLASS}>
+                <option>Persona natural</option>
+                <option>Empresa</option>
               </select>
             </Field>
-            <Field label="Categoría" required>
-              <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className={FIELD_CLASS}>
-                {CATEGORIAS.map((item) => <option key={item}>{item}</option>)}
-              </select>
+            <Field label={destinatarioTipo === 'Empresa' ? 'Nombre de la empresa' : 'Nombre completo'} required full>
+              <input required value={destinatario} onChange={(event) => setDestinatario(event.target.value)} className={FIELD_CLASS} />
             </Field>
-            <Field label="Cantidad" required>
-              <input type="number" min="1" required value={cantidad} onChange={(e) => setCantidad(e.target.value)} className={FIELD_CLASS} />
+            <Field label="Dirección" required full>
+              <input required value={direccion} onChange={(event) => setDireccion(event.target.value)} placeholder="Calle, avenida y número" className={FIELD_CLASS} />
+            </Field>
+            <Field label="Distrito" required>
+              <input required value={distrito} onChange={(event) => setDistrito(event.target.value)} className={FIELD_CLASS} />
+            </Field>
+            <Field label="Provincia" required>
+              <input required value={provincia} onChange={(event) => setProvincia(event.target.value)} className={FIELD_CLASS} />
+            </Field>
+            <Field label="Departamento" required>
+              <input required value={departamento} onChange={(event) => setDepartamento(event.target.value)} className={FIELD_CLASS} />
             </Field>
           </div>
-        </div>
+        </section>
 
-        <div className="border-t border-slate-100 pt-4">
-          <h4 className="mb-3 text-xs font-bold uppercase tracking-wider text-[#2B5C94]">
-            Equipos y condiciones
-          </h4>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Field label="Equipos (SKU y nombre)" required full>
-              <textarea rows={2} required value={equipos} onChange={(e) => setEquipos(e.target.value)} placeholder="Ej. LAP-0002 — Lenovo ThinkPad T14 Gen 2" className={FIELD_CLASS} />
-            </Field>
-            <Field label="Duración" required>
-              <input required value={duracion} onChange={(e) => setDuracion(e.target.value)} placeholder={tipo === 'Alquiler' ? 'Ej. 10 días' : 'Entrega única'} className={FIELD_CLASS} />
-            </Field>
-            <Field label="Responsable de recepción" required>
-              <input required value={responsable} onChange={(e) => setResponsable(e.target.value)} placeholder="Nombre completo" className={FIELD_CLASS} />
-            </Field>
-            <Field label="Prioridad" required>
-              <select value={prioridad} onChange={(e) => setPrioridad(e.target.value as PedidoRegistro['prioridad'])} className={FIELD_CLASS}>
-                <option value="Alta">Alta</option>
-                <option value="Media">Media</option>
-                <option value="Baja">Baja</option>
-              </select>
-            </Field>
-            <Field label="Ubicación de entrega" required wide>
-              <input required value={ubicacion} onChange={(e) => setUbicacion(e.target.value)} placeholder="Dirección completa donde se llevarán los equipos" className={FIELD_CLASS} />
-            </Field>
-            <Field label="Monto pactado (S/)" required>
-              <input type="number" min="0" step="0.01" required value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="0.00" className={FIELD_CLASS} />
-            </Field>
-            <Field label="Observaciones" full>
-              <textarea rows={3} value={observaciones} onChange={(e) => setObservaciones(e.target.value)} placeholder="Condiciones, accesorios, soporte u otras indicaciones" className={FIELD_CLASS} />
-            </Field>
-          </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Descripción de los productos (SKU + categoría + nombre)" required full>
+            <textarea rows={3} required value={descripcionProductos} onChange={(event) => setDescripcionProductos(event.target.value)} placeholder="Ej. LAP-0001 · Laptops · Lenovo ThinkPad T14 Gen 2" className={FIELD_CLASS} />
+          </Field>
+          <Field label="Cantidad de productos" required>
+            <input type="number" min="1" required value={cantidadProductos} onChange={(event) => setCantidadProductos(event.target.value)} className={FIELD_CLASS} />
+          </Field>
+          <Field label="Unidad de medida">
+            <input value="UND" readOnly className={`${FIELD_CLASS} bg-slate-100 text-slate-600`} />
+          </Field>
+          <Field label="Motivo de traslado" required full>
+            <select value={motivoTraslado} onChange={(event) => setMotivoTraslado(event.target.value as MotivoTraslado)} className={FIELD_CLASS}>
+              {MOTIVOS.map((motivo) => <option key={motivo}>{motivo}</option>)}
+            </select>
+          </Field>
+          <Field label="Observaciones" full>
+            <textarea rows={3} value={observaciones} onChange={(event) => setObservaciones(event.target.value)} placeholder="Observaciones generales" className={FIELD_CLASS} />
+          </Field>
         </div>
-
-        {tipo === 'Alquiler' ? (
-          <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-4">
-            <h4 className="mb-3 text-xs font-bold uppercase tracking-wider text-[#2B5C94]">
-              Gestión del alquiler
-            </h4>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <Field label="Fecha de inicio" required>
-                <input type="date" required value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} className={FIELD_CLASS} />
-              </Field>
-              <Field label="Fecha de fin" required>
-                <input type="date" min={fechaInicio || undefined} required value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} className={FIELD_CLASS} />
-              </Field>
-              <Field label="Depósito / Garantía (S/)">
-                <input type="number" min="0" step="0.01" value={deposito} onChange={(e) => setDeposito(e.target.value)} placeholder="0.00" className={FIELD_CLASS} />
-              </Field>
-            </div>
-            <p className="mt-2 text-[10px] text-slate-500">
-              El pedido iniciará con estado operativo “Reservado” y podrá avanzar hasta su devolución.
-            </p>
-          </div>
-        ) : (
-          <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-4">
-            <h4 className="mb-3 text-xs font-bold uppercase tracking-wider text-emerald-700">
-              Facturación y entrega de la venta
-            </h4>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <Field label="Factura / Comprobante">
-                <input value={factura} onChange={(e) => setFactura(e.target.value)} placeholder="Por emitir" className={FIELD_CLASS} />
-              </Field>
-              <Field label="Forma de pago" required>
-                <select value={formaPago} onChange={(e) => setFormaPago(e.target.value)} className={FIELD_CLASS}>
-                  <option>Transferencia bancaria</option>
-                  <option>Crédito 15 días</option>
-                  <option>Crédito 30 días</option>
-                  <option>Tarjeta corporativa</option>
-                  <option>Efectivo</option>
-                </select>
-              </Field>
-              <Field label="Estado del pago" required>
-                <select value={estadoPago} onChange={(e) => setEstadoPago(e.target.value as VentaPagoEstado)} className={FIELD_CLASS}>
-                  <option value="Pendiente">Pendiente</option>
-                  <option value="Parcial">Parcial</option>
-                  <option value="Pagado">Pagado</option>
-                </select>
-              </Field>
-              <Field label="Fecha de entrega" required>
-                <input type="date" required value={fechaEntrega} onChange={(e) => setFechaEntrega(e.target.value)} className={FIELD_CLASS} />
-              </Field>
-              <Field label="Saldo pendiente (S/)">
-                <input type="number" min="0" step="0.01" value={saldo} onChange={(e) => setSaldo(e.target.value)} placeholder="Igual al monto si se deja vacío" className={FIELD_CLASS} />
-              </Field>
-            </div>
-          </div>
-        )}
 
         <div className="sticky bottom-0 flex items-center justify-end gap-2.5 border-t border-slate-200 bg-white/95 pt-4 backdrop-blur-sm">
           <button type="button" onClick={onClose} className="cursor-pointer rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100">
@@ -295,30 +165,9 @@ export function OrderModal({
   );
 }
 
-function ReadOnlyField({ label, value }: { label: string; value: string }) {
+function Field({ label, required, full, children }: { label: string; required?: boolean; full?: boolean; children: ReactNode }) {
   return (
-    <div>
-      <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
-      <span className="mt-1 block truncate font-mono text-xs font-bold text-slate-800">{value}</span>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  required,
-  wide,
-  full,
-  children,
-}: {
-  label: string;
-  required?: boolean;
-  wide?: boolean;
-  full?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className={full ? 'sm:col-span-2 lg:col-span-3' : wide ? 'sm:col-span-2' : ''}>
+    <div className={full ? 'sm:col-span-2' : ''}>
       <label className="mb-1 block text-xs font-bold uppercase text-slate-600">
         {label} {required && <span className="text-rose-500">*</span>}
       </label>

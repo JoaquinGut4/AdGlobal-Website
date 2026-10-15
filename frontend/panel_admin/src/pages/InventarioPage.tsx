@@ -15,6 +15,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { InventoryModal } from '@/components/modals/InventoryModal';
+import { Modal } from '@/components/ui/Modal';
 import { STORAGE_KEYS } from '@/config/site';
 import {
   FLOTA_RESUMEN,
@@ -147,6 +148,22 @@ const COLUMNAS_POR_CATEGORIA: Record<InventarioCategoriaBaseId, ColumnaInventari
   ],
 };
 
+const COLUMNAS_CATEGORIA_PERSONALIZADA: ColumnaInventario[] = [
+  ...COLUMNAS_COMUNES,
+  { key: 'marca', label: 'Marca' },
+  { key: 'descripcion', label: 'Descripción del equipo', width: 'min-w-52' },
+  { key: 'numeroSerial', label: 'Número serial', width: 'min-w-36' },
+  ...COLUMNAS_COMPRA,
+  ...COLUMNAS_CIERRE,
+];
+
+function obtenerColumnas(categoriaId: InventarioCategoriaId) {
+  return (
+    COLUMNAS_POR_CATEGORIA[categoriaId as InventarioCategoriaBaseId] ??
+    COLUMNAS_CATEGORIA_PERSONALIZADA
+  );
+}
+
 const CATEGORIAS_BASE: Array<{
   id: InventarioCategoriaBaseId;
   label: string;
@@ -211,6 +228,37 @@ function valorCelda(registro: InventarioRegistro, campo: CampoInventario) {
   if (campo === 'estado') return <EstadoBadge estado={registro.estado} />;
   const value = registro[campo];
   return value === undefined || value === '' ? '—' : String(value);
+}
+
+function DetallesInventario({ registro }: { registro: InventarioRegistro }) {
+  const columnas = obtenerColumnas(registro.categoriaId);
+
+  return (
+    <div className="flex-1 overflow-y-auto bg-slate-50/80 p-4 sm:p-6">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs">
+        <table className="w-full border-collapse text-left text-xs">
+          <thead>
+            <tr className="border-b border-slate-200 bg-slate-100 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              <th className="w-56 px-4 py-3">Campo</th>
+              <th className="px-4 py-3">Información</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {columnas.map((columna) => (
+              <tr key={columna.key} className="align-top hover:bg-slate-50/70">
+                <th scope="row" className="w-56 bg-slate-50/50 px-4 py-3 font-bold text-slate-500">
+                  {columna.label}
+                </th>
+                <td className="px-4 py-3 leading-relaxed text-slate-700">
+                  {valorCelda(registro, columna.key)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
 
 function InventarioResumen({
@@ -317,6 +365,7 @@ export function InventarioPage({
   const [categoriaActiva, setCategoriaActiva] = useState<InventarioCategoriaId>('laptops');
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
   const [isInventoryModalOpen, setIsInventoryModalOpen] = useState(false);
+  const [selectedRegistro, setSelectedRegistro] = useState<InventarioRegistro | null>(null);
   const [registrosInventario, setRegistrosInventario] = useLocalStorage<InventarioRegistro[]>(
     STORAGE_KEYS.inventario,
     INVENTARIO_REGISTROS,
@@ -328,15 +377,7 @@ export function InventarioPage({
   const categoryMenuRef = useRef<HTMLDivElement>(null);
   const categoria = categorias.find((item) => item.id === categoriaActiva) ?? categorias[0];
   const CategoriaIcon = categoria.icon;
-  const columnas =
-    COLUMNAS_POR_CATEGORIA[categoriaActiva as InventarioCategoriaBaseId] ?? [
-      ...COLUMNAS_COMUNES,
-      { key: 'marca' as const, label: 'Marca' },
-      { key: 'descripcion' as const, label: 'Descripción del equipo', width: 'min-w-52' },
-      { key: 'numeroSerial' as const, label: 'Número serial', width: 'min-w-36' },
-      ...COLUMNAS_COMPRA,
-      ...COLUMNAS_CIERRE,
-    ];
+  const columnas = obtenerColumnas(categoriaActiva);
   const terminosBusqueda = normalizarBusqueda(search).split(/\s+/).filter(Boolean);
 
   const registros = registrosInventario.filter((registro) => {
@@ -542,7 +583,20 @@ export function InventarioPage({
                 </tr>
               ) : (
                 registros.map((registro) => (
-                  <tr key={registro.id} className="group hover:bg-blue-50/30">
+                  <tr
+                    key={registro.id}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Ver detalle del activo ${registro.sku}`}
+                    onClick={() => setSelectedRegistro(registro)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setSelectedRegistro(registro);
+                      }
+                    }}
+                    className="group cursor-pointer hover:bg-blue-50/30 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#2B5C94]"
+                  >
                     {columnas.map((columna, index) => (
                       <td
                         key={columna.key}
@@ -583,6 +637,19 @@ export function InventarioPage({
         categorias={categorias.map(({ id, label, codigo }) => ({ id, label, codigo }))}
         onCreateCategory={onAgregarCategoria}
       />
+
+      <Modal
+        isOpen={selectedRegistro !== null}
+        onClose={() => setSelectedRegistro(null)}
+        labelledBy="inventory-detail-modal-title"
+        title={selectedRegistro ? `Activo ${selectedRegistro.sku}` : 'Detalle del activo'}
+        subtitle={selectedRegistro?.descripcion}
+        icon={<Package className="h-4 w-4" />}
+        headerClass="bg-[#2B5C94]"
+        panelClass="max-w-4xl"
+      >
+        {selectedRegistro && <DetallesInventario registro={selectedRegistro} />}
+      </Modal>
     </div>
   );
 }

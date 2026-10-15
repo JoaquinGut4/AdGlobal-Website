@@ -120,56 +120,48 @@ export interface InventarioRegistro {
   observaciones: string;
 }
 
-export type AlquilerEstado = 'Reservado' | 'Activo' | 'Por vencer' | 'Vencido' | 'Devuelto';
-
-export type VentaPagoEstado = 'Pendiente' | 'Parcial' | 'Pagado';
-
-export type PedidoTipo = 'Alquiler' | 'Venta';
-
-export type PedidoEstado =
-  | 'Nuevo'
-  | 'En revisión'
-  | 'Confirmado'
-  | 'En preparación'
-  | 'Atendido'
-  | 'Cancelado';
+export type MotivoTraslado =
+  | 'Venta'
+  | 'Venta con entrega a terceros'
+  | 'Venta sujeta a confirmación del cliente'
+  | 'Compra'
+  | 'Alquiler'
+  | 'Devolución'
+  | 'Traslado entre establecimientos de una misma empresa'
+  | 'Reemplazo de bienes'
+  | 'Transformación'
+  | 'Recojo de bienes transformados'
+  | 'Traslado por emisor itinerante de comprobantes de pago'
+  | 'Traslado a zona primaria'
+  | 'Importación'
+  | 'Exportación';
 
 export interface PedidoRegistro {
   id: string;
   numeroPedido: string;
-  fechaPedido: string;
-  usuario: string;
-  cliente: string;
-  ruc: string;
-  tipo: PedidoTipo;
-  categoria: string;
-  cantidad: number;
-  equipos: string;
-  duracion: string;
-  ubicacion: string;
-  responsable: string;
-  monto: number;
-  prioridad: 'Alta' | 'Media' | 'Baja';
-  estado: PedidoEstado;
+  fechaEmision: string;
+  direccionPartida: string;
+  direccionLlegada: string;
+  descripcionProductos: string;
+  cantidadProductos: number;
+  unidadMedida: 'UND';
+  motivoTraslado: MotivoTraslado;
   observaciones: string;
-  fechaInicio?: string;
-  fechaFin?: string;
-  deposito?: number;
-  estadoAlquiler?: AlquilerEstado;
-  factura?: string;
-  formaPago?: string;
-  fechaEntrega?: string;
-  saldo?: number;
-  estadoPago?: VentaPagoEstado;
 }
 
 /** Cliente corporativo del directorio. */
 export interface ClienteCorporativo {
   id: string;
   name: string;
+  ruc: string;
   sector: string;
+  contacto: string;
+  email: string;
+  telefono: string;
   eventos: number;
   rating: 'VIP' | 'A+' | 'Estándar';
+  ultimaActividad: string;
+  estado: 'Activo' | 'Inactivo';
 }
 
 export interface PresupuestoMetric {

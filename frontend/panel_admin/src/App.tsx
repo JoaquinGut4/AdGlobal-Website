@@ -118,14 +118,7 @@ export default function App() {
     const nuevo: PedidoRegistro = {
       id: `ped-${Date.now()}`,
       numeroPedido: siguienteNumeroPedido(),
-      fechaPedido: new Intl.DateTimeFormat('es-PE', {
-        dateStyle: 'short',
-        timeStyle: 'short',
-      }).format(new Date()),
-      usuario: session.usuario,
       ...input,
-      estado: 'Nuevo',
-      ...(input.tipo === 'Alquiler' ? { estadoAlquiler: 'Reservado' as const } : {}),
     };
 
     setPedidos((current) => [nuevo, ...current]);
@@ -213,8 +206,6 @@ export default function App() {
         isOpen={isOrderModalOpen}
         onClose={() => setIsOrderModalOpen(false)}
         onCreate={crearPedido}
-        usuario={session.usuario}
-        siguienteNumero={siguienteNumeroPedido()}
       />
     </>
   );
