@@ -147,6 +147,38 @@ export interface AlquilerRegistro {
   observaciones: string;
 }
 
+export type VentaEstado =
+  | 'Confirmada'
+  | 'En preparación'
+  | 'Despachada'
+  | 'Entregada'
+  | 'Anulada';
+
+export type VentaPagoEstado = 'Pendiente' | 'Parcial' | 'Pagado';
+
+export interface VentaRegistro {
+  id: string;
+  pedido: string;
+  factura: string;
+  cliente: string;
+  ruc: string;
+  categoria: string;
+  equipo: string;
+  sku: string;
+  numeroSerial: string;
+  cantidad: number;
+  fechaVenta: string;
+  fechaEntrega: string;
+  ubicacion: string;
+  vendedor: string;
+  formaPago: string;
+  total: number;
+  saldo: number;
+  estadoPago: VentaPagoEstado;
+  estado: VentaEstado;
+  observaciones: string;
+}
+
 /** Cliente corporativo del directorio. */
 export interface ClienteCorporativo {
   id: string;

@@ -23,4 +23,5 @@ export const STORAGE_KEYS = {
   inventario: 'adglobal_inventory',
   inventarioCategorias: 'adglobal_inventory_categories',
   alquileres: 'adglobal_rentals',
+  ventas: 'adglobal_sales',
 } as const;
