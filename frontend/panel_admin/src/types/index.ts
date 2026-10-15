@@ -79,6 +79,50 @@ export interface InventarioItem {
   diagnosticoTaller: string;
 }
 
+export type InventarioCategoriaBaseId =
+  | 'laptops'
+  | 'computadoras'
+  | 'monitores'
+  | 'tablets'
+  | 'televisores'
+  | 'impresoras'
+  | 'proyectores';
+
+export type InventarioCategoriaId = InventarioCategoriaBaseId | `custom-${string}`;
+
+export interface InventarioCategoria {
+  id: InventarioCategoriaId;
+  label: string;
+  codigo: number;
+}
+
+/** Registro individual de un activo. Los campos opcionales dependen de su categoría. */
+export interface InventarioRegistro {
+  id: string;
+  categoriaId: InventarioCategoriaId;
+  sku: string;
+  categoria: number;
+  item?: string;
+  marca: string;
+  descripcion: string;
+  numeroSerial: string;
+  procesador?: string;
+  ghz?: string;
+  generacion?: string;
+  pantalla?: string;
+  memoriaRam?: string;
+  memoriaInterna?: string;
+  tipoMemoriaInterna?: string;
+  modelo?: string;
+  fechaCompra: string;
+  facturaGuiaCompra: string;
+  precio: number;
+  proveedor: string;
+  alquiler?: string;
+  estado: string;
+  observaciones: string;
+}
+
 /** Cliente corporativo del directorio. */
 export interface ClienteCorporativo {
   id: string;

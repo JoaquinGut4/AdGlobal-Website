@@ -11,6 +11,8 @@ interface ModalProps {
   icon: ReactNode;
   /** Clases de color del encabezado (ej. "bg-[#2B5C94]"). */
   headerClass?: string;
+  /** Ancho máximo u otras clases del panel. */
+  panelClass?: string;
   children: ReactNode;
 }
 
@@ -22,6 +24,7 @@ export function Modal({
   subtitle,
   icon,
   headerClass = 'bg-[#2B5C94]',
+  panelClass = 'max-w-lg',
   children,
 }: ModalProps) {
   useEffect(() => {
@@ -46,7 +49,7 @@ export function Modal({
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-2xl max-w-lg w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+        className={`bg-white rounded-2xl w-full border border-slate-200 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] ${panelClass}`}
         onClick={(event) => event.stopPropagation()}
       >
         <div className={`px-6 py-4 text-white flex items-center justify-between ${headerClass}`}>

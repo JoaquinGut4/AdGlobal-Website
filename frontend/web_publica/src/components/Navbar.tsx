@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Menu, X } from 'lucide-react';
+import { Menu, Settings, X } from 'lucide-react';
 import { AdGlobalLogo } from './AdGlobalLogo';
 
 interface NavbarProps {
@@ -61,8 +61,13 @@ export const Navbar: React.FC<NavbarProps> = ({ onQuote }) => {
 
           <div className="flex items-center gap-3">
             <span className="hidden sm:block">
-              <button onClick={onQuote} className="btn btn--primary btn--sm">
+              <button onClick={onQuote} className="btn btn--quote btn--sm">
                 Pedir cotización
+              </button>
+            </span>
+            <span className="hidden sm:block">
+              <button type="button" aria-label="Ajustes" className="btn btn--gear">
+                <Settings className="h-5 w-5" aria-hidden="true" />
               </button>
             </span>
             <button
@@ -109,7 +114,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onQuote }) => {
               setOpen(false);
               onQuote();
             }}
-            className="btn btn--primary btn--full mt-auto"
+            className="btn btn--quote btn--full mt-auto"
           >
             Pedir cotización
           </button>

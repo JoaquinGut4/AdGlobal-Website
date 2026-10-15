@@ -71,7 +71,7 @@ export const ServicePanel: React.FC<ServicePanelProps> = ({
                 ))}
               </dl>
 
-              <button onClick={() => onQuote(service.id)} className="btn btn--primary mt-9">
+              <button onClick={() => onQuote(service.id)} className="btn btn--quote mt-9">
                 Pedir cotización
               </button>
             </div>

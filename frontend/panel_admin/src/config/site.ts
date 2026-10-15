@@ -20,4 +20,6 @@ export const AUTH_STORAGE_KEY = 'adglobal_admin_auth';
 export const STORAGE_KEYS = {
   cotizaciones: 'adglobal_quotes',
   tickets: 'adglobal_tickets',
+  inventario: 'adglobal_inventory',
+  inventarioCategorias: 'adglobal_inventory_categories',
 } as const;

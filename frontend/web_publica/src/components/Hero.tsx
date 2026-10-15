@@ -26,6 +26,32 @@ const HERO_ORDER = [
   'desarrollo-web',
 ];
 
+/** Escapa los caracteres especiales de una frase para usarla dentro de un RegExp. */
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Divide la frase principal y envuelve las frases clave en `.hero__mark`,
+ * que llevan el subrayado animado (ver index.css).
+ */
+const renderHeadline = (text: string, marks: readonly string[]) => {
+  if (marks.length === 0) return text;
+
+  const pattern = new RegExp(`(${marks.map(escapeRegExp).join('|')})`, 'g');
+  return text.split(pattern).map((part, index) =>
+    marks.includes(part) ? (
+      <span
+        key={`mark-${index}`}
+        className="hero__mark"
+        style={{ '--mark-i': marks.indexOf(part) } as React.CSSProperties}
+      >
+        {part}
+      </span>
+    ) : (
+      <React.Fragment key={`text-${index}`}>{part}</React.Fragment>
+    )
+  );
+};
+
 interface HeroProps {
   onQuote: () => void;
 }
@@ -98,7 +124,7 @@ export const Hero: React.FC<HeroProps> = ({ onQuote }) => {
           style={{ '--i': 0 } as React.CSSProperties}
           className="heading text-ink"
         >
-          {HERO.headline}
+          {renderHeadline(HERO.headline, HERO.highlights)}
         </h1>
 
         <div className="grid12 mt-5 items-end gap-y-5">
@@ -114,7 +140,7 @@ export const Hero: React.FC<HeroProps> = ({ onQuote }) => {
             style={{ '--i': 2 } as React.CSSProperties}
             className="col-span-12 lg:col-span-6 lg:justify-self-end"
           >
-            <button onClick={onQuote} className="btn btn--primary">
+            <button onClick={onQuote} className="btn btn--quote">
               {HERO.action}
             </button>
           </div>

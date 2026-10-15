@@ -66,16 +66,15 @@ export function Topbar({ title, onToggleSidebar, onOpenTicket, onOpenQuote }: To
           <span className="sm:hidden">Ticket</span>
         </button>
 
-        {/* Aperturar Cotización */}
+        {/* Pedidos */}
         <button
           type="button"
           onClick={onOpenQuote}
-          title="Aperturar nueva cotización para cliente corporativo"
+          title="Pedidos"
           className="inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-lg bg-[#2B5C94] hover:bg-[#1F4778] active:scale-95 text-white text-xs font-bold transition-all shadow-xs cursor-pointer group shrink-0"
         >
           <FileText className="w-3.5 h-3.5 text-blue-200 group-hover:scale-110 transition-transform" />
-          <span className="hidden sm:inline">Cotización</span>
-          <span className="sm:hidden">Cotizar</span>
+          <span>Pedidos</span>
         </button>
       </div>
     </header>

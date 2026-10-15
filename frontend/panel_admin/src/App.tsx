@@ -28,6 +28,7 @@ import type { NuevaCotizacionInput } from '@/components/modals/QuoteModal';
 import type {
   AdminSection,
   Cotizacion,
+  InventarioCategoria,
   InventarioFiltro,
   SupportTicket,
 } from '@/types';
@@ -44,6 +45,10 @@ export default function App() {
     COTIZACIONES_SEED
   );
   const [tickets, setTickets] = useLocalStorage<SupportTicket[]>(STORAGE_KEYS.tickets, TICKETS_SEED);
+  const [inventarioCategorias, setInventarioCategorias] = useLocalStorage<InventarioCategoria[]>(
+    STORAGE_KEYS.inventarioCategorias,
+    [],
+  );
 
   const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
@@ -149,7 +154,14 @@ export default function App() {
         );
       case 'inventario':
         return (
-          <InventarioPage filtro={inventarioFiltro} onFiltroChange={setInventarioFiltro} />
+          <InventarioPage
+            filtro={inventarioFiltro}
+            onFiltroChange={setInventarioFiltro}
+            categoriasPersonalizadas={inventarioCategorias}
+            onAgregarCategoria={(categoria) =>
+              setInventarioCategorias((current) => [...current, categoria])
+            }
+          />
         );
       case 'alquileres':
         return <AlquileresPage />;
@@ -189,7 +201,7 @@ export default function App() {
         session={session}
         pendientesCotizaciones={pendientesCotizaciones}
         ticketsActivos={ticketsActivos}
-        inventarioCategorias={INVENTARIO_DATA.length}
+        inventarioCategorias={INVENTARIO_DATA.length + inventarioCategorias.length}
       >
         {renderPage()}
       </AdminLayout>

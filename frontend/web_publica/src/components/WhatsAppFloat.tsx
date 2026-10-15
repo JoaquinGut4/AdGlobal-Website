@@ -1,14 +1,35 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { MessageCircle, X } from 'lucide-react';
 import { SITE, whatsappLink } from '@/config/site';
 
 export const WhatsAppFloat: React.FC = () => {
   const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('pointerdown', onPointerDown);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [open]);
 
   return (
-    <div className="fixed right-5 bottom-5 z-40 flex flex-col items-end">
+    <div ref={rootRef} className="fixed right-5 bottom-5 z-40 flex flex-col items-end">
       {open && (
-        <div className="mb-3 w-[300px] max-w-[calc(100vw-2.5rem)] bg-paper p-5 text-paper-ink">
+        <div className="wa-float__panel mb-3 w-[300px] max-w-[calc(100vw-2.5rem)] bg-paper p-5 text-paper-ink">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-body font-medium">Atención AD GLOBAL</p>
@@ -29,7 +50,7 @@ export const WhatsAppFloat: React.FC = () => {
             href={whatsappLink('Hola AD GLOBAL, deseo cotizar equipos para un proyecto.')}
             target="_blank"
             rel="noopener noreferrer"
-            className="btn btn--primary btn--full mt-5"
+            className="btn btn--whatsapp btn--full mt-5"
           >
             Escribir por WhatsApp
           </a>
@@ -38,12 +59,17 @@ export const WhatsAppFloat: React.FC = () => {
       )}
 
       <button
+        type="button"
         onClick={() => setOpen((value) => !value)}
-        aria-label="Contactar por WhatsApp"
+        aria-label={open ? 'Cerrar contacto por WhatsApp' : 'Contactar por WhatsApp'}
         aria-expanded={open}
-        className="btn btn--primary btn--icon"
+        className={`btn btn--whatsapp btn--icon ${open ? 'is-open' : 'wa-float__pulse'}`}
       >
-        <MessageCircle className="h-6 w-6" />
+        {open ? (
+          <X className="h-6 w-6" aria-hidden="true" />
+        ) : (
+          <MessageCircle className="h-6 w-6" aria-hidden="true" />
+        )}
       </button>
     </div>
   );

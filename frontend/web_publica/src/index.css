@@ -36,6 +36,11 @@
 
   --color-accent: #2b6ac4;
   --color-accent-strong: #1f56a3;
+  --color-accent-warm: #f5a524;
+  --color-accent-warm-strong: #d98c0c;
+  --color-accent-steel: #4c86bd;
+  --color-whatsapp: #25d366;
+  --color-whatsapp-strong: #1ebe5a;
 
   --color-paper: #edf1f6;
   --color-paper-ink: #0b1524;
@@ -243,9 +248,45 @@ video {
   border-radius: 999px;
 }
 
+/* CTA de cotización: pastilla ámbar */
+.btn--quote {
+  background: var(--color-accent-warm);
+  color: #17110a;
+  border-radius: 999px;
+}
+
+/* Botón de ajustes (tuerca) */
+.btn--gear {
+  width: 42px;
+  height: 42px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 999px;
+  background: var(--color-accent-steel);
+  color: #fff;
+}
+
+/* Botón flotante de WhatsApp */
+.btn--whatsapp {
+  position: relative;
+  background: var(--color-whatsapp);
+  color: #fff;
+  border-radius: 999px;
+}
+
 @media (hover: hover) and (pointer: fine) {
   .btn--primary:hover {
     background: var(--color-accent-strong);
+  }
+  .btn--quote:hover {
+    background: var(--color-accent-warm-strong);
+  }
+  .btn--gear:hover {
+    background: #3f74a8;
+  }
+  .btn--whatsapp:hover {
+    background: var(--color-whatsapp-strong);
+    transform: scale(1.06);
   }
   .btn--dark:hover {
     background: #16233a;
@@ -345,6 +386,16 @@ video {
   );
 }
 
+/* Subrayado que se dibuja en las palabras clave del hero */
+.hero__mark {
+  /* Subrayado plano: imagen SVG (no degradado) con ancho animable */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 10' preserveAspectRatio='none'%3E%3Crect width='100' height='10' fill='%23f5a524'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 100% 0.08em;
+  padding-bottom: 0.12em;
+}
+
 /* ============================================================
    Movimiento
    ============================================================ */
@@ -382,12 +433,25 @@ video {
   html.js .collage.is-in .collage__slot img {
     clip-path: inset(0);
   }
+
+  /* El subrayado de las palabras clave se dibuja al entrar el hero */
+  html.js .hero__mark {
+    background-size: 0% 0.08em;
+    animation: draw-mark 900ms var(--ease-out) forwards;
+    animation-delay: calc(680ms + var(--mark-i, 0) * 220ms);
+  }
 }
 
 @keyframes rise {
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+@keyframes draw-mark {
+  to {
+    background-size: 100% 0.08em;
   }
 }
 
@@ -436,4 +500,40 @@ video {
     #000 94%,
     transparent 100%
   );
+}
+
+/* ---------- Widget flotante de WhatsApp ---------- */
+@keyframes wa-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  70% {
+    transform: scale(1.55);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.55);
+    opacity: 0;
+  }
+}
+
+.wa-float__pulse::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 2px solid var(--color-whatsapp);
+  animation: wa-ring 2600ms var(--ease-out) infinite;
+}
+
+@keyframes wa-panel {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+.wa-float__panel {
+  animation: wa-panel 240ms var(--ease-out);
 }

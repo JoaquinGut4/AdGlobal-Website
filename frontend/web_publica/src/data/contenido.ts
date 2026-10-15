@@ -3,9 +3,11 @@
    --------------------------------------------------------------------------- */
 
 export const HERO = {
-  headline: 'Potencia tu empresa con tecnología de punta, sin afectar tu capital',
+  headline: 'Potencia tu empresa con tecnología de punta',
+  /** Frases de la línea principal que llevan el subrayado animado. */
+  highlights: ['tecnología de punta'],
   supporting:
-    'Alquiler y venta de equipos de cómputo/audiovisuales para empresas, con soporte técnico propio en todo el Perú y Colombia.',
+    'Alquiler y venta de equipos de cómputo, audiovisuales y desarrollo web para empresas, con soporte técnico propio en todo el Perú y Colombia. Respaldados por +10 años de experiencia.',
   action: 'Pedir cotización',
 } as const;
 

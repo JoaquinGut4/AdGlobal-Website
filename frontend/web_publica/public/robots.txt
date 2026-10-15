@@ -1,0 +1,8 @@
+# robots.txt — Web pública AD GLOBAL
+# https://adglobalperu.com/robots.txt
+
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://adglobalperu.com/sitemap.xml
