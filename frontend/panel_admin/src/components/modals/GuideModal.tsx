@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { FileText, Printer, Save } from 'lucide-react';
 import { AdGlobalLogo } from '@/components/AdGlobalLogo';
 import { Modal } from '@/components/ui/Modal';
+import logo from '@/assets/logo/adglobal-logo.png';
 import type { PedidoRegistro } from '@/types';
 
 interface GuideModalProps {
@@ -30,6 +31,16 @@ const MOTIVOS = [
   'Venta con entrega a terceros',
 ];
 
+function escapeHtml(value: unknown) {
+  return String(value ?? '').replace(/[&<>'"]/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    "'": '&#39;',
+    '"': '&quot;',
+  })[character] ?? character);
+}
+
 export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const [numeroGuia, setNumeroGuia] = useState('');
@@ -55,6 +66,44 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
     setStatus('Borrador guardado en este navegador.');
   };
 
+  const imprimirGuia = () => {
+    if (!formRef.current) return;
+    if (!formRef.current.reportValidity()) {
+      setStatus('Completa los campos obligatorios antes de imprimir.');
+      return;
+    }
+
+    const data = new FormData(formRef.current);
+    const value = (name: string) => escapeHtml(data.get(name));
+    const motivosSeleccionados = new Set(data.getAll('motivo').map(String));
+    const logoUrl = new URL(logo, window.location.href).href;
+    const printWindow = window.open('', '_blank', 'width=900,height=1100');
+    if (!printWindow) {
+      setStatus('El navegador bloqueó la ventana de impresión.');
+      return;
+    }
+
+    const motivosHtml = MOTIVOS.map(
+      (motivo, index) => `
+        <div class="reason"><span class="check">${motivosSeleccionados.has(motivo) ? '✓' : ''}</span>${index + 1}. ${escapeHtml(motivo)}</div>`,
+    ).join('');
+
+    printWindow.document.write(`<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>Guía ${value('numero_guia')}</title>
+<style>
+@page{size:A4 portrait;margin:7mm}*{box-sizing:border-box}body{margin:0;background:#fff;font-family:Arial,sans-serif;color:#183b6a;font-size:9px}.guide{width:100%;min-height:276mm;border:1.5px solid #285a97;padding:6mm;position:relative}.header{display:grid;grid-template-columns:1.15fr .85fr;gap:8px;align-items:stretch}.company{display:grid;grid-template-columns:170px 1fr;gap:9px;align-items:center}.logo{max-width:165px;filter:brightness(0) saturate(100%) invert(34%) sepia(18%) saturate(2026%) hue-rotate(171deg) brightness(89%) contrast(91%)}.company-info{text-align:center;font-weight:700;line-height:1.35}.services{border:1px dashed #285a97;border-radius:7px;padding:5px;margin-bottom:5px;text-align:left;font-size:8px}.docbox{border:2px solid #285a97;border-radius:10px;overflow:hidden;text-align:center}.ruc{font-size:20px;font-weight:900;padding:11px}.doctype{background:#285a97;color:#fff;padding:10px;font-size:15px;font-weight:900}.number{padding:11px;font-size:18px;font-weight:900;color:#c63d3d}.number strong{color:#285a97}.dates{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:7px}.date{display:grid;grid-template-columns:120px 1fr;border:1.5px solid #285a97;border-radius:6px;overflow:hidden}.date b{background:#285a97;color:#fff;padding:7px;text-transform:uppercase}.date span{padding:7px;color:#222}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:7px}.box{border:1.5px solid #285a97;border-radius:8px;overflow:hidden;min-height:59px}.box h3,.goods h3,.bottom h3{margin:0;background:#285a97;color:#fff;text-align:center;text-transform:uppercase;letter-spacing:.5px;padding:5px;font-size:10px}.box-content{padding:7px;color:#222;line-height:1.55;white-space:pre-wrap}.line{border-bottom:1px dotted #667992;min-height:17px;padding:2px 0}.goods{border:1.5px solid #285a97;border-radius:8px;overflow:hidden;margin-top:7px}.goods table{width:100%;border-collapse:collapse;color:#222}.goods th{background:#285a97;color:#fff;padding:5px;border-right:1px solid #fff;text-transform:uppercase}.goods td{border-right:1px solid #285a97;padding:7px;vertical-align:top}.goods .item{height:78mm}.bottom-grid{display:grid;grid-template-columns:.8fr 1.2fr;gap:7px;margin-top:7px}.bottom{border:1.5px solid #285a97;border-radius:8px;overflow:hidden}.bottom-content{padding:7px;color:#222}.reason-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 10px}.reason{display:flex;gap:5px;align-items:flex-start;line-height:1.2}.check{width:12px;height:12px;border:1px solid #285a97;display:inline-flex;align-items:center;justify-content:center;font-weight:900;flex:none}.signatures{display:grid;grid-template-columns:1fr 1fr;gap:60px;margin:18mm 20mm 0;text-align:center;color:#183b6a;font-weight:700}.signature{border-top:1px solid #183b6a;padding-top:5px}.foot{margin-top:8px;text-align:center;font-size:7px;color:#777}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}.guide{page-break-inside:avoid}}
+</style></head><body><main class="guide">
+<section class="header"><div class="company"><img class="logo" src="${escapeHtml(logoUrl)}"><div class="company-info"><div class="services">Tecnología de Información<br>Sistemas Audiovisuales<br>Pantallas LED Gigantes<br>Computadoras y Portátiles<br>Impresoras y Proyectores Multimedia</div>Av. Húsares de Junín 527, Jesús María – Lima – Lima<br>Telf: 01-7353734 · Cel: 957586421 / 944825839<br>E-mail: atencionalcliente@adglobal.com</div></div><div class="docbox"><div class="ruc">RUC 20602583849</div><div class="doctype">GUÍA DE REMISIÓN - REMITENTE</div><div class="number"><strong>0001 -</strong> N° ${value('numero_guia')}</div></div></section>
+<section class="dates"><div class="date"><b>Fecha de emisión</b><span>${value('fecha_emision')}</span></div><div class="date"><b>Inicio del traslado</b><span>${value('fecha_traslado')}</span></div></section>
+<section class="grid2"><div class="box"><h3>Dirección de partida</h3><div class="box-content">${value('direccion_partida')}</div></div><div class="box"><h3>Dirección de llegada</h3><div class="box-content">${value('direccion_llegada')}</div></div><div class="box"><h3>Destinatario / Razón social</h3><div class="box-content"><div class="line"><b>Apellidos y nombres / Razón social:</b> ${value('destinatario')}</div><div class="line"><b>R.U.C.:</b> ${value('destinatario_ruc')} &nbsp; <b>D.N.I.:</b> ${value('destinatario_dni')}</div></div></div><div class="box"><h3>Unidad de transporte y conductor</h3><div class="box-content"><div class="line"><b>Vehículo, marca y placa:</b> ${value('vehiculo')}</div><div class="line"><b>Licencia:</b> ${value('licencia')} &nbsp; <b>D.N.I.:</b> ${value('conductor_dni')}</div></div></div></section>
+<section class="goods"><h3>Descripción de los bienes trasladados</h3><table><thead><tr><th style="width:10%">Cant.</th><th style="width:12%">Unid. de med.</th><th>Descripción</th><th style="width:13%">Peso total</th></tr></thead><tbody><tr class="item"><td>${value('cantidad')}</td><td>${value('unidad')}</td><td>${value('descripcion')}</td><td>${value('peso')} kg</td></tr></tbody></table></section>
+<section class="bottom-grid"><div><div class="bottom"><h3>Transportista</h3><div class="bottom-content"><div class="line"><b>Nombre:</b> ${value('transportista')}</div><div class="line"><b>R.U.C.:</b> ${value('transportista_ruc')}</div><div class="line"><b>Costo de traslado:</b> ${value('costo_traslado')}</div></div></div><div class="bottom" style="margin-top:6px"><h3>Comprobante de pago</h3><div class="bottom-content"><b>Tipo:</b> ${value('comprobante_tipo')} &nbsp; <b>N°:</b> ${value('comprobante_numero')}</div></div></div><div class="bottom"><h3>Motivo de traslado</h3><div class="bottom-content reason-grid">${motivosHtml}</div></div></section>
+<section class="signatures"><div class="signature">Firma del remitente</div><div class="signature">Conformidad del cliente / destinatario</div></section><p class="foot">Formato operativo. La emisión tributaria debe cumplir los requisitos vigentes de SUNAT.</p></main>
+<script>window.addEventListener('load',()=>setTimeout(()=>window.print(),250));<\/script></body></html>`);
+    printWindow.document.close();
+    setStatus('Vista de impresión generada.');
+  };
+
   return (
     <Modal
       isOpen={isOpen}
@@ -72,7 +121,7 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
             <Save className="h-3.5 w-3.5" />
             Guardar borrador
           </button>
-          <button type="button" onClick={() => window.print()} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
+          <button type="button" onClick={imprimirGuia} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
             <Printer className="h-3.5 w-3.5" />
             Imprimir / PDF
           </button>
@@ -86,6 +135,12 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
               <h2 className="mt-3 text-xl font-black text-[#2B5C94]">AD GLOBAL SOLUTIONS SAC</h2>
               <p className="mt-1 text-xs leading-relaxed text-slate-500">
                 Av. Húsares de Junín 527, Jesús María – Lima – Lima
+                <br />
+                Telf: 01-7353734
+                <br />
+                Cel: 957586421 / 944825839
+                <br />
+                E-mail: atencionalcliente@adglobal.com
               </p>
               <p className="mt-2 rounded-lg bg-blue-50 px-3 py-2 text-[10px] text-[#2B5C94]">
                 Formato digital basado en el prototipo de guía proporcionado.
