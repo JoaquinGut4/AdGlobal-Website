@@ -87,10 +87,17 @@ export type InventarioCategoriaBaseId =
 
 export type InventarioCategoriaId = InventarioCategoriaBaseId | `custom-${string}`;
 
+export interface InventarioCampoPersonalizado {
+  id: string;
+  label: string;
+  type: 'text' | 'number' | 'date';
+}
+
 export interface InventarioCategoria {
   id: InventarioCategoriaId;
   label: string;
   codigo: number;
+  camposPersonalizados?: InventarioCampoPersonalizado[];
 }
 
 /** Registro individual de un activo. Los campos opcionales dependen de su categoría. */
@@ -98,6 +105,8 @@ export interface InventarioRegistro {
   id: string;
   categoriaId: InventarioCategoriaId;
   sku: string;
+  qr: string;
+  foto: string;
   categoria: number;
   item?: string;
   marca: string;
@@ -118,6 +127,7 @@ export interface InventarioRegistro {
   alquiler?: string;
   estado: string;
   observaciones: string;
+  especificacionesPersonalizadas?: Record<string, string>;
 }
 
 export type MotivoTraslado =

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { CheckCircle2, ClipboardList, Clock3, FileText, Plus, Search } from 'lucide-react';
+import { GuideModal } from '@/components/modals/GuideModal';
 import { Modal } from '@/components/ui/Modal';
 import type { PedidoRegistro } from '@/types';
 
@@ -66,6 +67,7 @@ export function PedidosPage({ pedidos, onOpenOrder }: PedidosPageProps) {
   const [search, setSearch] = useState('');
   const [tipoActivo, setTipoActivo] = useState<TipoFiltro>('all');
   const [selectedPedido, setSelectedPedido] = useState<PedidoRegistro | null>(null);
+  const [selectedGuide, setSelectedGuide] = useState<PedidoRegistro | null>(null);
   const terminos = normalizar(search).trim().split(/\s+/).filter(Boolean);
 
   const visibles = pedidos.filter((pedido) => {
@@ -203,14 +205,14 @@ export function PedidosPage({ pedidos, onOpenOrder }: PedidosPageProps) {
           <table className="w-max min-w-full border-collapse text-left">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                {['N.º de pedido', 'Fecha de emisión', 'Dirección de llegada', 'Descripción de productos', 'Cantidad', 'Unidad', 'Motivo de traslado', 'Guía'].map((label, index) => (
+                {['N.º de pedido', 'Fecha de emisión', 'Dirección de llegada', 'Descripción de productos', 'Cantidad', 'Guía'].map((label, index) => (
                   <th key={label} className={`whitespace-nowrap px-3 py-3 ${index === 0 ? 'sticky left-0 z-10 bg-slate-50 shadow-[1px_0_0_#e2e8f0]' : ''}`}>{label}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs text-slate-600">
               {visibles.length === 0 ? (
-                <tr><td colSpan={8} className="px-6 py-12 text-center text-sm text-slate-500">No se encontraron pedidos.</td></tr>
+                <tr><td colSpan={6} className="px-6 py-12 text-center text-sm text-slate-500">No se encontraron pedidos.</td></tr>
               ) : visibles.map((pedido) => (
                 <tr
                   key={pedido.id}
@@ -236,16 +238,18 @@ export function PedidosPage({ pedidos, onOpenOrder }: PedidosPageProps) {
                   <td className="min-w-80 max-w-96 whitespace-normal px-3 py-3 align-top leading-relaxed">{pedido.direccionLlegada}</td>
                   <td className="min-w-72 px-3 py-3 align-top font-semibold text-slate-800">{pedido.descripcionProductos}</td>
                   <td className="min-w-20 px-3 py-3 text-center align-top font-mono font-bold">{pedido.cantidadProductos}</td>
-                  <td className="min-w-20 px-3 py-3 text-center align-top font-mono">{pedido.unidadMedida}</td>
-                  <td className="min-w-64 px-3 py-3 align-top">{pedido.motivoTraslado}</td>
                   <td className="min-w-24 px-3 py-3 align-top">
                     <button
                       type="button"
-                      onClick={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedGuide(pedido);
+                      }}
                       title={`Guía del pedido ${pedido.numeroPedido}`}
                       className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[11px] font-bold text-[#2B5C94] hover:border-[#2B5C94] hover:bg-blue-100"
                     >
-                      <FileText className="h-3.5 w-3.5" />Guía
+                      <FileText className="h-3.5 w-3.5" />
+                      Guía
                     </button>
                   </td>
                 </tr>
@@ -267,6 +271,12 @@ export function PedidosPage({ pedidos, onOpenOrder }: PedidosPageProps) {
       >
         {selectedPedido && <DetallesPedido pedido={selectedPedido} />}
       </Modal>
+
+      <GuideModal
+        isOpen={selectedGuide !== null}
+        pedido={selectedGuide}
+        onClose={() => setSelectedGuide(null)}
+      />
     </div>
   );
 }

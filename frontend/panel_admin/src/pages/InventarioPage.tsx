@@ -1,18 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  Building2,
   Check,
   ChevronDown,
   Laptop,
   Monitor,
   Package,
+  Pencil,
   Plus,
   Printer,
   Search,
   Tablet,
-  Truck,
+  Trash2,
   Tv,
-  Wrench,
 } from 'lucide-react';
 import { InventoryModal } from '@/components/modals/InventoryModal';
 import { Modal } from '@/components/ui/Modal';
@@ -20,7 +19,6 @@ import { STORAGE_KEYS } from '@/config/site';
 import {
   FLOTA_RESUMEN,
   INVENTARIO_REGISTROS,
-  porcentajeFlota,
 } from '@/data/inventario';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import type {
@@ -39,15 +37,18 @@ interface InventarioPageProps {
 }
 
 type CampoInventario = keyof InventarioRegistro;
+type CampoInventarioTabla = CampoInventario | `custom:${string}`;
 
 interface ColumnaInventario {
-  key: CampoInventario;
+  key: CampoInventarioTabla;
   label: string;
   width?: string;
 }
 
 const COLUMNAS_COMUNES: ColumnaInventario[] = [
   { key: 'sku', label: 'SKU', width: 'min-w-28' },
+  { key: 'qr', label: 'Código QR', width: 'min-w-32' },
+  { key: 'foto', label: 'Foto', width: 'min-w-24' },
   { key: 'categoria', label: 'Categoría', width: 'min-w-24' },
 ];
 
@@ -157,19 +158,26 @@ const COLUMNAS_CATEGORIA_PERSONALIZADA: ColumnaInventario[] = [
   ...COLUMNAS_CIERRE,
 ];
 
-function obtenerColumnas(categoriaId: InventarioCategoriaId) {
-  return (
-    COLUMNAS_POR_CATEGORIA[categoriaId as InventarioCategoriaBaseId] ??
-    COLUMNAS_CATEGORIA_PERSONALIZADA
+function obtenerColumnas(
+  categoriaId: InventarioCategoriaId,
+  categoriasPersonalizadas: InventarioCategoria[] = [],
+) {
+  const columnasBase = COLUMNAS_POR_CATEGORIA[categoriaId as InventarioCategoriaBaseId];
+  if (columnasBase) return columnasBase;
+
+  const categoria = categoriasPersonalizadas.find((item) => item.id === categoriaId);
+  const columnasPersonalizadas: ColumnaInventario[] = (categoria?.camposPersonalizados ?? []).map(
+    (field) => ({ key: `custom:${field.id}`, label: field.label, width: 'min-w-32' }),
   );
+
+  return [
+    ...COLUMNAS_CATEGORIA_PERSONALIZADA.slice(0, 7),
+    ...columnasPersonalizadas,
+    ...COLUMNAS_CATEGORIA_PERSONALIZADA.slice(7),
+  ];
 }
 
-const CATEGORIAS_BASE: Array<{
-  id: InventarioCategoriaBaseId;
-  label: string;
-  codigo: number;
-  icon: typeof Laptop;
-}> = [
+const CATEGORIAS_BASE: Array<InventarioCategoria & { icon: typeof Laptop }> = [
   { id: 'laptops', label: 'Laptops', codigo: 1, icon: Laptop },
   { id: 'computadoras', label: 'Computadoras', codigo: 2, icon: Package },
   { id: 'monitores', label: 'Monitores', codigo: 3, icon: Monitor },
@@ -179,11 +187,20 @@ const CATEGORIAS_BASE: Array<{
   { id: 'proyectores', label: 'Proyectores', codigo: 7, icon: Monitor },
 ];
 
-const FILTROS: { id: InventarioFiltro; label: string }[] = [
+const ESTADOS_BASE = [
   { id: 'all', label: 'Todos los estados' },
   { id: 'alquiler', label: 'En alquiler' },
   { id: 'oficina', label: 'En oficina/almacén' },
   { id: 'taller', label: 'En taller' },
+] as const;
+
+const ESTADOS_REGISTRO_BASE = [
+  'Almacén 1',
+  'Oficina',
+  'Alquiler',
+  'Reparación',
+  'Taller',
+  'Mantenimiento',
 ];
 
 const precioFormatter = new Intl.NumberFormat('es-PE', {
@@ -200,12 +217,15 @@ function normalizarBusqueda(value: unknown) {
     .trim();
 }
 
-function coincideEstado(registro: InventarioRegistro, filtro: InventarioFiltro) {
+function coincideEstado(registro: InventarioRegistro, filtro: string) {
   if (filtro === 'all') return true;
   const estado = registro.estado.toLowerCase();
   if (filtro === 'alquiler') return estado.includes('alquiler');
   if (filtro === 'oficina') return estado.includes('oficina') || estado.includes('almacén');
-  return estado.includes('taller') || estado.includes('reparación') || estado.includes('mantenimiento');
+  if (filtro === 'taller') {
+    return estado.includes('taller') || estado.includes('reparación') || estado.includes('mantenimiento');
+  }
+  return estado === filtro.replace(/^custom:/, '').toLowerCase();
 }
 
 function EstadoBadge({ estado }: { estado: string }) {
@@ -223,15 +243,36 @@ function EstadoBadge({ estado }: { estado: string }) {
   );
 }
 
-function valorCelda(registro: InventarioRegistro, campo: CampoInventario) {
-  if (campo === 'precio') return precioFormatter.format(registro.precio);
-  if (campo === 'estado') return <EstadoBadge estado={registro.estado} />;
-  const value = registro[campo];
+function valorCelda(registro: InventarioRegistro, campo: CampoInventarioTabla, detail = false) {
+  if (campo.startsWith('custom:')) {
+    return registro.especificacionesPersonalizadas?.[campo.replace('custom:', '')] || '—';
+  }
+  const campoBase = campo as CampoInventario;
+  if (campoBase === 'foto') {
+    return registro.foto ? (
+      <img
+        src={registro.foto}
+        alt={`Foto de ${registro.descripcion}`}
+        className={detail ? 'max-h-64 max-w-full rounded-xl object-contain' : 'h-8 w-10 rounded-md object-cover'}
+      />
+    ) : (
+      <span className="text-slate-400">Sin foto</span>
+    );
+  }
+  if (campoBase === 'precio') return precioFormatter.format(registro.precio);
+  if (campoBase === 'estado') return <EstadoBadge estado={registro.estado} />;
+  const value = registro[campoBase];
   return value === undefined || value === '' ? '—' : String(value);
 }
 
-function DetallesInventario({ registro }: { registro: InventarioRegistro }) {
-  const columnas = obtenerColumnas(registro.categoriaId);
+function DetallesInventario({
+  registro,
+  categoriasPersonalizadas,
+}: {
+  registro: InventarioRegistro;
+  categoriasPersonalizadas: InventarioCategoria[];
+}) {
+  const columnas = obtenerColumnas(registro.categoriaId, categoriasPersonalizadas);
 
   return (
     <div className="flex-1 overflow-y-auto bg-slate-50/80 p-4 sm:p-6">
@@ -250,107 +291,13 @@ function DetallesInventario({ registro }: { registro: InventarioRegistro }) {
                   {columna.label}
                 </th>
                 <td className="px-4 py-3 leading-relaxed text-slate-700">
-                  {valorCelda(registro, columna.key)}
+                  {valorCelda(registro, columna.key, true)}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-    </div>
-  );
-}
-
-function InventarioResumen({
-  filtro,
-  onFiltroChange,
-}: {
-  filtro: InventarioFiltro;
-  onFiltroChange: (filtro: InventarioFiltro) => void;
-}) {
-  const tarjetas = [
-    {
-      id: 'alquiler' as const,
-      label: 'Equipos en alquiler',
-      value: FLOTA_RESUMEN.alquiler,
-      icon: Truck,
-      color: 'blue',
-      detail: 'Servicios activos en campo',
-    },
-    {
-      id: 'oficina' as const,
-      label: 'Equipos en oficina',
-      value: FLOTA_RESUMEN.oficina,
-      icon: Building2,
-      color: 'emerald',
-      detail: 'Listos para despacho en almacén',
-    },
-    {
-      id: 'taller' as const,
-      label: 'Equipos en taller',
-      value: FLOTA_RESUMEN.taller,
-      icon: Wrench,
-      color: 'amber',
-      detail: 'En reparación o mantenimiento',
-    },
-  ];
-
-  const tones = {
-    blue: {
-      active: 'bg-blue-50/80 border-[#2B5C94] ring-[#2B5C94]/20',
-      hover: 'hover:border-blue-300',
-      icon: 'bg-blue-50 text-[#2B5C94] border-blue-100',
-      badge: 'bg-blue-50 text-[#2B5C94] border-blue-200',
-    },
-    emerald: {
-      active: 'bg-emerald-50/80 border-emerald-500 ring-emerald-500/20',
-      hover: 'hover:border-emerald-300',
-      icon: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-      badge: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    },
-    amber: {
-      active: 'bg-amber-50/80 border-amber-500 ring-amber-500/20',
-      hover: 'hover:border-amber-300',
-      icon: 'bg-amber-50 text-amber-700 border-amber-100',
-      badge: 'bg-amber-50 text-amber-700 border-amber-200',
-    },
-  };
-
-  return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-      {tarjetas.map((tarjeta) => {
-        const Icon = tarjeta.icon;
-        const tone = tones[tarjeta.color as keyof typeof tones];
-        const active = filtro === tarjeta.id;
-        const pct = Math.round(porcentajeFlota(tarjeta.value) * 10) / 10;
-        return (
-          <button
-            key={tarjeta.id}
-            type="button"
-            onClick={() => onFiltroChange(active ? 'all' : tarjeta.id)}
-            className={`cursor-pointer rounded-xl border p-4 text-left transition-all ${
-              active
-                ? `${tone.active} ring-2 shadow-xs`
-                : `border-slate-200 bg-white ${tone.hover} hover:shadow-2xs`
-            }`}
-          >
-            <div className="mb-2 flex items-center justify-between">
-              <div className={`flex h-8 w-8 items-center justify-center rounded-lg border ${tone.icon}`}>
-                <Icon className="h-4 w-4" />
-              </div>
-              <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${tone.badge}`}>
-                {pct}% de flota
-              </span>
-            </div>
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{tarjeta.label}</p>
-            <div className="mt-1 flex items-baseline gap-2">
-              <span className="text-2xl font-black text-slate-900">{tarjeta.value}</span>
-              <span className="text-xs text-slate-400">/ {FLOTA_RESUMEN.total} unidades</span>
-            </div>
-            <p className="mt-1 text-[11px] font-medium text-slate-500">{tarjeta.detail}</p>
-          </button>
-        );
-      })}
     </div>
   );
 }
@@ -363,9 +310,13 @@ export function InventarioPage({
 }: InventarioPageProps) {
   const [search, setSearch] = useState('');
   const [categoriaActiva, setCategoriaActiva] = useState<InventarioCategoriaId>('laptops');
+  const [estadoActivo, setEstadoActivo] = useState<string>(filtro);
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
+  const [isStatusMenuOpen, setIsStatusMenuOpen] = useState(false);
   const [isInventoryModalOpen, setIsInventoryModalOpen] = useState(false);
+  const [editingRegistro, setEditingRegistro] = useState<InventarioRegistro | null>(null);
   const [selectedRegistro, setSelectedRegistro] = useState<InventarioRegistro | null>(null);
+  const [nuevoEstado, setNuevoEstado] = useState('');
   const [registrosInventario, setRegistrosInventario] = useLocalStorage<InventarioRegistro[]>(
     STORAGE_KEYS.inventario,
     INVENTARIO_REGISTROS,
@@ -374,14 +325,25 @@ export function InventarioPage({
     ...CATEGORIAS_BASE,
     ...categoriasPersonalizadas.map((item) => ({ ...item, icon: Package })),
   ];
+  const [estadosPersonalizados, setEstadosPersonalizados] = useLocalStorage<string[]>(
+    STORAGE_KEYS.inventarioEstados,
+    [],
+  );
+  const estadosRegistro = [...ESTADOS_REGISTRO_BASE, ...estadosPersonalizados];
+  const filtrosEstado = [
+    ...ESTADOS_BASE,
+    ...estadosPersonalizados.map((estado) => ({ id: `custom:${estado}`, label: estado })),
+  ];
   const categoryMenuRef = useRef<HTMLDivElement>(null);
+  const statusMenuRef = useRef<HTMLDivElement>(null);
   const categoria = categorias.find((item) => item.id === categoriaActiva) ?? categorias[0];
   const CategoriaIcon = categoria.icon;
-  const columnas = obtenerColumnas(categoriaActiva);
+  const columnas = obtenerColumnas(categoriaActiva, categoriasPersonalizadas);
+  const columnasVisibles = columnas.slice(0, 8);
   const terminosBusqueda = normalizarBusqueda(search).split(/\s+/).filter(Boolean);
 
   const registros = registrosInventario.filter((registro) => {
-    if (registro.categoriaId !== categoriaActiva || !coincideEstado(registro, filtro)) return false;
+    if (registro.categoriaId !== categoriaActiva || !coincideEstado(registro, estadoActivo)) return false;
     if (terminosBusqueda.length === 0) return true;
 
     const especificaciones = normalizarBusqueda([
@@ -393,17 +355,57 @@ export function InventarioPage({
     return terminosBusqueda.every((termino) => especificaciones.includes(termino));
   });
   const productosAgregados = registrosInventario.filter((registro) => registro.id.startsWith('inv-')).length;
+  const estadoLabel = filtrosEstado.find((item) => item.id === estadoActivo)?.label ?? 'Estados';
+
+  const agregarEstado = () => {
+    const estado = nuevoEstado.trim();
+    if (!estado) return;
+    if (!estadosRegistro.some((item) => item.toLowerCase() === estado.toLowerCase())) {
+      setEstadosPersonalizados((current) => [...current, estado]);
+    }
+    setEstadoActivo(`custom:${estado}`);
+    setNuevoEstado('');
+    setIsStatusMenuOpen(false);
+  };
+
+  const eliminarProducto = (registro: InventarioRegistro) => {
+    const confirmed = window.confirm(
+      `¿Eliminar el producto ${registro.sku} del inventario? Esta acción no se puede deshacer.`,
+    );
+    if (!confirmed) return;
+
+    setRegistrosInventario((current) => current.filter((item) => item.id !== registro.id));
+    if (selectedRegistro?.id === registro.id) setSelectedRegistro(null);
+  };
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
       if (!categoryMenuRef.current?.contains(event.target as Node)) {
         setIsCategoryMenuOpen(false);
       }
+      if (!statusMenuRef.current?.contains(event.target as Node)) {
+        setIsStatusMenuOpen(false);
+      }
     };
 
     document.addEventListener('pointerdown', handlePointerDown);
     return () => document.removeEventListener('pointerdown', handlePointerDown);
   }, []);
+
+  useEffect(() => {
+    setEstadoActivo(filtro);
+  }, [filtro]);
+
+  useEffect(() => {
+    setRegistrosInventario((current) => {
+      if (current.every((registro) => Boolean(registro.qr) && 'foto' in registro)) return current;
+      return current.map((registro) => ({
+        ...registro,
+        qr: registro.qr || `QR-${registro.sku}`,
+        foto: registro.foto ?? '',
+      }));
+    });
+  }, [setRegistrosInventario]);
 
   return (
     <div className="space-y-6">
@@ -425,7 +427,10 @@ export function InventarioPage({
 
           <button
             type="button"
-            onClick={() => setIsInventoryModalOpen(true)}
+            onClick={() => {
+              setEditingRegistro(null);
+              setIsInventoryModalOpen(true);
+            }}
             className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-[#2B5C94] px-3.5 text-xs font-bold text-white shadow-xs transition-colors hover:bg-[#1F4778]"
           >
             <Plus className="h-4 w-4" />
@@ -434,24 +439,7 @@ export function InventarioPage({
         </div>
       </div>
 
-      <InventarioResumen filtro={filtro} onFiltroChange={onFiltroChange} />
-
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
-        <div className="border-b border-slate-200 bg-slate-50/70 p-3 sm:p-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900">Inventario por categoría</h3>
-              <p className="text-[11px] text-slate-500">
-                Selecciona un tipo de equipo para consultar sus campos específicos.
-              </p>
-            </div>
-            <span className="shrink-0 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-500">
-              {categorias.length} categorías
-            </span>
-          </div>
-
-        </div>
-
         <div className="flex flex-col justify-between gap-3 border-b border-slate-200 p-3 sm:flex-row sm:items-center sm:p-4">
           <div className="flex w-full min-w-0 items-center gap-2 sm:max-w-2xl sm:flex-1">
             <div ref={categoryMenuRef} className="relative shrink-0">
@@ -527,21 +515,84 @@ export function InventarioPage({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5">
-            {FILTROS.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => onFiltroChange(item.id)}
-                className={`cursor-pointer rounded-lg px-2.5 py-1 text-xs font-semibold transition-all ${
-                  filtro === item.id
-                    ? 'bg-[#2B5C94] text-white shadow-2xs'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
+          <div ref={statusMenuRef} className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsStatusMenuOpen((current) => !current)}
+              aria-haspopup="menu"
+              aria-expanded={isStatusMenuOpen}
+              className={`inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border px-3 text-xs font-bold transition-colors ${
+                isStatusMenuOpen
+                  ? 'border-[#2B5C94] bg-blue-50 text-[#2B5C94]'
+                  : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300'
+              }`}
+            >
+              <span>{estadoLabel}</span>
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isStatusMenuOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isStatusMenuOpen && (
+              <div role="menu" className="absolute right-0 top-full z-30 mt-2 w-72 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                <div className="px-2.5 pb-1.5 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Filtrar por estado
+                </div>
+                {filtrosEstado.map((item) => {
+                  const active = estadoActivo === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={active}
+                      onClick={() => {
+                        setEstadoActivo(item.id);
+                        if (!item.id.startsWith('custom:')) {
+                          onFiltroChange(item.id as InventarioFiltro);
+                        }
+                        setIsStatusMenuOpen(false);
+                      }}
+                      className={`flex w-full cursor-pointer items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs ${
+                        active
+                          ? 'bg-blue-50 font-bold text-[#2B5C94]'
+                          : 'font-semibold text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span>{item.label}</span>
+                      {active && <Check className="h-3.5 w-3.5" />}
+                    </button>
+                  );
+                })}
+
+                <div className="mt-1 border-t border-slate-100 p-2">
+                  <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Agregar nuevo estado
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={nuevoEstado}
+                      onChange={(event) => setNuevoEstado(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          agregarEstado();
+                        }
+                      }}
+                      placeholder="Ej. En tránsito"
+                      className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs focus:border-[#2B5C94] focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={agregarEstado}
+                      className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-[#2B5C94] px-2.5 py-1.5 text-xs font-bold text-white hover:bg-[#1F4778]"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Agregar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -558,26 +609,40 @@ export function InventarioPage({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-max min-w-full border-collapse text-left">
+          <table className="w-full min-w-[900px] table-fixed border-collapse text-left">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                {columnas.map((columna, index) => (
+                {columnasVisibles.map((columna, index) => (
                   <th
                     key={columna.key}
                     scope="col"
-                    className={`whitespace-nowrap px-3 py-3 ${columna.width ?? 'min-w-28'} ${
+                    className={`break-words px-2 py-2.5 text-[9px] leading-tight ${
                       index === 0 ? 'sticky left-0 z-10 bg-slate-50 shadow-[1px_0_0_#e2e8f0]' : ''
                     }`}
+                    style={{
+                      width:
+                        columna.key === 'descripcion'
+                          ? '17%'
+                          : columna.key === 'foto'
+                            ? '7%'
+                            : '10%',
+                    }}
                   >
                     {columna.label}
                   </th>
                 ))}
+                <th scope="col" className="w-[8%] px-2 py-2.5 text-center text-[9px] leading-tight">
+                  Eliminar
+                </th>
+                <th scope="col" className="w-[8%] px-2 py-2.5 text-center text-[9px] leading-tight">
+                  Editar
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs text-slate-600">
               {registros.length === 0 ? (
                 <tr>
-                  <td colSpan={columnas.length} className="px-6 py-12 text-center text-sm text-slate-500">
+                  <td colSpan={columnasVisibles.length + 2} className="px-6 py-12 text-center text-sm text-slate-500">
                     No se encontraron activos con los criterios seleccionados.
                   </td>
                 </tr>
@@ -597,20 +662,49 @@ export function InventarioPage({
                     }}
                     className="group cursor-pointer hover:bg-blue-50/30 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#2B5C94]"
                   >
-                    {columnas.map((columna, index) => (
+                    {columnasVisibles.map((columna, index) => (
                       <td
                         key={columna.key}
-                        className={`px-3 py-3 align-top ${columna.width ?? 'min-w-28'} ${
+                        className={`break-words px-2 py-2.5 align-top text-[11px] leading-snug ${
                           index === 0
                             ? 'sticky left-0 z-10 bg-white font-mono font-bold text-[#2B5C94] shadow-[1px_0_0_#f1f5f9] group-hover:bg-[#f8fbff]'
-                            : columna.key === 'descripcion' || columna.key === 'observaciones'
-                              ? 'whitespace-normal leading-relaxed'
-                              : 'whitespace-nowrap'
+                            : ''
                         }`}
                       >
                         {valorCelda(registro, columna.key)}
                       </td>
                     ))}
+                    <td className="px-1.5 py-2.5 text-center align-top">
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          eliminarProducto(registro);
+                        }}
+                        aria-label={`Eliminar producto ${registro.sku}`}
+                        title={`Eliminar ${registro.sku}`}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-1.5 text-[10px] font-bold text-rose-700 transition-colors hover:border-rose-400 hover:bg-rose-100"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Eliminar
+                      </button>
+                    </td>
+                    <td className="px-1.5 py-2.5 text-center align-top">
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setEditingRegistro(registro);
+                          setIsInventoryModalOpen(true);
+                        }}
+                        aria-label={`Editar producto ${registro.sku}`}
+                        title={`Editar ${registro.sku}`}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1.5 text-[10px] font-bold text-[#2B5C94] transition-colors hover:border-[#2B5C94] hover:bg-blue-100"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        Editar
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -619,14 +713,19 @@ export function InventarioPage({
         </div>
 
         <div className="flex items-center gap-2 border-t border-slate-100 bg-slate-50/60 px-4 py-2.5 text-[10px] text-slate-500">
-          <span className="font-bold text-slate-600">Consejo:</span>
-          Desplázate horizontalmente para consultar todos los campos de la ficha técnica.
+          <span className="font-bold text-slate-600">
+            {registros.length} {registros.length === 1 ? 'producto mostrado' : 'productos mostrados'}
+          </span>
+          en la tabla actual.
         </div>
       </section>
 
       <InventoryModal
         isOpen={isInventoryModalOpen}
-        onClose={() => setIsInventoryModalOpen(false)}
+        onClose={() => {
+          setIsInventoryModalOpen(false);
+          setEditingRegistro(null);
+        }}
         onCreate={(registro) => {
           setRegistrosInventario((current) => [registro, ...current]);
           setCategoriaActiva(registro.categoriaId);
@@ -634,8 +733,29 @@ export function InventarioPage({
           setSearch('');
           setIsInventoryModalOpen(false);
         }}
-        categorias={categorias.map(({ id, label, codigo }) => ({ id, label, codigo }))}
+        editingRegistro={editingRegistro}
+        onUpdate={(registro) => {
+          setRegistrosInventario((current) =>
+            current.map((item) => (item.id === registro.id ? registro : item)),
+          );
+          setCategoriaActiva(registro.categoriaId);
+          setEditingRegistro(null);
+          setIsInventoryModalOpen(false);
+        }}
+        categorias={categorias.map(({ id, label, codigo, camposPersonalizados }) => ({
+          id,
+          label,
+          codigo,
+          camposPersonalizados,
+        }))}
         onCreateCategory={onAgregarCategoria}
+        estados={estadosRegistro}
+        existingSkus={registrosInventario
+          .filter((registro) => registro.id !== editingRegistro?.id)
+          .map((registro) => registro.sku)}
+        existingQrs={registrosInventario
+          .filter((registro) => registro.id !== editingRegistro?.id)
+          .map((registro) => registro.qr)}
       />
 
       <Modal
@@ -648,7 +768,12 @@ export function InventarioPage({
         headerClass="bg-[#2B5C94]"
         panelClass="max-w-4xl"
       >
-        {selectedRegistro && <DetallesInventario registro={selectedRegistro} />}
+        {selectedRegistro && (
+          <DetallesInventario
+            registro={selectedRegistro}
+            categoriasPersonalizadas={categoriasPersonalizadas}
+          />
+        )}
       </Modal>
     </div>
   );
