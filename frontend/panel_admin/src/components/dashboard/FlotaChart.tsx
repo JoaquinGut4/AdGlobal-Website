@@ -19,8 +19,9 @@ export function FlotaChart({ onVerInventario }: FlotaChartProps) {
 
   const data = ANALYTICS_BY_PERIOD[period];
   const totalComparativo = data.resumen.totalAlquiler + data.resumen.totalVentas;
-  const pctAlquiler = Math.round((data.resumen.totalAlquiler / totalComparativo) * 100);
-  const pctVentas = Math.round((data.resumen.totalVentas / totalComparativo) * 100);
+  const hasData = data.items.length > 0 && totalComparativo > 0;
+  const pctAlquiler = totalComparativo === 0 ? 0 : Math.round((data.resumen.totalAlquiler / totalComparativo) * 100);
+  const pctVentas = totalComparativo === 0 ? 0 : Math.round((data.resumen.totalVentas / totalComparativo) * 100);
 
   const showAlquiler = typeFilter === 'todos' || typeFilter === 'alquiler';
   const showVentas = typeFilter === 'todos' || typeFilter === 'ventas';
@@ -171,7 +172,7 @@ export function FlotaChart({ onVerInventario }: FlotaChartProps) {
             <div className="border-b border-slate-400 border-dashed w-full" />
           </div>
 
-          {data.items.map((item) => {
+          {hasData ? data.items.map((item) => {
             const hAlquiler = Math.min(100, Math.max(12, (item.alquiler / data.maxVal) * 100));
             const hVentas = Math.min(100, Math.max(10, (item.ventas / data.maxVal) * 100));
 
@@ -231,7 +232,15 @@ export function FlotaChart({ onVerInventario }: FlotaChartProps) {
                 </div>
               </div>
             );
-          })}
+          }) : (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center px-4 text-center">
+              <BarChart3 className="h-9 w-9 text-slate-300" />
+              <p className="mt-3 text-sm font-bold text-slate-600">Sin movimientos registrados</p>
+              <p className="mt-1 max-w-sm text-xs text-slate-500">
+                Las métricas aparecerán cuando se registren alquileres o ventas.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

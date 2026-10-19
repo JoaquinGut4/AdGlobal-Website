@@ -3,7 +3,6 @@ import type { FormEvent } from 'react';
 import { AlertCircle, ArrowLeft, ArrowRight, Eye, EyeOff, Lock, Mail, User } from 'lucide-react';
 import { AdGlobalLogo } from '@/components/AdGlobalLogo';
 import { ADMIN_CONFIG } from '@/config/site';
-import { CREDENCIALES_DEMO } from '@/hooks/useAuth';
 import type { LoginCredentials, LoginResult } from '@/hooks/useAuth';
 
 interface LoginScreenProps {
@@ -11,9 +10,9 @@ interface LoginScreenProps {
 }
 
 export function LoginScreen({ onAuthenticate }: LoginScreenProps) {
-  const [email, setEmail] = useState<string>(CREDENCIALES_DEMO.email);
-  const [usuario, setUsuario] = useState<string>(CREDENCIALES_DEMO.usuario);
-  const [password, setPassword] = useState<string>(CREDENCIALES_DEMO.password);
+  const [email, setEmail] = useState('');
+  const [usuario, setUsuario] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
@@ -92,7 +91,7 @@ export function LoginScreen({ onAuthenticate }: LoginScreenProps) {
                   onChange={(event) => setEmail(event.target.value)}
                   required
                   autoComplete="username"
-                  placeholder="admin@adglobalperu.com"
+                  placeholder="nombre@adglobalperu.com"
                   className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#2B5C94] focus:border-transparent transition-all font-mono"
                 />
               </div>
@@ -116,7 +115,7 @@ export function LoginScreen({ onAuthenticate }: LoginScreenProps) {
                   onChange={(event) => setUsuario(event.target.value)}
                   required
                   autoComplete="username"
-                  placeholder="adglobal_admin"
+                  placeholder="Tu usuario"
                   className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#2B5C94] focus:border-transparent transition-all font-mono"
                 />
               </div>
@@ -183,14 +182,9 @@ export function LoginScreen({ onAuthenticate }: LoginScreenProps) {
             </button>
           </form>
 
-          <div className="mt-6 pt-5 border-t border-slate-200 text-center">
-            <p className="text-[11px] text-slate-500">
-              Credenciales de prueba:{' '}
-              <strong className="text-slate-700 font-mono">{CREDENCIALES_DEMO.email}</strong> ·{' '}
-              <strong className="text-slate-700 font-mono">{CREDENCIALES_DEMO.usuario}</strong> ·{' '}
-              <strong className="text-slate-700 font-mono">{CREDENCIALES_DEMO.password}</strong>
-            </p>
-          </div>
+          <p className="mt-6 border-t border-slate-200 pt-5 text-center text-[11px] text-slate-500">
+            Acceso exclusivo para personal autorizado de AD GLOBAL.
+          </p>
         </div>
       </main>
     </div>

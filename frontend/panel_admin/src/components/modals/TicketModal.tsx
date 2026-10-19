@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { PackageCheck, Search, Wrench, X } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
-import { ADMIN_CONFIG, STORAGE_KEYS } from '@/config/site';
+import { STORAGE_KEYS } from '@/config/site';
 import { INVENTARIO_REGISTROS } from '@/data/inventario';
+import { apiRequest } from '@/lib/api';
 import type { InventarioRegistro, SupportTicket, TicketPrioridad } from '@/types';
 
 export interface NuevoTicketInput {
@@ -11,6 +12,7 @@ export interface NuevoTicketInput {
   cliente: string;
   prioridad: TicketPrioridad;
   descripcion: string;
+  tecnicoId?: string;
   tecnico: string;
   tecnicoTelefono?: string;
 }
@@ -18,7 +20,7 @@ export interface NuevoTicketInput {
 interface TicketModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreate: (input: NuevoTicketInput) => SupportTicket;
+  onCreate: (input: NuevoTicketInput) => Promise<SupportTicket>;
 }
 
 interface TecnicoSoporte {
@@ -26,13 +28,6 @@ interface TecnicoSoporte {
   nombre: string;
   telefono: string;
 }
-
-const TECNICOS_FALLBACK: TecnicoSoporte[] = [
-  { id: 'carlos-mendoza', nombre: 'Ing. Carlos Mendoza (Taller Central)', telefono: '' },
-  { id: 'miguel-alva', nombre: 'Téc. Miguel Alva (Soporte Campo)', telefono: '' },
-  { id: 'fernando-ruiz', nombre: 'Téc. Fernando Ruiz (Audio LAB)', telefono: '' },
-  { id: 'roberto-quispe', nombre: 'Ing. Roberto Quispe (Redes & Servidores)', telefono: '' },
-];
 
 const PRIORIDADES: { value: TicketPrioridad; label: string }[] = [
   { value: 'Urgente', label: 'Urgente (SLA 24/7 Crítico)' },
@@ -61,30 +56,31 @@ function normalizarTelefonoWhatsApp(telefono: string) {
 export function TicketModal({ isOpen, onClose, onCreate }: TicketModalProps) {
   const [cliente, setCliente] = useState('');
   const [prioridad, setPrioridad] = useState<TicketPrioridad>('Alta');
-  const [tecnicos, setTecnicos] = useState<TecnicoSoporte[]>(TECNICOS_FALLBACK);
-  const [tecnicoId, setTecnicoId] = useState(TECNICOS_FALLBACK[0].id);
+  const [tecnicos, setTecnicos] = useState<TecnicoSoporte[]>([]);
+  const [tecnicoId, setTecnicoId] = useState('');
   const [loadingTecnicos, setLoadingTecnicos] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
   const [descripcion, setDescripcion] = useState('');
   const [inventario, setInventario] = useState<InventarioRegistro[]>([]);
   const [skuSearch, setSkuSearch] = useState('');
   const [equiposSeleccionados, setEquiposSeleccionados] = useState<InventarioRegistro[]>([]);
 
   useEffect(() => {
-    if (isOpen) setInventario(cargarInventario());
+    if (isOpen) {
+      setInventario(cargarInventario());
+      setSubmitError('');
+    }
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen || !ADMIN_CONFIG.apiUrl) return;
+    if (!isOpen) return;
     const controller = new AbortController();
 
     const cargarTecnicos = async () => {
       setLoadingTecnicos(true);
       try {
-        const response = await fetch(`${ADMIN_CONFIG.apiUrl}/tecnicos`, {
-          signal: controller.signal,
-        });
-        if (!response.ok) throw new Error('No se pudo consultar los técnicos.');
-        const payload = (await response.json()) as unknown;
+        const payload = await apiRequest<unknown>('/usuarios/soporte', { signal: controller.signal });
         const records = Array.isArray(payload)
           ? payload
           : typeof payload === 'object' && payload !== null && 'data' in payload && Array.isArray(payload.data)
@@ -103,14 +99,12 @@ export function TicketModal({ isOpen, onClose, onCreate }: TicketModalProps) {
             };
           })
           .filter((item): item is TecnicoSoporte => item !== null);
-        if (mapped.length > 0) {
-          setTecnicos(mapped);
-          setTecnicoId(mapped[0].id);
-        }
+        setTecnicos(mapped);
+        setTecnicoId(mapped[0]?.id ?? '');
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') return;
-        setTecnicos(TECNICOS_FALLBACK);
-        setTecnicoId(TECNICOS_FALLBACK[0].id);
+        setTecnicos([]);
+        setTecnicoId('');
       } finally {
         setLoadingTecnicos(false);
       }
@@ -133,43 +127,57 @@ export function TicketModal({ isOpen, onClose, onCreate }: TicketModalProps) {
         .slice(0, 8)
     : [];
 
-  const handleSubmit = (event: FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
+    setSubmitError('');
     if (equiposSeleccionados.length === 0 || !cliente.trim() || !descripcion.trim()) return;
 
     const tecnico = tecnicos.find((item) => item.id === tecnicoId) ?? tecnicos[0];
-    const ticket = onCreate({
-      cliente: cliente.trim(),
-      prioridad,
-      equipo: equiposSeleccionados
-        .map((registro) => `${registro.sku} — ${registro.descripcion}`)
-        .join('; '),
-      tecnico: tecnico.nombre,
-      tecnicoTelefono: tecnico.telefono,
-      descripcion: descripcion.trim(),
-    });
-
-    const whatsapp = normalizarTelefonoWhatsApp(tecnico.telefono);
-    if (whatsapp) {
-      const message = [
-        `Nuevo ticket de soporte ${ticket.codigo}`,
-        `Cliente / Empresa: ${ticket.cliente}`,
-        `Prioridad: ${ticket.prioridad}`,
-        `Equipo(s): ${ticket.equipo}`,
-        `Descripción: ${ticket.descripcion}`,
-        `Técnico asignado: ${ticket.tecnico}`,
-      ].join('\n');
-      window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
-    } else {
-      window.alert(
-        'El ticket fue creado, pero el técnico seleccionado no tiene un número de WhatsApp registrado.',
-      );
+    if (!tecnico) {
+      setSubmitError('No hay un usuario de soporte disponible para asignar el ticket.');
+      return;
     }
 
-    setCliente('');
-    setDescripcion('');
-    setSkuSearch('');
-    setEquiposSeleccionados([]);
+    setIsSubmitting(true);
+    try {
+      const ticket = await onCreate({
+        cliente: cliente.trim(),
+        prioridad,
+        equipo: equiposSeleccionados
+          .map((registro) => `${registro.sku} — ${registro.descripcion}`)
+          .join('; '),
+        tecnicoId: tecnico.id,
+        tecnico: tecnico.nombre,
+        tecnicoTelefono: tecnico.telefono,
+        descripcion: descripcion.trim(),
+      });
+
+      const whatsapp = normalizarTelefonoWhatsApp(tecnico.telefono);
+      if (whatsapp) {
+        const message = [
+          `Nuevo ticket de soporte ${ticket.codigo}`,
+          `Cliente / Empresa: ${ticket.cliente}`,
+          `Prioridad: ${ticket.prioridad}`,
+          `Equipo(s): ${ticket.equipo}`,
+          `Descripción: ${ticket.descripcion}`,
+          `Responsable asignado: ${ticket.tecnico}`,
+        ].join('\n');
+        window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+      } else {
+        window.alert(
+          'El ticket fue creado, pero el responsable no tiene un número de WhatsApp registrado.',
+        );
+      }
+
+      setCliente('');
+      setDescripcion('');
+      setSkuSearch('');
+      setEquiposSeleccionados([]);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'No se pudo aperturar el ticket.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -178,7 +186,7 @@ export function TicketModal({ isOpen, onClose, onCreate }: TicketModalProps) {
       onClose={onClose}
       labelledBy="ticket-modal-title"
       title="Aperturar Ticket de Soporte"
-      subtitle="Registra los equipos afectados y asigna la atención técnica"
+      subtitle="Registra los equipos y asigna al responsable de soporte"
       icon={<Wrench className="h-4 w-4" />}
       headerClass="bg-slate-900"
       panelClass="max-w-2xl"
@@ -269,20 +277,29 @@ export function TicketModal({ isOpen, onClose, onCreate }: TicketModalProps) {
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-bold uppercase text-slate-600">Técnico asignado</label>
+          <label className="mb-1 block text-xs font-bold uppercase text-slate-600">Usuario de soporte asignado</label>
           <select
             value={tecnicoId}
             onChange={(event) => setTecnicoId(event.target.value)}
-            disabled={loadingTecnicos}
+            disabled={loadingTecnicos || tecnicos.length === 0}
             className={FIELD_CLASS}
           >
+            {tecnicos.length === 0 && <option value="">Sin usuarios de soporte disponibles</option>}
             {tecnicos.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.nombre}{item.telefono ? ` · ${item.telefono}` : ' · Sin WhatsApp registrado'}
               </option>
             ))}
           </select>
-          {loadingTecnicos && <p className="mt-1 text-[10px] text-slate-500">Consultando técnicos...</p>}
+          <p className="mt-1 text-[10px] text-slate-500">
+            Solo se muestran usuarios activos con rol Soporte.
+          </p>
+          {loadingTecnicos && <p className="mt-1 text-[10px] text-slate-500">Consultando usuarios de soporte...</p>}
+          {!loadingTecnicos && tecnicos.length === 0 && (
+            <p className="mt-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] font-semibold text-amber-700">
+              No hay usuarios activos con rol Soporte. Crea uno en Configuración para poder aperturar tickets.
+            </p>
+          )}
         </div>
 
         <div>
@@ -299,13 +316,23 @@ export function TicketModal({ isOpen, onClose, onCreate }: TicketModalProps) {
           />
         </div>
 
+        {submitError && (
+          <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+            {submitError}
+          </p>
+        )}
+
         <div className="flex items-center justify-end gap-2.5 border-t border-slate-100 pt-3">
           <button type="button" onClick={onClose} className="cursor-pointer rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100">
             Cancelar
           </button>
-          <button type="submit" className="flex cursor-pointer items-center gap-1.5 rounded-xl bg-slate-900 px-5 py-2 text-xs font-bold text-white shadow-sm hover:bg-slate-800">
+          <button
+            type="submit"
+            disabled={isSubmitting || loadingTecnicos || tecnicos.length === 0}
+            className="flex cursor-pointer items-center gap-1.5 rounded-xl bg-slate-900 px-5 py-2 text-xs font-bold text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
             <Wrench className="h-3.5 w-3.5 text-amber-400" />
-            Aperturar ticket
+            {isSubmitting ? 'Aperturando...' : 'Aperturar ticket'}
           </button>
         </div>
       </form>

@@ -152,7 +152,7 @@ export function FleetDistribution({ onVerFiltro }: FleetDistributionProps) {
           value={FLOTA_RESUMEN.alquiler}
           percent={pctAlquiler}
           percentLabel={`${pctAlquiler}%`}
-          footerLeft="38 servicios activos"
+          footerLeft={FLOTA_RESUMEN.alquiler > 0 ? 'Servicios de alquiler' : 'Sin equipos en alquiler'}
           footerRight="En campo y eventos"
           boxHover="hover:border-[#2B5C94]"
           iconIdle="bg-blue-50 text-[#2B5C94] border-blue-100"
@@ -171,7 +171,7 @@ export function FleetDistribution({ onVerFiltro }: FleetDistributionProps) {
           value={FLOTA_RESUMEN.oficina}
           percent={pctOficina}
           percentLabel={`${pctOficina}%`}
-          footerLeft="Listos para entrega"
+          footerLeft={FLOTA_RESUMEN.oficina > 0 ? 'Listos para entrega' : 'Sin equipos en oficina'}
           footerRight="Almacén central"
           boxHover="hover:border-emerald-500"
           iconIdle="bg-emerald-50 text-emerald-600 border-emerald-100"
@@ -190,7 +190,7 @@ export function FleetDistribution({ onVerFiltro }: FleetDistributionProps) {
           value={FLOTA_RESUMEN.taller}
           percent={pctTaller}
           percentLabel={`${pctTaller}%`}
-          footerLeft="En revisión técnica"
+          footerLeft={FLOTA_RESUMEN.taller > 0 ? 'En revisión técnica' : 'Sin equipos en taller'}
           footerRight="Laboratorio & calibración"
           boxHover="hover:border-amber-500"
           iconIdle="bg-amber-50 text-amber-600 border-amber-100"

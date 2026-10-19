@@ -5,13 +5,13 @@ import { OrderModal } from '@/components/modals/OrderModal';
 import { TicketModal } from '@/components/modals/TicketModal';
 import { useToast } from '@/context/ToastContext';
 import { STORAGE_KEYS } from '@/config/site';
-import { INVENTARIO_DATA } from '@/data/inventario';
+import { CATEGORIAS_BASE_TOTAL } from '@/data/inventario';
 import { MOVIMIENTOS_SEED } from '@/data/movimientos';
 import { PEDIDOS_SEED } from '@/data/pedidos';
-import { TICKETS_SEED, siguienteCodigoTicket, siguienteEstadoTicket } from '@/data/tickets';
+import { siguienteEstadoTicket } from '@/data/tickets';
 import { useAuth } from '@/hooks/useAuth';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
-import { marcaTemporalHoy } from '@/lib/utils';
+import { ApiError, apiRequest } from '@/lib/api';
 import { ClientesPage } from '@/pages/ClientesPage';
 import { ConfiguracionPage } from '@/pages/ConfiguracionPage';
 import { DashboardPage } from '@/pages/DashboardPage';
@@ -31,7 +31,24 @@ import type {
   MovimientoModulo,
   PedidoRegistro,
   SupportTicket,
+  TicketArea,
+  TicketEstado,
+  TicketPrioridad,
 } from '@/types';
+
+interface TicketApiResponse {
+  id: string;
+  codigo: string;
+  area: TicketArea | null;
+  equipo: string;
+  cliente: string;
+  prioridad: TicketPrioridad;
+  estado: TicketEstado;
+  descripcion: string;
+  tecnico: string;
+  tecnicoTelefono?: string;
+  fecha: string;
+}
 
 export default function App() {
   const { isAuthenticated, session, authenticate, logout } = useAuth();
@@ -40,7 +57,7 @@ export default function App() {
   const [activeNav, setActiveNav] = useState<AdminSection>('dashboard');
   const [inventarioFiltro, setInventarioFiltro] = useState<InventarioFiltro>('all');
 
-  const [tickets, setTickets] = useLocalStorage<SupportTicket[]>(STORAGE_KEYS.tickets, TICKETS_SEED);
+  const [tickets, setTickets] = useLocalStorage<SupportTicket[]>(STORAGE_KEYS.tickets, []);
   const [pedidos, setPedidos] = useLocalStorage<PedidoRegistro[]>(STORAGE_KEYS.pedidos, PEDIDOS_SEED);
   const [inventarioCategorias, setInventarioCategorias] = useLocalStorage<InventarioCategoria[]>(
     STORAGE_KEYS.inventarioCategorias,
@@ -54,6 +71,16 @@ export default function App() {
   const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [editingPedido, setEditingPedido] = useState<PedidoRegistro | null>(null);
+
+  // La clave anterior contenía tickets de demostración; se elimina una sola vez.
+  useEffect(() => {
+    try {
+      window.localStorage.removeItem('adglobal_tickets');
+      window.localStorage.removeItem('adglobal_inventory');
+    } catch {
+      /* Almacenamiento no disponible */
+    }
+  }, []);
 
   const ticketsActivos = tickets.filter((t) => t.estado !== 'Resuelto').length;
 
@@ -89,26 +116,81 @@ export default function App() {
     setActiveNav('dashboard');
   };
 
-  const avanzarTicket = (id: string) => {
-    setTickets((prev) =>
-      prev.map((ticket) =>
-        ticket.id === id ? { ...ticket, estado: siguienteEstadoTicket(ticket.estado) } : ticket
-      )
-    );
+  const actualizarEstadoTicket = async (ticket: SupportTicket, estado: SupportTicket['estado']): Promise<boolean> => {
+    try {
+      await apiRequest(`/tickets/${ticket.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ estado }),
+      });
+    } catch (requestError) {
+      if (!(requestError instanceof ApiError && requestError.status === 404)) {
+        notify(requestError instanceof Error ? requestError.message : 'No se pudo actualizar el ticket.');
+        return false;
+      }
+    }
+    setTickets((prev) => prev.map((item) => (item.id === ticket.id ? { ...item, estado } : item)));
+    return true;
   };
 
-  const crearTicket = (input: NuevoTicketInput) => {
+  const avanzarTicket = async (id: string) => {
+    const ticket = tickets.find((item) => item.id === id);
+    if (!ticket) return;
+    await actualizarEstadoTicket(ticket, siguienteEstadoTicket(ticket.estado));
+  };
+
+  const completarTicket = async (ticket: SupportTicket) => {
+    if (ticket.estado === 'Resuelto') return;
+    const updated = await actualizarEstadoTicket(ticket, 'Resuelto');
+    if (updated) notify(`Ticket ${ticket.codigo} marcado como resuelto.`);
+  };
+
+  const eliminarTicket = async (ticket: SupportTicket) => {
+    const confirmed = window.confirm(
+      `¿Eliminar el ticket ${ticket.codigo} de ${ticket.cliente}? Esta acción no se puede deshacer.`,
+    );
+    if (!confirmed) return;
+
+    try {
+      await apiRequest<void>(`/tickets/${ticket.id}`, { method: 'DELETE' });
+    } catch (requestError) {
+      if (!(requestError instanceof ApiError && requestError.status === 404)) {
+        notify(requestError instanceof Error ? requestError.message : 'No se pudo eliminar el ticket.');
+        return;
+      }
+    }
+    setTickets((prev) => prev.filter((item) => item.id !== ticket.id));
+    notify(`Ticket ${ticket.codigo} eliminado.`);
+  };
+
+  const crearTicket = async (input: NuevoTicketInput): Promise<SupportTicket> => {
+    const response = await apiRequest<TicketApiResponse>('/tickets', {
+      method: 'POST',
+      body: JSON.stringify({
+        equipo: input.equipo,
+        cliente: input.cliente,
+        prioridad: input.prioridad,
+        descripcion: input.descripcion,
+        tecnicoId: input.tecnicoId,
+        tecnico: input.tecnico,
+        tecnicoTelefono: input.tecnicoTelefono,
+      }),
+    });
+
     const nuevo: SupportTicket = {
-      id: `tkt-${Date.now()}`,
-      codigo: siguienteCodigoTicket(tickets.length),
-      equipo: input.equipo,
-      cliente: input.cliente,
-      prioridad: input.prioridad,
-      estado: 'Abierto',
-      descripcion: input.descripcion,
-      tecnico: input.tecnico,
-      tecnicoTelefono: input.tecnicoTelefono,
-      fecha: marcaTemporalHoy(),
+      id: response.id,
+      codigo: response.codigo,
+      area: response.area ?? undefined,
+      equipo: response.equipo,
+      cliente: response.cliente,
+      prioridad: response.prioridad,
+      estado: response.estado,
+      descripcion: response.descripcion,
+      tecnico: response.tecnico,
+      tecnicoTelefono: response.tecnicoTelefono,
+      fecha: new Date(response.fecha).toLocaleString('es-PE', {
+        dateStyle: 'short',
+        timeStyle: 'short',
+      }),
     };
 
     setTickets((prev) => [nuevo, ...prev]);
@@ -250,6 +332,8 @@ export default function App() {
           <TicketsPage
             tickets={tickets}
             onAvanzarEstado={avanzarTicket}
+            onCompletar={completarTicket}
+            onEliminar={eliminarTicket}
             onOpenTicket={() => setIsTicketModalOpen(true)}
           />
         );
@@ -258,7 +342,7 @@ export default function App() {
       case 'gestion-web':
         return <GestionWebPage />;
       case 'configuracion':
-        return <ConfiguracionPage />;
+        return <ConfiguracionPage currentUserId={session.id} />;
     }
   };
 
@@ -272,7 +356,7 @@ export default function App() {
         onOpenOrders={abrirPedido}
         session={session}
         ticketsActivos={ticketsActivos}
-        inventarioCategorias={INVENTARIO_DATA.length + inventarioCategorias.length}
+        inventarioCategorias={CATEGORIAS_BASE_TOTAL + inventarioCategorias.length}
       >
         {renderPage()}
       </AdminLayout>

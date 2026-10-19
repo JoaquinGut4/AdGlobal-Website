@@ -166,12 +166,17 @@ export interface WebImageAsset {
   createdAt: string;
 }
 
+export type UsuarioRol = 'Administrador' | 'Soporte' | 'Normal';
+
 export interface UsuarioAdministrador {
   id: string;
   nombre: string;
   email: string;
   usuario: string;
-  password: string;
+  password?: string;
+  rol: UsuarioRol;
+  telefono: string;
+  superAdmin?: boolean;
   activo: boolean;
   modulos: AdminSection[];
   createdAt: string;

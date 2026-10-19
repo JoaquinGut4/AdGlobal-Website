@@ -282,7 +282,7 @@ export function OrderModal({ isOpen, onClose, onCreate, editingPedido = null, on
                   </div>
                 )}
               </div>
-              <textarea rows={3} required value={descripcionProductos} onChange={(event) => setDescripcionProductos(event.target.value)} placeholder="Ej. LAP-0001 · Laptops · Lenovo ThinkPad T14 Gen 2" className={FIELD_CLASS} />
+              <textarea rows={3} required value={descripcionProductos} onChange={(event) => setDescripcionProductos(event.target.value)} placeholder="Ej. SKU · Categoría · Descripción del equipo" className={FIELD_CLASS} />
             </div>
           </Field>
           <Field label="Cantidad de los productos" required>

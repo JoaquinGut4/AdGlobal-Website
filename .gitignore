@@ -17,6 +17,11 @@ venv/
 env/
 *.egg-info/
 .pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+backend/uploads/*
+!backend/uploads/.gitkeep
 
 # Sistema
 .DS_Store

@@ -4,20 +4,18 @@ Sitio web corporativo de **AD GLOBAL** (alquiler y venta de tecnología para eve
 empresas). El proyecto está dividido en una **web pública**, un **panel administrativo** y un
 **backend** en Python.
 
-> **Estado actual:** ✅ **Fase 1 completada — `frontend/web_publica`** lista para desplegar.
-> El backend y el panel admin quedan planificados para fases posteriores.
+> **Estado actual:** frontend público, panel administrativo y backend FastAPI/MySQL disponibles.
 
 ## Estructura del proyecto
 
 ```
 mi-plataforma-web/
-├── backend/                      # (Fase 2) Lógica del servidor y BD - Python
-│   ├── api/
-│   │   ├── public/               # Endpoints públicos (catálogo, clientes)
-│   │   └── admin/                # Endpoints protegidos (equipos, usuarios, dashboard)
-│   ├── modelos/                  # Esquema de la BD (SQLAlchemy)
-│   ├── core/                     # database.py, seguridad.py
-│   └── main.py                   # Arranque del servidor
+├── backend/                      # FastAPI + SQLAlchemy + Alembic
+│   ├── app/api/                  # Autenticación, rutas públicas y administrativas
+│   ├── app/core/                 # Configuración, conexión y seguridad
+│   ├── alembic/                  # Migraciones MySQL
+│   ├── scripts/seed.py           # Datos y administradores iniciales
+│   └── tests/                    # Pruebas de API
 │
 ├── frontend/
 │   ├── web_publica/              # ✅ Landing pública (React + Vite + TS + Tailwind v4)
@@ -48,7 +46,7 @@ mi-plataforma-web/
 │       │   └── types/            # tipos compartidos
 │       └── package.json
 │
-├── requirements.txt              # (Fase 2) Dependencias de Python
+├── requirements.txt              # Dependencias de Python
 └── README.md
 ```
 
@@ -77,6 +75,44 @@ npm run build     # Compila a ./dist (ejecuta lint + build)
 npm run preview   # Sirve el build de producción localmente
 ```
 
+## Backend y MySQL
+
+La API usa **FastAPI**, **SQLAlchemy 2**, **Alembic**, autenticación JWT y MySQL 8 con
+`utf8mb4`. Las contraseñas se guardan únicamente como hashes PBKDF2-SHA256.
+
+### Arranque local
+
+Requiere Python 3.12+ y MySQL 8. El archivo `.env` de la raíz contiene la conexión local.
+
+```bash
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# Linux/macOS: source .venv/bin/activate
+pip install -r requirements-dev.txt
+alembic upgrade head
+python -m backend.scripts.seed
+uvicorn backend.app.main:app --reload --port 8000
+pytest backend/tests -q
+```
+
+Configura el panel con `VITE_API_URL="http://localhost:8000/api/v1"`. Los grupos principales
+de rutas son:
+
+- `/api/v1/auth/*`: login, renovación y sesión actual.
+- `/api/v1/public/*`: catálogo, imágenes y solicitudes de cotización.
+- `/api/v1/inventario`, `/pedidos`, `/clientes`, `/tickets`: operación administrativa.
+- `/api/v1/usuarios`, `/tecnicos`, `/movimientos`, `/servicios`, `/web-assets`: configuración,
+  auditoría y gestión de contenido.
+
+Todas las rutas administrativas requieren `Authorization: Bearer <token>` y validan los
+módulos habilitados para la cuenta.
+
+### Notificación de tickets por WhatsApp
+
+Al crear un ticket, el panel abre WhatsApp con el mensaje preparado para el usuario Soporte
+asignado. El envío final lo confirma manualmente la persona que apertura el ticket. No se
+requieren credenciales externas ni se realizan llamadas automáticas a la API de WhatsApp.
+
 ## Variables de entorno
 
 Solo las variables con prefijo `VITE_` se exponen al navegador. Se configuran en `.env`
@@ -88,7 +124,7 @@ Solo las variables con prefijo `VITE_` se exponen al navegador. Se configuran en
 | `VITE_WHATSAPP_NUMBER` | WhatsApp de atención (solo dígitos) | `51908838291` |
 | `VITE_CONTACT_PHONE_DISPLAY` | Teléfono mostrado en pantalla | `+51 908 838 291` |
 | `VITE_CONTACT_EMAIL` | Correo de atención al cliente | `atencionalcliente@adglobalperu.com` |
-| `VITE_API_URL` | (Fase 2) URL base del backend | vacío |
+| `VITE_API_URL` | URL base versionada del backend | `http://localhost:8000/api/v1` |
 
 > El formulario de cotización **valida los datos y abre WhatsApp** con el mensaje ya preparado
 > hacia el número configurado en `VITE_WHATSAPP_NUMBER`.
@@ -193,7 +229,7 @@ TypeScript y Tailwind CSS v4). Reproduce la maqueta de `Prototipo admin/` de for
 
 Incluye:
 
-- **Login corporativo** con validación, sesión persistente y credenciales demo.
+- **Login corporativo** con autenticación JWT y sesión persistente.
 - **Dashboard** con distribución de flota, comparativo alquiler vs ventas y estado de almacén.
 - **Cotizaciones Web** (bandeja completa, cambio de estado y respuesta por WhatsApp).
 - **Control de Inventario** (filtros, búsqueda, distribución por alquiler/oficina/taller).
@@ -209,14 +245,13 @@ cp .env.example .env     # ajusta nombre, URL de la web pública y API
 npm run dev              # http://localhost:3001
 ```
 
-> Los datos de ejemplo se guardan en `localStorage` mientras el backend (Fase 2) no esté
-> conectado. La capa de datos está aislada en `src/data/` y `src/hooks/`, lista para
-> reemplazarse por llamadas a la API (`VITE_API_URL`).
+> La autenticación y la gestión de usuarios ya consumen la API. Los módulos operativos mantienen
+> temporalmente sus datos semilla locales hasta completar el cableado visual de cada pantalla.
 
 ## Roadmap
 
 - **Fase 1 — Web pública** ✅ (este entregable)
-- **Fase 2 — Backend (Python):** API pública (catálogo/clientes), modelos SQLAlchemy,
-  autenticación JWT, conexión MySQL/PostgreSQL.
+- **Fase 2 — Backend (Python):** ✅ API pública y administrativa, SQLAlchemy, Alembic,
+  autenticación JWT y MySQL.
 - **Fase 3 — Panel admin:** 🚧 frontend en `frontend/panel_admin` (login, dashboard,
   cotizaciones, inventario, presupuestos, clientes y tickets). Pendiente: conexión con la API.

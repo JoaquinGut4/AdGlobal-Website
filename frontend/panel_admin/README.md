@@ -10,7 +10,7 @@ administrativo) y sirve como base del modelo final del apartado admin.
 
 | Vista | Descripción |
 | --- | --- |
-| Login | Acceso corporativo con validación, "recordarme" y credenciales demo. |
+| Login | Acceso corporativo contra la API, sesión JWT y opción "recordarme". |
 | Dashboard | Estadísticas y actividad en tiempo real: distribución de flota, comparativo alquiler vs ventas (semana/mes/año) y estado de almacén. |
 | Inventario | Equipos, características, cantidades, estados y disponibilidad (filtros y detalle expandible). |
 | Alquileres | Reservas, contratos, periodos y devoluciones. *(estructura en preparación)* |
@@ -77,19 +77,14 @@ Solo las variables con prefijo `VITE_` se exponen al navegador:
 | --- | --- | --- |
 | `VITE_ADMIN_NAME` | Nombre mostrado en el login | `AD GLOBAL PERÚ` |
 | `VITE_PUBLIC_SITE_URL` | URL de la web pública (botón "Volver a la web") | `https://adglobalperu.com` |
-| `VITE_API_URL` | (Fase 2) URL base del backend | vacío |
-| `VITE_AUTH_MAX_ATTEMPTS` | Máximo de intentos de login (placeholder) | `5` |
+| `VITE_API_URL` | URL base versionada del backend | `http://localhost:8000/api/v1` |
+| `VITE_AUTH_MAX_ATTEMPTS` | Política máxima de intentos | `5` |
 
 ## Datos y persistencia
 
-Mientras el backend (Fase 2) no esté conectado, las cotizaciones y los tickets se guardan en
-`localStorage` (claves `adglobal_quotes` y `adglobal_tickets`). La sesión se persiste con
-`adglobal_admin_auth`.
-
-La capa de datos está aislada (`src/data/` para semillas y `src/hooks/`) para reemplazarla
-por llamadas a la API usando `VITE_API_URL`.
-
-> **Credenciales demo:** `admin@adglobalperu.com` · `adglobal_admin` · `admin2025`
+La autenticación y la administración de usuarios consumen el backend. Algunos módulos
+operativos aún mantienen estado local mientras se completa su conexión visual con los endpoints.
+Las cuentas iniciales se crean mediante el *seed* seguro del backend.
 
 ## Despliegue (Webuzo / Apache)
 

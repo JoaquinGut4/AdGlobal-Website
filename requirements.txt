@@ -10,6 +10,7 @@ uvicorn[standard]==0.34.0
 # --- Validación y configuración ---
 pydantic==2.10.4
 pydantic-settings==2.7.0
+email-validator==2.2.0
 python-dotenv==1.0.1
 
 # --- Base de datos ORM ---

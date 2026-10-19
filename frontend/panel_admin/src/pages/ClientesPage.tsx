@@ -22,6 +22,8 @@ export function ClientesPage() {
   const [estadoFiltro, setEstadoFiltro] = useState<EstadoFiltro>('Todos');
   const activos = CLIENTES_DATA.filter((cliente) => cliente.estado === 'Activo').length;
   const inactivos = CLIENTES_DATA.filter((cliente) => cliente.estado === 'Inactivo').length;
+  const porcentajeActivos = CLIENTES_DATA.length === 0 ? 0 : Math.round((activos / CLIENTES_DATA.length) * 100);
+  const porcentajeInactivos = CLIENTES_DATA.length === 0 ? 0 : Math.round((inactivos / CLIENTES_DATA.length) * 100);
   const terminos = normalizar(search).trim().split(/\s+/).filter(Boolean);
   const visibles = CLIENTES_DATA.filter((cliente) => {
     if (estadoFiltro !== 'Todos' && cliente.estado !== estadoFiltro) return false;
@@ -61,7 +63,7 @@ export function ClientesPage() {
               <UserCheck className="h-4 w-4" />
             </div>
             <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
-              {Math.round((activos / CLIENTES_DATA.length) * 100)}% del total
+              {porcentajeActivos}% del total
             </span>
           </div>
           <p className="mt-2 text-xs font-bold uppercase tracking-wider text-slate-500">Clientes activos</p>
@@ -82,7 +84,7 @@ export function ClientesPage() {
               <UserX className="h-4 w-4" />
             </div>
             <span className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">
-              {Math.round((inactivos / CLIENTES_DATA.length) * 100)}% del total
+              {porcentajeInactivos}% del total
             </span>
           </div>
           <p className="mt-2 text-xs font-bold uppercase tracking-wider text-slate-500">Clientes inactivos</p>
