@@ -1,11 +1,21 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { CheckCircle2, ClipboardList, Clock3, FileText, Plus, Search } from 'lucide-react';
+import { ClipboardList, FileText, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { GuideModal } from '@/components/modals/GuideModal';
 import { Modal } from '@/components/ui/Modal';
+import { formatFecha, parseDireccionLlegada } from '@/lib/utils';
 import type { PedidoRegistro } from '@/types';
 
 type TipoFiltro = 'all' | 'Alquiler' | 'Venta';
+
+const COLUMNAS_PEDIDOS: Array<{ label: string; width: string }> = [
+  { label: 'N.º de pedido', width: '12%' },
+  { label: 'Fecha de creación', width: '11%' },
+  { label: 'Dirección de llegada', width: '22%' },
+  { label: 'Descripción de los productos', width: '22%' },
+  { label: 'Cantidad', width: '8%' },
+  { label: 'Acciones', width: '25%' },
+];
 
 function normalizar(value: unknown) {
   return String(value)
@@ -21,15 +31,17 @@ function tipoDelPedido(pedido: PedidoRegistro): 'Alquiler' | 'Venta' | 'Otro' {
 }
 
 function DetallesPedido({ pedido }: { pedido: PedidoRegistro }) {
+  const destino = parseDireccionLlegada(pedido.direccionLlegada);
   const detalles: Array<[string, ReactNode]> = [
-    ['Fecha de emisión', pedido.fechaEmision],
-    ['Dirección de partida', pedido.direccionPartida],
-    ['Dirección de llegada', pedido.direccionLlegada],
+    ['Fecha de creación', formatFecha(pedido.fechaEmision)],
+    ['Nombre de la empresa / persona', destino.destinatario || '—'],
+    ['Dirección', destino.direccion || '—'],
+    ['Distrito', destino.distrito || '—'],
+    ['Provincia', destino.provincia || '—'],
+    ['Departamento', destino.departamento || '—'],
+    ['Motivo del traslado', pedido.motivoTraslado],
     ['Descripción de los productos', pedido.descripcionProductos],
-    ['Cantidad de productos', pedido.cantidadProductos],
-    ['Unidad de medida', pedido.unidadMedida],
-    ['Observaciones', pedido.observaciones || 'Sin observaciones'],
-    ['Motivo de traslado', pedido.motivoTraslado],
+    ['Cantidad de los productos', pedido.cantidadProductos],
   ];
 
   return (
@@ -48,7 +60,7 @@ function DetallesPedido({ pedido }: { pedido: PedidoRegistro }) {
                 <th scope="row" className="w-52 bg-slate-50/50 px-4 py-3 font-bold text-slate-500">
                   {label}
                 </th>
-                <td className="px-4 py-3 leading-relaxed text-slate-700">{value}</td>
+                <td className="whitespace-pre-line px-4 py-3 leading-relaxed text-slate-700">{value}</td>
               </tr>
             ))}
           </tbody>
@@ -61,9 +73,11 @@ function DetallesPedido({ pedido }: { pedido: PedidoRegistro }) {
 interface PedidosPageProps {
   pedidos: PedidoRegistro[];
   onOpenOrder: () => void;
+  onEdit: (pedido: PedidoRegistro) => void;
+  onDelete: (pedido: PedidoRegistro) => void;
 }
 
-export function PedidosPage({ pedidos, onOpenOrder }: PedidosPageProps) {
+export function PedidosPage({ pedidos, onOpenOrder, onEdit, onDelete }: PedidosPageProps) {
   const [search, setSearch] = useState('');
   const [tipoActivo, setTipoActivo] = useState<TipoFiltro>('all');
   const [selectedPedido, setSelectedPedido] = useState<PedidoRegistro | null>(null);
@@ -77,31 +91,6 @@ export function PedidosPage({ pedidos, onOpenOrder }: PedidosPageProps) {
     const contenido = normalizar(Object.values(pedido).join(' '));
     return terminos.every((termino) => contenido.includes(termino));
   });
-
-  const alquileres = pedidos.filter((pedido) => tipoDelPedido(pedido) === 'Alquiler').length;
-  const ventas = pedidos.filter((pedido) => tipoDelPedido(pedido) === 'Venta').length;
-  const metricas = [
-    {
-      id: 'Alquiler' as const,
-      label: 'Pedidos de alquiler',
-      value: alquileres,
-      detail: 'Traslados por alquiler o devolución',
-      icon: Clock3,
-      active: 'border-[#2B5C94] bg-blue-50/80 ring-[#2B5C94]/20',
-      iconTone: 'border-blue-100 bg-blue-50 text-[#2B5C94]',
-      badge: 'border-blue-200 bg-blue-50 text-[#2B5C94]',
-    },
-    {
-      id: 'Venta' as const,
-      label: 'Pedidos de venta',
-      value: ventas,
-      detail: 'Traslados relacionados con ventas',
-      icon: CheckCircle2,
-      active: 'border-emerald-500 bg-emerald-50/80 ring-emerald-500/20',
-      iconTone: 'border-emerald-100 bg-emerald-50 text-emerald-700',
-      badge: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-    },
-  ];
 
   return (
     <div className="space-y-6">
@@ -127,38 +116,6 @@ export function PedidosPage({ pedidos, onOpenOrder }: PedidosPageProps) {
             Agregar
           </button>
         </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {metricas.map((metrica) => {
-          const Icon = metrica.icon;
-          const selected = tipoActivo === metrica.id;
-          return (
-            <button
-              key={metrica.id}
-              type="button"
-              onClick={() => setTipoActivo(selected ? 'all' : metrica.id)}
-              className={`cursor-pointer rounded-xl border p-4 text-left transition-all ${
-                selected ? `${metrica.active} ring-2 shadow-xs` : 'border-slate-200 bg-white hover:border-blue-300'
-              }`}
-            >
-              <div className="mb-2 flex items-center justify-between">
-                <div className={`flex h-8 w-8 items-center justify-center rounded-lg border ${metrica.iconTone}`}>
-                  <Icon className="h-4 w-4" />
-                </div>
-                <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold ${metrica.badge}`}>
-                  {pedidos.length === 0 ? 0 : Math.round((metrica.value / pedidos.length) * 100)}% del total
-                </span>
-              </div>
-              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{metrica.label}</p>
-              <div className="mt-1 flex items-baseline gap-2">
-                <span className="text-2xl font-black text-slate-900">{metrica.value}</span>
-                <span className="text-xs text-slate-400">/ {pedidos.length} pedidos</span>
-              </div>
-              <p className="mt-1 text-[11px] text-slate-500">{metrica.detail}</p>
-            </button>
-          );
-        })}
       </div>
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
@@ -195,18 +152,19 @@ export function PedidosPage({ pedidos, onOpenOrder }: PedidosPageProps) {
           </div>
         </div>
 
-        <div className="flex items-center justify-end border-b border-slate-100 px-4 py-2.5">
-          <span className="text-[11px] text-slate-500">
-            {visibles.length} {visibles.length === 1 ? 'pedido visible' : 'pedidos visibles'}
-          </span>
-        </div>
-
         <div className="overflow-x-auto">
-          <table className="w-max min-w-full border-collapse text-left">
+          <table className="w-full min-w-[860px] table-fixed border-collapse text-left">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                {['N.º de pedido', 'Fecha de emisión', 'Dirección de llegada', 'Descripción de productos', 'Cantidad', 'Guía'].map((label, index) => (
-                  <th key={label} className={`whitespace-nowrap px-3 py-3 ${index === 0 ? 'sticky left-0 z-10 bg-slate-50 shadow-[1px_0_0_#e2e8f0]' : ''}`}>{label}</th>
+                {COLUMNAS_PEDIDOS.map((columna, index) => (
+                  <th
+                    key={columna.label}
+                    scope="col"
+                    style={{ width: columna.width }}
+                    className={`whitespace-nowrap px-3 py-3 ${index === 0 ? 'sticky left-0 z-10 bg-slate-50 shadow-[1px_0_0_#e2e8f0]' : ''}`}
+                  >
+                    {columna.label}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -229,33 +187,66 @@ export function PedidosPage({ pedidos, onOpenOrder }: PedidosPageProps) {
                   }}
                   className="group cursor-pointer hover:bg-blue-50/30 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#2B5C94]"
                 >
-                  <td className="sticky left-0 z-10 min-w-44 bg-white px-3 py-3 align-top shadow-[1px_0_0_#f1f5f9] group-hover:bg-[#f8fbff]">
+                  <td className="sticky left-0 z-10 break-words bg-white px-3 py-3 align-top shadow-[1px_0_0_#f1f5f9] group-hover:bg-[#f8fbff]">
                     <span className="inline-flex items-center gap-2 font-mono font-bold text-[#2B5C94] group-hover:underline">
                       {pedido.numeroPedido}
                     </span>
                   </td>
-                  <td className="min-w-32 whitespace-nowrap px-3 py-3 align-top">{pedido.fechaEmision}</td>
-                  <td className="min-w-80 max-w-96 whitespace-normal px-3 py-3 align-top leading-relaxed">{pedido.direccionLlegada}</td>
-                  <td className="min-w-72 px-3 py-3 align-top font-semibold text-slate-800">{pedido.descripcionProductos}</td>
-                  <td className="min-w-20 px-3 py-3 text-center align-top font-mono font-bold">{pedido.cantidadProductos}</td>
-                  <td className="min-w-24 px-3 py-3 align-top">
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setSelectedGuide(pedido);
-                      }}
-                      title={`Guía del pedido ${pedido.numeroPedido}`}
-                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[11px] font-bold text-[#2B5C94] hover:border-[#2B5C94] hover:bg-blue-100"
-                    >
-                      <FileText className="h-3.5 w-3.5" />
-                      Guía
-                    </button>
+                  <td className="whitespace-normal break-words px-3 py-3 align-top">{formatFecha(pedido.fechaEmision)}</td>
+                  <td className="whitespace-normal break-words px-3 py-3 align-top leading-relaxed">{pedido.direccionLlegada}</td>
+                  <td className="whitespace-pre-line break-words px-3 py-3 align-top font-semibold text-slate-800">{pedido.descripcionProductos}</td>
+                  <td className="px-3 py-3 text-center align-top font-mono font-bold">{pedido.cantidadProductos}</td>
+                  <td className="px-3 py-3 align-top">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setSelectedGuide(pedido);
+                        }}
+                        title={`Guía del pedido ${pedido.numeroPedido}`}
+                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[11px] font-bold text-[#2B5C94] hover:border-[#2B5C94] hover:bg-blue-100"
+                      >
+                        <FileText className="h-3.5 w-3.5" />
+                        Guía
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onEdit(pedido);
+                        }}
+                        title={`Editar pedido ${pedido.numeroPedido}`}
+                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-bold text-slate-700 hover:border-[#2B5C94] hover:bg-blue-50 hover:text-[#2B5C94]"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                        Editar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onDelete(pedido);
+                        }}
+                        title={`Eliminar pedido ${pedido.numeroPedido}`}
+                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[11px] font-bold text-rose-700 hover:border-rose-400 hover:bg-rose-100"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Eliminar
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+
+        <div className="flex items-center gap-2 border-t border-slate-100 bg-slate-50/60 px-4 py-2.5 text-[10px] text-slate-500">
+          <span className="font-bold text-slate-600">
+            {visibles.length} {visibles.length === 1 ? 'pedido mostrado' : 'pedidos mostrados'}
+          </span>
+          en la tabla actual.
         </div>
       </section>
 

@@ -52,6 +52,7 @@ export default function App() {
 
   const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
+  const [editingPedido, setEditingPedido] = useState<PedidoRegistro | null>(null);
 
   const ticketsActivos = tickets.filter((t) => t.estado !== 'Resuelto').length;
 
@@ -110,8 +111,35 @@ export default function App() {
   };
 
   const abrirPedido = () => {
+    setEditingPedido(null);
     setActiveNav('pedidos');
     setIsOrderModalOpen(true);
+  };
+
+  const editarPedido = (pedido: PedidoRegistro) => {
+    setEditingPedido(pedido);
+    setActiveNav('pedidos');
+    setIsOrderModalOpen(true);
+  };
+
+  const cerrarOrderModal = () => {
+    setIsOrderModalOpen(false);
+    setEditingPedido(null);
+  };
+
+  const actualizarPedido = (pedido: PedidoRegistro) => {
+    setPedidos((current) => current.map((item) => (item.id === pedido.id ? pedido : item)));
+    cerrarOrderModal();
+    notify(`Pedido ${pedido.numeroPedido} actualizado correctamente.`);
+  };
+
+  const eliminarPedido = (pedido: PedidoRegistro) => {
+    const confirmed = window.confirm(
+      `¿Eliminar el pedido ${pedido.numeroPedido}? Esta acción no se puede deshacer.`,
+    );
+    if (!confirmed) return;
+    setPedidos((current) => current.filter((item) => item.id !== pedido.id));
+    notify(`Pedido ${pedido.numeroPedido} eliminado.`);
   };
 
   const crearPedido = (input: NuevoPedidoInput) => {
@@ -159,7 +187,14 @@ export default function App() {
           />
         );
       case 'pedidos':
-        return <PedidosPage pedidos={pedidos} onOpenOrder={abrirPedido} />;
+        return (
+          <PedidosPage
+            pedidos={pedidos}
+            onOpenOrder={abrirPedido}
+            onEdit={editarPedido}
+            onDelete={eliminarPedido}
+          />
+        );
       case 'movimientos':
         return <MovimientosPage />;
       case 'tickets':
@@ -204,8 +239,10 @@ export default function App() {
 
       <OrderModal
         isOpen={isOrderModalOpen}
-        onClose={() => setIsOrderModalOpen(false)}
+        onClose={cerrarOrderModal}
         onCreate={crearPedido}
+        editingPedido={editingPedido}
+        onUpdate={actualizarPedido}
       />
     </>
   );
