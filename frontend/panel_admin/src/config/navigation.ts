@@ -1,6 +1,5 @@
 import {
   ArrowLeftRight,
-  BarChart3,
   Boxes,
   ClipboardList,
   Globe,
@@ -71,13 +70,6 @@ export const NAV_ITEMS: NavItem[] = [
     title: 'Gestión web',
     description: 'Actualizar productos, imágenes, servicios y contenido de la web pública.',
     icon: Globe,
-  },
-  {
-    id: 'reportes',
-    label: 'Reportes',
-    title: 'Reportes',
-    description: 'Consultar resultados operativos y comerciales.',
-    icon: BarChart3,
   },
   {
     id: 'configuracion',

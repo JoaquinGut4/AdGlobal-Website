@@ -5,6 +5,7 @@ import fotoAudio from '@/assets/servicios/audiovisuales/Audiovisual 1.jpg';
 import fotoTotem from '@/assets/servicios/Totems/Totems 3.jpeg';
 import fotoLaptops from '@/assets/servicios/laptops/Laptops 1.webp';
 import fotoTablets from '@/assets/servicios/tablets/Tablets 1.jpg';
+import { useManagedWebImages } from '@/hooks/useManagedWebImages';
 
 /** Las cinco fotos del collage de Preguntas frecuentes. */
 const FOTOS = [fotoPantallas, fotoAudio, fotoTotem, fotoLaptops, fotoTablets];
@@ -32,6 +33,11 @@ const ROTACION = 3600;
 export const FaqCollage: React.FC = () => {
   const [tick, setTick] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
+  const managedImages = useManagedWebImages();
+  const managedFaq = managedImages
+    .filter((image) => image.section === 'faq')
+    .map((image) => image.dataUrl);
+  const fotos = managedFaq.length > 0 ? managedFaq : FOTOS;
 
   useEffect(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -67,10 +73,10 @@ export const FaqCollage: React.FC = () => {
   return (
     <div ref={rootRef} className="collage" role="img" aria-label="Equipos instalados por AD GLOBAL">
       {PIEZAS.map((pieza, slot) => {
-        const activa = (tick + slot) % FOTOS.length;
+        const activa = (tick + slot) % fotos.length;
         return (
           <div key={pieza + slot} className={`collage__slot ${pieza}`}>
-            {FOTOS.map((foto, index) => (
+            {fotos.map((foto, index) => (
               <img
                 key={foto}
                 src={foto}

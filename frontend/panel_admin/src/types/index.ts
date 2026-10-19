@@ -11,25 +11,7 @@ export type AdminSection =
   | 'movimientos'
   | 'tickets'
   | 'gestion-web'
-  | 'reportes'
   | 'configuracion';
-
-export type CotizacionStatus = 'pendiente' | 'atendido';
-
-/** Solicitud de cotización recibida desde la web pública o registrada internamente. */
-export interface Cotizacion {
-  id: string;
-  nombre: string;
-  empresa: string;
-  correo: string;
-  telefono: string;
-  servicioId: string;
-  fechas: string;
-  ciudad: string;
-  mensaje: string;
-  createdAt: string;
-  status: CotizacionStatus;
-}
 
 export type TicketArea =
   | 'Soporte In-Situ'
@@ -45,13 +27,14 @@ export type TicketEstado = 'Abierto' | 'En Diagnóstico' | 'En Reparación' | 'R
 export interface SupportTicket {
   id: string;
   codigo: string;
-  area: TicketArea;
+  area?: TicketArea;
   equipo: string;
   cliente: string;
   prioridad: TicketPrioridad;
   estado: TicketEstado;
   descripcion: string;
   tecnico: string;
+  tecnicoTelefono?: string;
   fecha: string;
 }
 
@@ -157,6 +140,41 @@ export interface PedidoRegistro {
   unidadMedida: 'UND';
   motivoTraslado: MotivoTraslado;
   observaciones: string;
+}
+
+export type MovimientoModulo = 'Pedidos' | 'Inventario' | 'Tickets';
+export type MovimientoAccion = 'Creó' | 'Editó' | 'Eliminó' | 'Agregó' | 'Modificó';
+
+export interface MovimientoAuditoria {
+  id: string;
+  fecha: string;
+  usuario: string;
+  modulo: MovimientoModulo;
+  accion: MovimientoAccion;
+  elemento: string;
+  detalle: string;
+}
+
+export type WebImageSection = 'hero' | 'servicio' | 'faq';
+
+export interface WebImageAsset {
+  id: string;
+  section: WebImageSection;
+  serviceId?: string;
+  name: string;
+  dataUrl: string;
+  createdAt: string;
+}
+
+export interface UsuarioAdministrador {
+  id: string;
+  nombre: string;
+  email: string;
+  usuario: string;
+  password: string;
+  activo: boolean;
+  modulos: AdminSection[];
+  createdAt: string;
 }
 
 /** Cliente corporativo del directorio. */

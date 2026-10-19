@@ -27,6 +27,7 @@ import type {
   InventarioCategoriaId,
   InventarioFiltro,
   InventarioRegistro,
+  MovimientoAccion,
 } from '@/types';
 
 interface InventarioPageProps {
@@ -34,6 +35,10 @@ interface InventarioPageProps {
   onFiltroChange: (filtro: InventarioFiltro) => void;
   categoriasPersonalizadas: InventarioCategoria[];
   onAgregarCategoria: (categoria: InventarioCategoria) => void;
+  onRegistrarMovimiento: (
+    accion: Extract<MovimientoAccion, 'Agregó' | 'Modificó' | 'Eliminó'>,
+    registro: InventarioRegistro,
+  ) => void;
 }
 
 type CampoInventario = keyof InventarioRegistro;
@@ -307,6 +312,7 @@ export function InventarioPage({
   onFiltroChange,
   categoriasPersonalizadas,
   onAgregarCategoria,
+  onRegistrarMovimiento,
 }: InventarioPageProps) {
   const [search, setSearch] = useState('');
   const [categoriaActiva, setCategoriaActiva] = useState<InventarioCategoriaId>('laptops');
@@ -375,6 +381,7 @@ export function InventarioPage({
     if (!confirmed) return;
 
     setRegistrosInventario((current) => current.filter((item) => item.id !== registro.id));
+    onRegistrarMovimiento('Eliminó', registro);
     if (selectedRegistro?.id === registro.id) setSelectedRegistro(null);
   };
 
@@ -728,6 +735,7 @@ export function InventarioPage({
         }}
         onCreate={(registro) => {
           setRegistrosInventario((current) => [registro, ...current]);
+          onRegistrarMovimiento('Agregó', registro);
           setCategoriaActiva(registro.categoriaId);
           onFiltroChange('all');
           setSearch('');
@@ -738,6 +746,7 @@ export function InventarioPage({
           setRegistrosInventario((current) =>
             current.map((item) => (item.id === registro.id ? registro : item)),
           );
+          onRegistrarMovimiento('Modificó', registro);
           setCategoriaActiva(registro.categoriaId);
           setEditingRegistro(null);
           setIsInventoryModalOpen(false);

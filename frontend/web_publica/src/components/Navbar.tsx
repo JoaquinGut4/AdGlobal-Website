@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Menu, Settings, X } from 'lucide-react';
+import { SITE } from '@/config/site';
 import { AdGlobalLogo } from './AdGlobalLogo';
 
 interface NavbarProps {
@@ -66,9 +67,14 @@ export const Navbar: React.FC<NavbarProps> = ({ onQuote }) => {
               </button>
             </span>
             <span className="hidden sm:block">
-              <button type="button" aria-label="Ajustes" className="btn btn--gear">
+              <a
+                href={SITE.adminUrl}
+                aria-label="Ir al panel administrativo"
+                title="Panel administrativo"
+                className="btn btn--gear"
+              >
                 <Settings className="h-5 w-5" aria-hidden="true" />
-              </button>
+              </a>
             </span>
             <button
               onClick={() => setOpen(true)}

@@ -5,9 +5,18 @@ interface TopbarProps {
   onToggleSidebar: () => void;
   onOpenTicket: () => void;
   onOpenOrders: () => void;
+  canOpenTicket: boolean;
+  canOpenOrders: boolean;
 }
 
-export function Topbar({ title, onToggleSidebar, onOpenTicket, onOpenOrders }: TopbarProps) {
+export function Topbar({
+  title,
+  onToggleSidebar,
+  onOpenTicket,
+  onOpenOrders,
+  canOpenTicket,
+  canOpenOrders,
+}: TopbarProps) {
   return (
     <header className="bg-white border-b border-slate-200/90 px-4 sm:px-6 py-3.5 flex items-center justify-between gap-3 sticky top-0 z-20">
       <div className="flex items-center gap-3 min-w-0">
@@ -55,7 +64,7 @@ export function Topbar({ title, onToggleSidebar, onOpenTicket, onOpenOrders }: T
         </button>
 
         {/* Aperturar Tickets */}
-        <button
+        {canOpenTicket && <button
           type="button"
           onClick={onOpenTicket}
           title="Aperturar ticket para el área de soporte técnico y reparación"
@@ -64,10 +73,10 @@ export function Topbar({ title, onToggleSidebar, onOpenTicket, onOpenOrders }: T
           <Wrench className="w-3.5 h-3.5 text-amber-400 group-hover:rotate-12 transition-transform" />
           <span className="hidden sm:inline">Ticket</span>
           <span className="sm:hidden">Ticket</span>
-        </button>
+        </button>}
 
         {/* Pedidos */}
-        <button
+        {canOpenOrders && <button
           type="button"
           onClick={onOpenOrders}
           title="Pedidos"
@@ -75,7 +84,7 @@ export function Topbar({ title, onToggleSidebar, onOpenTicket, onOpenOrders }: T
         >
           <FileText className="w-3.5 h-3.5 text-blue-200 group-hover:scale-110 transition-transform" />
           <span>Pedidos</span>
-        </button>
+        </button>}
       </div>
     </header>
   );

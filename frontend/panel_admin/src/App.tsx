@@ -1,12 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { LoginScreen } from '@/components/login/LoginScreen';
 import { OrderModal } from '@/components/modals/OrderModal';
 import { TicketModal } from '@/components/modals/TicketModal';
 import { useToast } from '@/context/ToastContext';
 import { STORAGE_KEYS } from '@/config/site';
-import { COTIZACIONES_SEED } from '@/data/cotizaciones';
 import { INVENTARIO_DATA } from '@/data/inventario';
+import { MOVIMIENTOS_SEED } from '@/data/movimientos';
 import { PEDIDOS_SEED } from '@/data/pedidos';
 import { TICKETS_SEED, siguienteCodigoTicket, siguienteEstadoTicket } from '@/data/tickets';
 import { useAuth } from '@/hooks/useAuth';
@@ -19,15 +19,16 @@ import { GestionWebPage } from '@/pages/GestionWebPage';
 import { InventarioPage } from '@/pages/InventarioPage';
 import { MovimientosPage } from '@/pages/MovimientosPage';
 import { PedidosPage } from '@/pages/PedidosPage';
-import { ReportesPage } from '@/pages/ReportesPage';
 import { TicketsPage } from '@/pages/TicketsPage';
 import type { NuevoTicketInput } from '@/components/modals/TicketModal';
 import type { NuevoPedidoInput } from '@/components/modals/OrderModal';
 import type {
   AdminSection,
-  Cotizacion,
   InventarioCategoria,
   InventarioFiltro,
+  MovimientoAccion,
+  MovimientoAuditoria,
+  MovimientoModulo,
   PedidoRegistro,
   SupportTicket,
 } from '@/types';
@@ -39,15 +40,15 @@ export default function App() {
   const [activeNav, setActiveNav] = useState<AdminSection>('dashboard');
   const [inventarioFiltro, setInventarioFiltro] = useState<InventarioFiltro>('all');
 
-  const [cotizaciones, setCotizaciones] = useLocalStorage<Cotizacion[]>(
-    STORAGE_KEYS.cotizaciones,
-    COTIZACIONES_SEED
-  );
   const [tickets, setTickets] = useLocalStorage<SupportTicket[]>(STORAGE_KEYS.tickets, TICKETS_SEED);
   const [pedidos, setPedidos] = useLocalStorage<PedidoRegistro[]>(STORAGE_KEYS.pedidos, PEDIDOS_SEED);
   const [inventarioCategorias, setInventarioCategorias] = useLocalStorage<InventarioCategoria[]>(
     STORAGE_KEYS.inventarioCategorias,
     [],
+  );
+  const [movimientos, setMovimientos] = useLocalStorage<MovimientoAuditoria[]>(
+    STORAGE_KEYS.movimientos,
+    MOVIMIENTOS_SEED,
   );
 
   const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
@@ -56,22 +57,36 @@ export default function App() {
 
   const ticketsActivos = tickets.filter((t) => t.estado !== 'Resuelto').length;
 
+  const registrarMovimiento = (
+    modulo: MovimientoModulo,
+    accion: MovimientoAccion,
+    elemento: string,
+    detalle: string,
+  ) => {
+    const movimiento: MovimientoAuditoria = {
+      id: `mov-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      fecha: new Date().toISOString(),
+      usuario: session.usuario,
+      modulo,
+      accion,
+      elemento,
+      detalle,
+    };
+    setMovimientos((current) => [movimiento, ...current]);
+  };
+
+  const navegar = (section: AdminSection) => {
+    if (session.modulos.includes(section)) setActiveNav(section);
+  };
+
+  useEffect(() => {
+    if (!isAuthenticated || session.modulos.includes(activeNav)) return;
+    setActiveNav(session.modulos[0] ?? 'dashboard');
+  }, [activeNav, isAuthenticated, session.modulos]);
+
   const handleLogout = () => {
     logout();
     setActiveNav('dashboard');
-  };
-
-  const toggleCotizacionStatus = (id: string) => {
-    setCotizaciones((prev) =>
-      prev.map((cotizacion) =>
-        cotizacion.id === id
-          ? {
-              ...cotizacion,
-              status: cotizacion.status === 'pendiente' ? 'atendido' : 'pendiente',
-            }
-          : cotizacion
-      )
-    );
   };
 
   const avanzarTicket = (id: string) => {
@@ -86,19 +101,26 @@ export default function App() {
     const nuevo: SupportTicket = {
       id: `tkt-${Date.now()}`,
       codigo: siguienteCodigoTicket(tickets.length),
-      area: input.area,
       equipo: input.equipo,
       cliente: input.cliente,
       prioridad: input.prioridad,
       estado: 'Abierto',
       descripcion: input.descripcion,
       tecnico: input.tecnico,
+      tecnicoTelefono: input.tecnicoTelefono,
       fecha: marcaTemporalHoy(),
     };
 
     setTickets((prev) => [nuevo, ...prev]);
+    registrarMovimiento(
+      'Tickets',
+      'Creó',
+      nuevo.codigo,
+      `Creó un ticket de soporte para ${nuevo.cliente} · ${nuevo.equipo}.`,
+    );
     setIsTicketModalOpen(false);
-    notify(`Ticket ${nuevo.codigo} aperturado con éxito para ${nuevo.area}.`);
+    notify(`Ticket ${nuevo.codigo} aperturado con éxito para ${nuevo.cliente}.`);
+    return nuevo;
   };
 
   const siguienteNumeroPedido = () => {
@@ -111,6 +133,7 @@ export default function App() {
   };
 
   const abrirPedido = () => {
+    if (!session.modulos.includes('pedidos')) return;
     setEditingPedido(null);
     setActiveNav('pedidos');
     setIsOrderModalOpen(true);
@@ -129,6 +152,12 @@ export default function App() {
 
   const actualizarPedido = (pedido: PedidoRegistro) => {
     setPedidos((current) => current.map((item) => (item.id === pedido.id ? pedido : item)));
+    registrarMovimiento(
+      'Pedidos',
+      'Editó',
+      pedido.numeroPedido,
+      `Editó el pedido ${pedido.numeroPedido}.`,
+    );
     cerrarOrderModal();
     notify(`Pedido ${pedido.numeroPedido} actualizado correctamente.`);
   };
@@ -139,6 +168,12 @@ export default function App() {
     );
     if (!confirmed) return;
     setPedidos((current) => current.filter((item) => item.id !== pedido.id));
+    registrarMovimiento(
+      'Pedidos',
+      'Eliminó',
+      pedido.numeroPedido,
+      `Eliminó el pedido ${pedido.numeroPedido}.`,
+    );
     notify(`Pedido ${pedido.numeroPedido} eliminado.`);
   };
 
@@ -150,12 +185,19 @@ export default function App() {
     };
 
     setPedidos((current) => [nuevo, ...current]);
+    registrarMovimiento(
+      'Pedidos',
+      'Creó',
+      nuevo.numeroPedido,
+      `Creó el pedido ${nuevo.numeroPedido} por ${nuevo.motivoTraslado}.`,
+    );
     setIsOrderModalOpen(false);
     setActiveNav('pedidos');
     notify(`Pedido ${nuevo.numeroPedido} aperturado correctamente.`);
   };
 
   const irAInventarioConFiltro = (filtro: InventarioFiltro) => {
+    if (!session.modulos.includes('inventario')) return;
     setInventarioFiltro(filtro);
     setActiveNav('inventario');
   };
@@ -169,10 +211,8 @@ export default function App() {
       case 'dashboard':
         return (
           <DashboardPage
-            cotizaciones={cotizaciones}
-            onToggleStatus={toggleCotizacionStatus}
             onVerFiltro={irAInventarioConFiltro}
-            onVerInventario={() => setActiveNav('inventario')}
+            onVerInventario={() => navegar('inventario')}
           />
         );
       case 'inventario':
@@ -183,6 +223,14 @@ export default function App() {
             categoriasPersonalizadas={inventarioCategorias}
             onAgregarCategoria={(categoria) =>
               setInventarioCategorias((current) => [...current, categoria])
+            }
+            onRegistrarMovimiento={(accion, registro) =>
+              registrarMovimiento(
+                'Inventario',
+                accion,
+                registro.sku,
+                `${accion} el producto ${registro.sku} · ${registro.descripcion}.`,
+              )
             }
           />
         );
@@ -196,7 +244,7 @@ export default function App() {
           />
         );
       case 'movimientos':
-        return <MovimientosPage />;
+        return <MovimientosPage movimientos={movimientos} />;
       case 'tickets':
         return (
           <TicketsPage
@@ -209,8 +257,6 @@ export default function App() {
         return <ClientesPage />;
       case 'gestion-web':
         return <GestionWebPage />;
-      case 'reportes':
-        return <ReportesPage />;
       case 'configuracion':
         return <ConfiguracionPage />;
     }
@@ -220,7 +266,7 @@ export default function App() {
     <>
       <AdminLayout
         activeNav={activeNav}
-        onNavigate={setActiveNav}
+        onNavigate={navegar}
         onLogout={handleLogout}
         onOpenTicket={() => setIsTicketModalOpen(true)}
         onOpenOrders={abrirPedido}

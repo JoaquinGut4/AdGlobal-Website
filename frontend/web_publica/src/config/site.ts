@@ -6,6 +6,9 @@
 
 export const SITE = {
   url: import.meta.env.VITE_SITE_URL ?? 'https://adglobalperu.com',
+  adminUrl:
+    import.meta.env.VITE_ADMIN_URL ??
+    (import.meta.env.DEV ? 'http://localhost:3001' : '/panel_admin/'),
   whatsappNumber: import.meta.env.VITE_WHATSAPP_NUMBER ?? '51908838291',
   phoneDisplay: import.meta.env.VITE_CONTACT_PHONE_DISPLAY ?? '+51 908 838 291',
   email: import.meta.env.VITE_CONTACT_EMAIL ?? 'atencionalcliente@adglobalperu.com',

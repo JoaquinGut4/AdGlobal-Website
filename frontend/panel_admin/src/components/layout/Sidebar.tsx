@@ -33,6 +33,7 @@ export function Sidebar({
   onToggleCollapsed,
 }: SidebarProps) {
   const initial = session.usuario.slice(0, 2).toUpperCase();
+  const visibleNavItems = NAV_ITEMS.filter((item) => session.modulos.includes(item.id));
 
   return (
     <>
@@ -104,7 +105,7 @@ export function Sidebar({
             Menú Principal
           </div>
 
-          {NAV_ITEMS.map((item) => {
+          {visibleNavItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeNav === item.id;
 

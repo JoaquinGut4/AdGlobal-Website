@@ -73,6 +73,8 @@ export function AdminLayout({
           onToggleSidebar={() => setIsSidebarOpen(true)}
           onOpenTicket={onOpenTicket}
           onOpenOrders={onOpenOrders}
+          canOpenTicket={session.modulos.includes('tickets')}
+          canOpenOrders={session.modulos.includes('pedidos')}
         />
 
         <main className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl w-full mx-auto">{children}</main>

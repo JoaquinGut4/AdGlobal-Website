@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, Image as ImageIcon, Play } from 'lucide-react';
 import type { ServiceItem } from '@/data/servicios';
+import { useManagedWebImages } from '@/hooks/useManagedWebImages';
 
 interface ServicePanelProps {
   service: ServiceItem;
@@ -15,12 +16,25 @@ export const ServicePanel: React.FC<ServicePanelProps> = ({
   onToggle,
   onQuote,
 }) => {
-  const media = service.gallery;
+  const managedImages = useManagedWebImages();
+  const managedMedia = useMemo(
+    () =>
+      managedImages
+        .filter((image) => image.section === 'servicio' && image.serviceId === service.id)
+        .map((image) => ({ type: 'image' as const, url: image.dataUrl, caption: image.name })),
+    [managedImages, service.id]
+  );
+  const media = managedMedia.length > 0 ? managedMedia : service.gallery;
+  const featuredImage = managedMedia[0]?.url ?? service.featuredImage;
   const [active, setActive] = useState(() => {
     const firstVideo = media.findIndex((item) => item.type === 'video');
     return firstVideo >= 0 ? firstVideo : 0;
   });
   const current = media[active];
+
+  useEffect(() => {
+    setActive((index) => (media.length === 0 ? 0 : Math.min(index, media.length - 1)));
+  }, [media.length]);
 
   return (
     <article className={`acc ${open ? 'is-open' : ''}`}>
@@ -83,7 +97,7 @@ export const ServicePanel: React.FC<ServicePanelProps> = ({
                     <video
                       key={current.url}
                       src={current.url}
-                      poster={service.featuredImage}
+                      poster={featuredImage}
                       autoPlay
                       muted
                       loop

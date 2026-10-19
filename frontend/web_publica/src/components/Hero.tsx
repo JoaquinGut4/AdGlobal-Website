@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { HERO } from '@/data/contenido';
 import { SERVICIOS_DATA, type ServiceItem } from '@/data/servicios';
+import { useManagedWebImages } from '@/hooks/useManagedWebImages';
 
 /** Etiquetas cortas para el índice interactivo del banner. */
 const SHORT_LABEL: Record<string, string> = {
@@ -56,17 +57,39 @@ interface HeroProps {
   onQuote: () => void;
 }
 
+interface HeroExhibit {
+  id: string;
+  title: string;
+  featuredImage: string;
+}
+
 export const Hero: React.FC<HeroProps> = ({ onQuote }) => {
-  const exhibits = useMemo(
-    () =>
-      HERO_ORDER.map((id) => SERVICIOS_DATA.find((service) => service.id === id)).filter(
-        (service): service is ServiceItem => Boolean(service?.featuredImage)
-      ),
-    []
-  );
+  const managedImages = useManagedWebImages();
+  const exhibits = useMemo<HeroExhibit[]>(() => {
+    const managedHero = managedImages.filter((image) => image.section === 'hero');
+    if (managedHero.length > 0) {
+      return managedHero.map((image, index) => ({
+        id: image.id,
+        title: image.name || `Banner ${index + 1}`,
+        featuredImage: image.dataUrl,
+      }));
+    }
+
+    return HERO_ORDER.map((id) => SERVICIOS_DATA.find((service) => service.id === id))
+      .filter((service): service is ServiceItem => Boolean(service?.featuredImage))
+      .map((service) => ({
+        id: service.id,
+        title: service.title,
+        featuredImage: service.featuredImage as string,
+      }));
+  }, [managedImages]);
 
   const [active, setActive] = useState(0);
   const [auto, setAuto] = useState(true);
+
+  useEffect(() => {
+    setActive((index) => (exhibits.length === 0 ? 0 : Math.min(index, exhibits.length - 1)));
+  }, [exhibits.length]);
 
   useEffect(() => {
     if (!auto || exhibits.length < 2) return;

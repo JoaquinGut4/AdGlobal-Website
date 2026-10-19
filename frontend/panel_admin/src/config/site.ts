@@ -15,13 +15,16 @@ export const ADMIN_CONFIG = {
 
 /** Clave de persistencia de la sesión administrativa. */
 export const AUTH_STORAGE_KEY = 'adglobal_admin_auth';
+export const AUTH_SESSION_STORAGE_KEY = 'adglobal_admin_session';
 
 /** Claves de persistencia de datos operativos. */
 export const STORAGE_KEYS = {
-  cotizaciones: 'adglobal_quotes',
   tickets: 'adglobal_tickets',
   inventario: 'adglobal_inventory',
   inventarioCategorias: 'adglobal_inventory_categories',
   inventarioEstados: 'adglobal_inventory_statuses',
   pedidos: 'adglobal_orders_v8',
+  movimientos: 'adglobal_movements',
+  webImagenes: 'adglobal_web_images_v1',
+  usuarios: 'adglobal_admin_users',
 } as const;

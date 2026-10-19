@@ -57,7 +57,10 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
 
   if (!pedido) return null;
 
-  const destinatario = pedido.direccionLlegada.split(' · ')[0].replace(/^(Empresa|Persona natural):\s*/, '');
+  const segmentosLlegada = pedido.direccionLlegada.split(' · ');
+  const destinatario = segmentosLlegada[0].replace(/^(Empresa|Persona natural):\s*/, '');
+  const datoLlegada = (label: string) =>
+    segmentosLlegada.find((segmento) => segmento.startsWith(`${label}:`))?.replace(`${label}:`, '').trim() ?? '';
 
   const guardarBorrador = () => {
     if (!formRef.current) return;
@@ -95,8 +98,8 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
 </style></head><body><main class="guide">
 <section class="header"><div class="company"><img class="logo" src="${escapeHtml(logoUrl)}"><div class="company-info"><div class="services">Tecnología de Información<br>Sistemas Audiovisuales<br>Pantallas LED Gigantes<br>Computadoras y Portátiles<br>Impresoras y Proyectores Multimedia</div>Av. Húsares de Junín 527, Jesús María – Lima – Lima<br>Telf: 01-7353734 · Cel: 957586421 / 944825839<br>E-mail: atencionalcliente@adglobal.com</div></div><div class="docbox"><div class="ruc">RUC 20602583849</div><div class="doctype">GUÍA DE REMISIÓN - REMITENTE</div><div class="number"><strong>0001 -</strong> N° ${value('numero_guia')}</div></div></section>
 <section class="dates"><div class="date"><b>Fecha de emisión</b><span>${value('fecha_emision')}</span></div><div class="date"><b>Inicio del traslado</b><span>${value('fecha_traslado')}</span></div></section>
-<section class="grid2"><div class="box"><h3>Dirección de partida</h3><div class="box-content">${value('direccion_partida')}</div></div><div class="box"><h3>Dirección de llegada</h3><div class="box-content">${value('direccion_llegada')}</div></div><div class="box"><h3>Destinatario / Razón social</h3><div class="box-content"><div class="line"><b>Apellidos y nombres / Razón social:</b> ${value('destinatario')}</div><div class="line"><b>R.U.C.:</b> ${value('destinatario_ruc')} &nbsp; <b>D.N.I.:</b> ${value('destinatario_dni')}</div></div></div><div class="box"><h3>Unidad de transporte y conductor</h3><div class="box-content"><div class="line"><b>Vehículo, marca y placa:</b> ${value('vehiculo')}</div><div class="line"><b>Licencia:</b> ${value('licencia')} &nbsp; <b>D.N.I.:</b> ${value('conductor_dni')}</div></div></div></section>
-<section class="goods"><h3>Descripción de los bienes trasladados</h3><table><thead><tr><th style="width:10%">Cant.</th><th style="width:12%">Unid. de med.</th><th>Descripción</th><th style="width:13%">Peso total</th></tr></thead><tbody><tr class="item"><td>${value('cantidad')}</td><td>${value('unidad')}</td><td>${value('descripcion')}</td><td>${value('peso')} kg</td></tr></tbody></table></section>
+<section class="grid2"><div class="box"><h3>Dirección de partida</h3><div class="box-content"><div class="line"><b>Dirección:</b> ${value('partida_direccion')}</div><div class="line"><b>Distrito:</b> ${value('partida_distrito')} &nbsp; <b>Provincia:</b> ${value('partida_provincia')} &nbsp; <b>Departamento:</b> ${value('partida_departamento')}</div></div></div><div class="box"><h3>Dirección de llegada</h3><div class="box-content"><div class="line"><b>Dirección:</b> ${value('llegada_direccion')}</div><div class="line"><b>Distrito:</b> ${value('llegada_distrito')} &nbsp; <b>Provincia:</b> ${value('llegada_provincia')} &nbsp; <b>Departamento:</b> ${value('llegada_departamento')}</div></div></div><div class="box"><h3>Dirección de partida</h3><div class="box-content"><div class="line"><b>Apellidos y nombres / Razón social:</b> ${value('destinatario')}</div><div class="line"><b>R.U.C.:</b> ${value('destinatario_ruc')} &nbsp; <b>D.I.:</b> ${value('destinatario_dni')}</div></div></div><div class="box"><h3>Unidad de transporte y conductor</h3><div class="box-content"><div class="line"><b>Vehículo, marca y placa:</b> ${value('vehiculo')}</div><div class="line"><b>Certificado de inscripción:</b> ${value('certificado')}</div><div class="line"><b>Licencia de conductor:</b> ${value('licencia')} &nbsp; <b>D.I.:</b> ${value('conductor_dni')}</div></div></div></section>
+<section class="goods"><h3>Descripción de los bienes trasladados</h3><table><thead><tr><th style="width:9%">Cant.</th><th style="width:11%">Unid. de med.</th><th>Descripción</th><th style="width:24%">Observaciones</th><th style="width:12%">Peso total</th></tr></thead><tbody><tr class="item"><td>${value('cantidad')}</td><td>${value('unidad')}</td><td>${value('descripcion')}</td><td>${value('item_observaciones')}</td><td>${value('peso')} kg</td></tr></tbody></table></section>
 <section class="bottom-grid"><div><div class="bottom"><h3>Transportista</h3><div class="bottom-content"><div class="line"><b>Nombre:</b> ${value('transportista')}</div><div class="line"><b>R.U.C.:</b> ${value('transportista_ruc')}</div><div class="line"><b>Costo de traslado:</b> ${value('costo_traslado')}</div></div></div><div class="bottom" style="margin-top:6px"><h3>Comprobante de pago</h3><div class="bottom-content"><b>Tipo:</b> ${value('comprobante_tipo')} &nbsp; <b>N°:</b> ${value('comprobante_numero')}</div></div></div><div class="bottom"><h3>Motivo de traslado</h3><div class="bottom-content reason-grid">${motivosHtml}</div></div></section>
 <section class="signatures"><div class="signature">Firma del remitente</div><div class="signature">Conformidad del cliente / destinatario</div></section><p class="foot">Formato operativo. La emisión tributaria debe cumplir los requisitos vigentes de SUNAT.</p></main>
 <script>window.addEventListener('load',()=>setTimeout(()=>window.print(),250));<\/script></body></html>`);
@@ -168,40 +171,53 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
               </GuideField>
             </GuideSection>
 
-            <GuideSection title="Información del traslado">
-              <GuideField label="Observaciones / referencia interna" full>
-                <textarea name="observaciones" rows={3} defaultValue={pedido.observaciones} className={FIELD_CLASS} />
-              </GuideField>
-            </GuideSection>
-
             <GuideSection title="Dirección de partida">
               <GuideField label="Dirección" full>
-                <textarea name="direccion_partida" rows={3} defaultValue={pedido.direccionPartida} className={FIELD_CLASS} />
+                <input name="partida_direccion" value="Av. Húsares de Junín 527" readOnly className={`${FIELD_CLASS} bg-slate-100 text-slate-600`} />
+              </GuideField>
+              <GuideField label="Distrito">
+                <input name="partida_distrito" value="Jesús María" readOnly className={`${FIELD_CLASS} bg-slate-100 text-slate-600`} />
+              </GuideField>
+              <GuideField label="Provincia">
+                <input name="partida_provincia" value="Lima" readOnly className={`${FIELD_CLASS} bg-slate-100 text-slate-600`} />
+              </GuideField>
+              <GuideField label="Departamento" full>
+                <input name="partida_departamento" value="Lima" readOnly className={`${FIELD_CLASS} bg-slate-100 text-slate-600`} />
               </GuideField>
             </GuideSection>
 
             <GuideSection title="Dirección de llegada">
-              <GuideField label="Destinatario y dirección" full>
-                <textarea name="direccion_llegada" rows={4} defaultValue={pedido.direccionLlegada} className={FIELD_CLASS} />
+              <GuideField label="Dirección" full>
+                <input name="llegada_direccion" defaultValue={datoLlegada('Dirección')} className={FIELD_CLASS} />
+              </GuideField>
+              <GuideField label="Distrito">
+                <input name="llegada_distrito" defaultValue={datoLlegada('Distrito')} className={FIELD_CLASS} />
+              </GuideField>
+              <GuideField label="Provincia">
+                <input name="llegada_provincia" defaultValue={datoLlegada('Provincia')} className={FIELD_CLASS} />
+              </GuideField>
+              <GuideField label="Departamento" full>
+                <input name="llegada_departamento" defaultValue={datoLlegada('Departamento')} className={FIELD_CLASS} />
               </GuideField>
             </GuideSection>
 
-            <GuideSection title="Destinatario / Razón social">
+            <GuideSection title="Dirección de partida">
               <GuideField label="Apellidos y nombres / Razón social" full>
                 <input name="destinatario" defaultValue={destinatario} className={FIELD_CLASS} />
               </GuideField>
               <GuideField label="R.U.C.">
                 <input name="destinatario_ruc" inputMode="numeric" maxLength={11} className={FIELD_CLASS} />
               </GuideField>
-              <GuideField label="D.N.I.">
+              <GuideField label="D.I.">
                 <input name="destinatario_dni" inputMode="numeric" maxLength={8} className={FIELD_CLASS} />
               </GuideField>
             </GuideSection>
 
             <GuideSection title="Unidad de transporte y conductor">
               <GuideField label="Vehículo, marca y placa" full><input name="vehiculo" className={FIELD_CLASS} /></GuideField>
-              <GuideField label="Licencia de conducir"><input name="licencia" className={FIELD_CLASS} /></GuideField>
-              <GuideField label="D.N.I. del conductor"><input name="conductor_dni" maxLength={8} className={FIELD_CLASS} /></GuideField>
+              <GuideField label="Certificado de inscripción" full><input name="certificado" className={FIELD_CLASS} /></GuideField>
+              <GuideField label="Licencia de conductor"><input name="licencia" className={FIELD_CLASS} /></GuideField>
+              <GuideField label="D.I."><input name="conductor_dni" maxLength={12} className={FIELD_CLASS} /></GuideField>
             </GuideSection>
           </div>
 
@@ -212,13 +228,14 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
             <div className="overflow-x-auto">
               <table className="min-w-full border-collapse text-left text-xs">
                 <thead className="bg-slate-100 text-[10px] uppercase text-slate-500">
-                  <tr><th className="px-3 py-2">Cant.</th><th className="px-3 py-2">Unid.</th><th className="px-3 py-2">Descripción</th><th className="px-3 py-2">Peso (kg)</th></tr>
+                  <tr><th className="px-3 py-2">Cant.</th><th className="px-3 py-2">Unid.</th><th className="px-3 py-2">Descripción</th><th className="px-3 py-2">Observaciones</th><th className="px-3 py-2">Peso (kg)</th></tr>
                 </thead>
                 <tbody>
                   <tr className="border-t border-slate-200">
-                    <td className="p-2"><input name="cantidad" type="number" min="1" defaultValue={pedido.cantidadProductos} className={FIELD_CLASS} /></td>
+                    <td className="p-2"><input name="cantidad" type="number" min="1" value={pedido.cantidadProductos} readOnly className={`${FIELD_CLASS} bg-slate-100 text-slate-600`} /></td>
                     <td className="p-2"><input name="unidad" defaultValue={pedido.unidadMedida} className={FIELD_CLASS} /></td>
-                    <td className="p-2"><textarea name="descripcion" rows={2} defaultValue={pedido.descripcionProductos} className={FIELD_CLASS} /></td>
+                    <td className="p-2"><textarea name="descripcion" rows={2} value={pedido.descripcionProductos} readOnly className={`${FIELD_CLASS} bg-slate-100 text-slate-600`} /></td>
+                    <td className="p-2"><textarea name="item_observaciones" rows={2} defaultValue={pedido.observaciones} placeholder="Observaciones del producto trasladado" className={FIELD_CLASS} /></td>
                     <td className="p-2"><input name="peso" type="number" min="0" step="0.01" defaultValue="0" className={FIELD_CLASS} /></td>
                   </tr>
                 </tbody>

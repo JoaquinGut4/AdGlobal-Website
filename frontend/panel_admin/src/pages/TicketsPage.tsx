@@ -25,7 +25,7 @@ export function TicketsPage({ tickets, onAvanzarEstado, onOpenTicket }: TicketsP
   const enTaller = tickets.filter(
     (t) => t.estado === 'En Diagnóstico' || t.estado === 'En Reparación'
   ).length;
-  const inSitu = tickets.filter((t) => t.area === 'Soporte In-Situ').length;
+  const abiertos = tickets.filter((t) => t.estado === 'Abierto').length;
   const urgentes = tickets.filter((t) => t.prioridad === 'Urgente' && t.estado !== 'Resuelto').length;
 
   return (
@@ -70,9 +70,9 @@ export function TicketsPage({ tickets, onAvanzarEstado, onOpenTicket }: TicketsP
         </div>
 
         <div className="p-4 rounded-xl border border-blue-100 bg-blue-50/30 shadow-2xs">
-          <p className="text-[11px] font-bold text-[#2B5C94] uppercase">Soporte In-Situ</p>
-          <p className="text-2xl font-black text-[#2B5C94] mt-0.5">{inSitu}</p>
-          <p className="text-[10px] text-blue-600 mt-0.5">Técnicos en campo</p>
+          <p className="text-[11px] font-bold text-[#2B5C94] uppercase">Tickets abiertos</p>
+          <p className="text-2xl font-black text-[#2B5C94] mt-0.5">{abiertos}</p>
+          <p className="text-[10px] text-blue-600 mt-0.5">Pendientes de atención</p>
         </div>
 
         <div className="p-4 rounded-xl border border-rose-100 bg-rose-50/30 shadow-2xs">
@@ -95,8 +95,12 @@ export function TicketsPage({ tickets, onAvanzarEstado, onOpenTicket }: TicketsP
                   {ticket.codigo}
                 </span>
                 <span className="text-xs font-bold text-slate-800">{ticket.cliente}</span>
-                <span className="text-slate-300">·</span>
-                <span className="text-xs text-slate-500 font-medium">{ticket.area}</span>
+                {ticket.area && (
+                  <>
+                    <span className="text-slate-300">·</span>
+                    <span className="text-xs text-slate-500 font-medium">{ticket.area}</span>
+                  </>
+                )}
                 <span
                   className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                     PRIORIDAD_CLASSES[ticket.prioridad]
