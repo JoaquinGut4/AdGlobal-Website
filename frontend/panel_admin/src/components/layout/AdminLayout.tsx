@@ -14,6 +14,7 @@ interface AdminLayoutProps {
   onOpenOrders: () => void;
   session: AuthSession;
   ticketsActivos: number;
+  pendingOrders: number;
   inventarioCategorias: number;
   children: ReactNode;
 }
@@ -26,6 +27,7 @@ export function AdminLayout({
   onOpenOrders,
   session,
   ticketsActivos,
+  pendingOrders,
   inventarioCategorias,
   children,
 }: AdminLayoutProps) {
@@ -75,6 +77,9 @@ export function AdminLayout({
           onOpenOrders={onOpenOrders}
           canOpenTicket={session.modulos.includes('tickets')}
           canOpenOrders={session.modulos.includes('pedidos')}
+          pendingOrders={pendingOrders}
+          activeTickets={ticketsActivos}
+          onNavigate={handleNavigate}
         />
 
         <main className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl w-full mx-auto">{children}</main>

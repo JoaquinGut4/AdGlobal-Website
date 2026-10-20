@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Boxes, ClipboardList, Search, TicketCheck } from 'lucide-react';
+import { Boxes, CalendarDays, ClipboardList, Search, TicketCheck, X } from 'lucide-react';
+import { diaLocal, movimientosPorFecha } from '@/lib/movementDates';
 import type { MovimientoAuditoria, MovimientoModulo } from '@/types';
 
 interface MovimientosPageProps {
@@ -29,9 +30,13 @@ const MODULOS: Array<{ id: MovimientoModulo; icon: typeof ClipboardList; tone: s
 export function MovimientosPage({ movimientos }: MovimientosPageProps) {
   const [search, setSearch] = useState('');
   const [moduloActivo, setModuloActivo] = useState<ModuloFiltro>('Todos');
+  const [desde, setDesde] = useState('');
+  const [hasta, setHasta] = useState('');
   const terminos = normalizar(search).trim().split(/\s+/).filter(Boolean);
+  const rangoInvalido = Boolean(desde && hasta && desde > hasta);
+  const movimientosEnRango = movimientosPorFecha(movimientos, desde, hasta);
 
-  const visibles = movimientos.filter((movimiento) => {
+  const visibles = movimientosEnRango.filter((movimiento) => {
     if (moduloActivo !== 'Todos' && movimiento.modulo !== moduloActivo) return false;
     if (terminos.length === 0) return true;
     const contenido = normalizar(Object.values(movimiento).join(' '));
@@ -48,14 +53,14 @@ export function MovimientosPage({ movimientos }: MovimientosPageProps) {
           </span>
         </div>
         <p className="mt-1 text-xs text-slate-500">
-          Auditoría de acciones realizadas por los usuarios en Pedidos, Inventario y Tickets
+          Auditoría de acciones realizadas por los usuarios en Pedidos, Inventario y Tickets, consultable por fecha.
         </p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {MODULOS.map((modulo) => {
           const Icon = modulo.icon;
-          const total = movimientos.filter((item) => item.modulo === modulo.id).length;
+          const total = movimientosEnRango.filter((item) => item.modulo === modulo.id).length;
           const active = moduloActivo === modulo.id;
           return (
             <button
@@ -108,9 +113,67 @@ export function MovimientosPage({ movimientos }: MovimientosPageProps) {
           </div>
         </div>
 
+        <div className="flex flex-wrap items-end gap-3 border-b border-slate-200 bg-white px-3 py-3 sm:px-4">
+          <div className="flex items-center gap-1.5 self-center text-xs font-bold text-slate-600">
+            <CalendarDays className="h-4 w-4 text-[#2B5C94]" />
+            Fecha
+          </div>
+          <div>
+            <label htmlFor="movimientos-desde" className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500">
+              Desde
+            </label>
+            <input
+              id="movimientos-desde"
+              type="date"
+              value={desde}
+              onChange={(event) => setDesde(event.target.value)}
+              className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#2B5C94] focus:outline-none"
+            />
+          </div>
+          <div>
+            <label htmlFor="movimientos-hasta" className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-500">
+              Hasta
+            </label>
+            <input
+              id="movimientos-hasta"
+              type="date"
+              value={hasta}
+              onChange={(event) => setHasta(event.target.value)}
+              className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#2B5C94] focus:outline-none"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const today = diaLocal(new Date().toISOString()) ?? '';
+              setDesde(today);
+              setHasta(today);
+            }}
+            className="h-9 cursor-pointer rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-[#2B5C94] hover:bg-blue-100"
+          >
+            Hoy
+          </button>
+          {(desde || hasta) && (
+            <button
+              type="button"
+              onClick={() => { setDesde(''); setHasta(''); }}
+              className="inline-flex h-9 cursor-pointer items-center gap-1 rounded-lg px-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+            >
+              <X className="h-3.5 w-3.5" />
+              Limpiar fechas
+            </button>
+          )}
+          {rangoInvalido && (
+            <p role="alert" className="w-full text-xs font-semibold text-rose-700">
+              La fecha «Desde» no puede ser posterior a «Hasta».
+            </p>
+          )}
+        </div>
+
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
           <span className="text-xs font-bold text-slate-800">
             {moduloActivo === 'Todos' ? 'Todos los módulos' : moduloActivo}
+            {(desde || hasta) && <span className="ml-2 font-medium text-slate-500">· Período seleccionado</span>}
           </span>
           <span className="text-[11px] text-slate-500">
             {visibles.length} {visibles.length === 1 ? 'movimiento visible' : 'movimientos visibles'}
@@ -143,7 +206,9 @@ export function MovimientosPage({ movimientos }: MovimientosPageProps) {
                       : 'bg-amber-50 text-amber-700';
                   return (
                     <tr key={movimiento.id} className="hover:bg-blue-50/30">
-                      <td className="min-w-44 whitespace-nowrap px-4 py-3">{dateFormatter.format(new Date(movimiento.fecha))}</td>
+                      <td className="min-w-44 whitespace-nowrap px-4 py-3">
+                        {diaLocal(movimiento.fecha) ? dateFormatter.format(new Date(movimiento.fecha)) : 'Fecha no disponible'}
+                      </td>
                       <td className="min-w-36 px-4 py-3 font-mono font-bold text-slate-700">{movimiento.usuario}</td>
                       <td className="min-w-28 px-4 py-3"><span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold ${modulo.tone}`}>{movimiento.modulo}</span></td>
                       <td className="min-w-24 px-4 py-3"><span className={`rounded px-2 py-0.5 text-[10px] font-bold ${actionTone}`}>{movimiento.accion}</span></td>

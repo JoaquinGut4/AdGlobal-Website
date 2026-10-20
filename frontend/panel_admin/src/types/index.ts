@@ -22,6 +22,7 @@ export type TicketArea =
 export type TicketPrioridad = 'Urgente' | 'Alta' | 'Media' | 'Baja';
 
 export type TicketEstado = 'Abierto' | 'En Diagnóstico' | 'En Reparación' | 'Resuelto';
+export type TicketTipo = 'pedido' | 'general';
 
 /** Ticket de soporte técnico / reparación de equipos. */
 export interface SupportTicket {
@@ -33,6 +34,15 @@ export interface SupportTicket {
   prioridad: TicketPrioridad;
   estado: TicketEstado;
   descripcion: string;
+  numeroPedidoEstado?: string;
+  tipoTicket?: TicketTipo;
+  numeroPedido?: string;
+  telefonoContacto?: string;
+  direccionPedido?: string;
+  estadoEquipo?: string;
+  equiposIds?: string[];
+  /** Estado de cada activo antes de enviarlo a Taller; clave = id del activo. */
+  estadosAnteriores?: Record<string, string>;
   tecnico: string;
   tecnicoTelefono?: string;
   fecha: string;
@@ -132,10 +142,18 @@ export type MotivoTraslado =
 export interface PedidoRegistro {
   id: string;
   numeroPedido: string;
+  /** Estado operativo del pedido (independiente del estado de cada activo). */
+  estadoPedido?: 'Activo' | 'Finalizado';
+  fechaFinalizacion?: string;
+  /** Estado de cada equipo antes de asignarlo a este pedido; clave = id del activo. */
+  estadosAnteriores?: Record<string, string>;
   fechaEmision: string;
   direccionPartida: string;
   direccionLlegada: string;
+  /** Vacío en pedidos creados antes de incorporar el número de contacto. */
+  telefonoContacto?: string;
   descripcionProductos: string;
+  skus?: string[];
   cantidadProductos: number;
   unidadMedida: 'UND';
   motivoTraslado: MotivoTraslado;
@@ -157,12 +175,15 @@ export interface MovimientoAuditoria {
 
 export type WebImageSection = 'hero' | 'servicio' | 'faq';
 
-export interface WebImageAsset {
+export interface WebAsset {
   id: string;
   section: WebImageSection;
-  serviceId?: string;
+  serviceId?: string | null;
   name: string;
   dataUrl: string;
+  mimeType: string;
+  sortOrder: number;
+  isActive: boolean;
   createdAt: string;
 }
 

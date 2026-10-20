@@ -86,6 +86,31 @@ La autenticación y la administración de usuarios consumen el backend. Algunos 
 operativos aún mantienen estado local mientras se completa su conexión visual con los endpoints.
 Las cuentas iniciales se crean mediante el *seed* seguro del backend.
 
+### Ciclo de vida de pedidos e inventario
+
+Al crear un pedido de alquiler o venta, se guardan los estados originales de los equipos
+identificados por SKU y se cambian a `Alquiler` o `Venta`, respectivamente. **Finalizar**
+un alquiler devuelve los equipos a sus estados anteriores; finalizar una venta la mantiene
+como `Venta`. **Eliminar** un pedido activo de alquiler o venta restaura esos estados;
+eliminar una venta finalizada también los restaura. Si un equipo fue cambiado manualmente
+después de crear el pedido, su estado no se sobrescribe. Los pedidos anteriores a esta
+función no tienen estados originales guardados y no se restauran automáticamente.
+
+El formulario no pide una cantidad manual: cada SKU distinto encontrado en el inventario
+cuenta como una unidad. Los pedidos existentes conservan su cantidad histórica.
+
+Los estados `Alquiler`, `Taller` y `Venta` son fijos: siempre están disponibles y no se
+pueden editar ni eliminar. El estado anterior `Vendido` se convierte automáticamente a
+`Venta` en los datos locales existentes.
+
+El ticket tiene dos pestañas: **Por pedido** (se elige un pedido, se leen su cliente y
+contacto y solo se pueden seleccionar sus SKU) y **General / Inventario** (se elige un
+estado y solo se muestran equipos de ese estado). Al crearlo, sus equipos pasan a `Taller`.
+Al completarlo o eliminarlo regresan al estado anterior, siempre que nadie los haya
+cambiado manualmente. Un equipo no puede pertenecer a dos tickets activos. Si un pedido
+se finaliza mientras su equipo está en Taller, el equipo volverá al estado anterior al
+pedido cuando se complete el ticket. El mensaje de WhatsApp sigue siendo manual.
+
 ## Despliegue (Webuzo / Apache)
 
 El build genera archivos estáticos en `dist/`, con `public/.htaccess` incluido (fallback SPA,

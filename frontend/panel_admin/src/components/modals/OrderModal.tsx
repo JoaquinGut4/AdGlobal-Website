@@ -2,9 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { ClipboardPlus, Plus, Search } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
-import { STORAGE_KEYS } from '@/config/site';
-import { INVENTARIO_REGISTROS } from '@/data/inventario';
 import { parseDireccionLlegada } from '@/lib/utils';
+import { orderSkusFromDescription } from '@/lib/inventorySync';
 import type {
   InventarioCategoria,
   InventarioRegistro,
@@ -17,9 +16,11 @@ export type NuevoPedidoInput = Omit<PedidoRegistro, 'id' | 'numeroPedido'>;
 interface OrderModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreate: (input: NuevoPedidoInput) => void;
+  onCreate: (input: NuevoPedidoInput) => boolean;
+  inventario: InventarioRegistro[];
+  categorias: InventarioCategoria[];
   editingPedido?: PedidoRegistro | null;
-  onUpdate?: (pedido: PedidoRegistro) => void;
+  onUpdate?: (pedido: PedidoRegistro) => boolean;
 }
 
 const DIRECCION_PARTIDA = 'Av. Húsares de Junín 527, Jesús María, Lima, Lima';
@@ -61,7 +62,7 @@ function normalizar(value: unknown) {
     .toLowerCase();
 }
 
-export function OrderModal({ isOpen, onClose, onCreate, editingPedido = null, onUpdate }: OrderModalProps) {
+export function OrderModal({ isOpen, onClose, onCreate, inventario, categorias, editingPedido = null, onUpdate }: OrderModalProps) {
   const [fechaEmision, setFechaEmision] = useState(() => new Date().toISOString().slice(0, 10));
   const fechaCreacion = new Date(`${fechaEmision}T00:00:00`).toLocaleDateString('es-PE', {
     day: '2-digit',
@@ -69,33 +70,16 @@ export function OrderModal({ isOpen, onClose, onCreate, editingPedido = null, on
     year: 'numeric',
   });
   const [destinatario, setDestinatario] = useState('');
+  const [telefonoContacto, setTelefonoContacto] = useState('');
   const [direccion, setDireccion] = useState('');
   const [distrito, setDistrito] = useState('');
   const [provincia, setProvincia] = useState('');
   const [departamento, setDepartamento] = useState('');
   const [motivoTraslado, setMotivoTraslado] = useState<MotivoTraslado>('Venta');
   const [descripcionProductos, setDescripcionProductos] = useState('');
-  const [cantidadProductos, setCantidadProductos] = useState('1');
-  const [productos, setProductos] = useState<InventarioRegistro[]>([]);
-  const [categorias, setCategorias] = useState<InventarioCategoria[]>([]);
+  const [orderError, setOrderError] = useState('');
   const [busquedaProducto, setBusquedaProducto] = useState('');
   const [menuProductosOpen, setMenuProductosOpen] = useState(false);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    try {
-      const rawProductos = window.localStorage.getItem(STORAGE_KEYS.inventario);
-      setProductos(rawProductos ? (JSON.parse(rawProductos) as InventarioRegistro[]) : INVENTARIO_REGISTROS);
-    } catch {
-      setProductos(INVENTARIO_REGISTROS);
-    }
-    try {
-      const rawCategorias = window.localStorage.getItem(STORAGE_KEYS.inventarioCategorias);
-      setCategorias(rawCategorias ? (JSON.parse(rawCategorias) as InventarioCategoria[]) : []);
-    } catch {
-      setCategorias([]);
-    }
-  }, [isOpen]);
 
   const categoriasPersonalizadas = new Map(categorias.map((categoria) => [categoria.id, categoria.label]));
   const labelCategoria = (categoriaId: InventarioRegistro['categoriaId']) =>
@@ -104,14 +88,14 @@ export function OrderModal({ isOpen, onClose, onCreate, editingPedido = null, on
   const productosFiltrados = useMemo(() => {
     const termino = normalizar(busquedaProducto).trim();
     if (!termino) return [];
-    return productos
+    return inventario
       .filter((producto) =>
         normalizar(
           [producto.sku, labelCategoria(producto.categoriaId), producto.descripcion, producto.marca].join(' '),
         ).includes(termino),
       )
       .slice(0, 8);
-  }, [busquedaProducto, productos, categorias]);
+  }, [busquedaProducto, inventario, categorias]);
 
   const agregarProducto = (producto: InventarioRegistro) => {
     const linea = `${producto.sku} · ${labelCategoria(producto.categoriaId)} · ${producto.descripcion}`;
@@ -123,13 +107,14 @@ export function OrderModal({ isOpen, onClose, onCreate, editingPedido = null, on
   const resetForm = () => {
     setFechaEmision(new Date().toISOString().slice(0, 10));
     setDestinatario('');
+    setTelefonoContacto('');
     setDireccion('');
     setDistrito('');
     setProvincia('');
     setDepartamento('');
     setMotivoTraslado('Venta');
     setDescripcionProductos('');
-    setCantidadProductos('1');
+    setOrderError('');
     setBusquedaProducto('');
     setMenuProductosOpen(false);
   };
@@ -143,19 +128,27 @@ export function OrderModal({ isOpen, onClose, onCreate, editingPedido = null, on
     const parsed = parseDireccionLlegada(editingPedido.direccionLlegada);
     setFechaEmision(editingPedido.fechaEmision);
     setDestinatario(parsed.destinatario);
+    setTelefonoContacto(editingPedido.telefonoContacto ?? '');
     setDireccion(parsed.direccion);
     setDistrito(parsed.distrito);
     setProvincia(parsed.provincia);
     setDepartamento(parsed.departamento);
     setMotivoTraslado(editingPedido.motivoTraslado);
     setDescripcionProductos(editingPedido.descripcionProductos);
-    setCantidadProductos(String(editingPedido.cantidadProductos));
     setBusquedaProducto('');
     setMenuProductosOpen(false);
   }, [isOpen, editingPedido]);
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
+    setOrderError('');
+    const telefono = telefonoContacto.trim();
+    const digitos = telefono.replace(/\D/g, '');
+    if (!/^[+()\d\s-]+$/.test(telefono) || digitos.length < 7 || digitos.length > 15) {
+      setOrderError('Ingresa un número de contacto válido (entre 7 y 15 dígitos).');
+      return;
+    }
+    const skus = orderSkusFromDescription(descripcionProductos, inventario);
     const direccionLlegada = [
       destinatario.trim(),
       `Dirección: ${direccion.trim()}`,
@@ -168,20 +161,24 @@ export function OrderModal({ isOpen, onClose, onCreate, editingPedido = null, on
       fechaEmision,
       direccionPartida: editingPedido?.direccionPartida ?? DIRECCION_PARTIDA,
       direccionLlegada,
+      telefonoContacto: telefono,
       descripcionProductos: descripcionProductos.trim(),
-      cantidadProductos: Number(cantidadProductos),
+      skus,
+      cantidadProductos: Math.max(1, skus.length),
       unidadMedida: 'UND',
       motivoTraslado,
       observaciones: editingPedido?.observaciones ?? '',
     };
 
     if (editingPedido && onUpdate) {
-      onUpdate({ ...editingPedido, ...payload });
+      if (!onUpdate({ ...editingPedido, ...payload })) {
+        setOrderError('Revisa los SKU: alguno no existe o está asignado a otro pedido activo.');
+      }
       return;
     }
 
-    onCreate(payload);
-    resetForm();
+    if (onCreate(payload)) resetForm();
+    else setOrderError('Selecciona un equipo del inventario o introduce un SKU existente en la descripción.');
   };
 
   return (
@@ -216,6 +213,19 @@ export function OrderModal({ isOpen, onClose, onCreate, editingPedido = null, on
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <Field label="Nombre de la empresa / persona" required full>
               <input required value={destinatario} onChange={(event) => setDestinatario(event.target.value)} className={FIELD_CLASS} />
+            </Field>
+            <Field label="Número de contacto" required>
+              <input
+                type="tel"
+                required
+                autoComplete="tel"
+                inputMode="tel"
+                maxLength={30}
+                value={telefonoContacto}
+                onChange={(event) => setTelefonoContacto(event.target.value)}
+                placeholder="Ej. +51 955 746 704"
+                className={FIELD_CLASS}
+              />
             </Field>
             <Field label="Dirección" required full>
               <input required value={direccion} onChange={(event) => setDireccion(event.target.value)} placeholder="Calle, avenida y número" className={FIELD_CLASS} />
@@ -283,12 +293,16 @@ export function OrderModal({ isOpen, onClose, onCreate, editingPedido = null, on
                 )}
               </div>
               <textarea rows={3} required value={descripcionProductos} onChange={(event) => setDescripcionProductos(event.target.value)} placeholder="Ej. SKU · Categoría · Descripción del equipo" className={FIELD_CLASS} />
+              <p className="text-[11px] text-slate-500">La cantidad se calcula automáticamente: una unidad por cada SKU distinto.</p>
             </div>
           </Field>
-          <Field label="Cantidad de los productos" required>
-            <input type="number" min="1" required value={cantidadProductos} onChange={(event) => setCantidadProductos(event.target.value)} className={FIELD_CLASS} />
-          </Field>
         </div>
+
+        {orderError && (
+          <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+            {orderError}
+          </p>
+        )}
 
         <div className="sticky bottom-0 flex items-center justify-end gap-2.5 border-t border-slate-200 bg-white/95 pt-4 backdrop-blur-sm">
           <button type="button" onClick={onClose} className="cursor-pointer rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100">

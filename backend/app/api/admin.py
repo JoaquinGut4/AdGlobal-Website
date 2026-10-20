@@ -48,6 +48,7 @@ from backend.app.schemas import (
     TicketOut,
     TicketUpdate,
     WebAssetOut,
+    WebAssetUpdate,
 )
 
 
@@ -89,7 +90,7 @@ def customer_out(item: Customer) -> CustomerOut:
 
 
 def order_out(item: Order) -> OrderOut:
-    return OrderOut(id=item.id, numeroPedido=item.order_number, fechaEmision=item.issue_date, direccionPartida=item.origin_address, direccionLlegada=item.destination_address, descripcionProductos=item.product_description, cantidadProductos=item.product_quantity, unidadMedida=item.unit, motivoTraslado=item.transfer_reason, observaciones=item.notes)
+    return OrderOut(id=item.id, numeroPedido=item.order_number, fechaEmision=item.issue_date, direccionPartida=item.origin_address, direccionLlegada=item.destination_address, telefonoContacto=item.contact_phone, descripcionProductos=item.product_description, cantidadProductos=item.product_quantity, unidadMedida=item.unit, motivoTraslado=item.transfer_reason, observaciones=item.notes)
 
 
 def technician_out(item: Technician) -> TechnicianOut:
@@ -106,6 +107,12 @@ def ticket_out(item: SupportTicket) -> TicketOut:
         prioridad=item.priority,
         estado=item.status,
         descripcion=item.description,
+        numeroPedidoEstado=item.order_or_status,
+        tipoTicket=item.ticket_type or None,
+        numeroPedido=item.order_number,
+        telefonoContacto=item.contact_phone,
+        direccionPedido=item.order_address,
+        estadoEquipo=item.equipment_status,
         tecnicoId=item.technician_id,
         tecnico=item.technician_name,
         tecnicoTelefono=item.technician_phone,
@@ -286,7 +293,7 @@ def next_order_number(db: Session) -> str:
 
 
 def apply_order(item: Order, payload: OrderIn) -> None:
-    item.issue_date=payload.fechaEmision; item.origin_address=payload.direccionPartida; item.destination_address=payload.direccionLlegada; item.product_description=payload.descripcionProductos; item.product_quantity=payload.cantidadProductos; item.unit=payload.unidadMedida; item.transfer_reason=payload.motivoTraslado; item.notes=payload.observaciones
+    item.issue_date=payload.fechaEmision; item.origin_address=payload.direccionPartida; item.destination_address=payload.direccionLlegada; item.contact_phone=payload.telefonoContacto; item.product_description=payload.descripcionProductos; item.product_quantity=payload.cantidadProductos; item.unit=payload.unidadMedida; item.transfer_reason=payload.motivoTraslado; item.notes=payload.observaciones
 
 
 @router.post("/pedidos", response_model=OrderOut, status_code=201)
@@ -390,6 +397,12 @@ def create_ticket(payload: TicketIn, actor: AdminUser = Depends(require_module("
         customer=payload.cliente,
         priority=payload.prioridad,
         description=payload.descripcion,
+        order_or_status=payload.numeroPedidoEstado,
+        ticket_type=payload.tipoTicket or "",
+        order_number=payload.numeroPedido,
+        contact_phone=payload.telefonoContacto,
+        order_address=payload.direccionPedido,
+        equipment_status=payload.estadoEquipo,
         technician_id=technician.id if technician else None,
         technician_name=technician_name,
         technician_phone=technician_phone,
@@ -452,22 +465,138 @@ def upsert_service(service_id: str,payload: ServiceIn,actor: AdminUser=Depends(r
     item=db.get(Service,service_id) or Service(id=service_id); item.title=payload.title; item.category=payload.category; item.description=payload.fullDescription; item.features=payload.features; item.specs=payload.specs; item.ideal_for=payload.idealFor; item.is_active=payload.activo; item.sort_order=payload.orden; db.add(item); audit(db,actor,"Gestión web","Editó",service_id,f"Actualizó el servicio {payload.title}."); db.commit(); return service_out(item)
 
 
+WEB_ASSET_SECTIONS = {"hero", "servicio", "faq"}
+ALLOWED_MEDIA_TYPES = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/avif": ".avif",
+    "image/gif": ".gif",
+    "video/mp4": ".mp4",
+    "video/webm": ".webm",
+    "video/quicktime": ".mov",
+    "video/ogg": ".ogv",
+    "video/x-m4v": ".m4v",
+    "video/mpeg": ".mpeg",
+}
+
+
+@router.get("/web-assets", response_model=list[WebAssetOut])
+def list_web_assets(_: AdminUser = Depends(require_module("gestion-web")), db: Session = Depends(get_db)) -> list[WebAssetOut]:
+    items = db.scalars(
+        select(WebAsset).order_by(WebAsset.section, WebAsset.sort_order, WebAsset.created_at)
+    ).all()
+    return [web_asset_out(item) for item in items]
+
+
 @router.post("/web-assets", response_model=WebAssetOut, status_code=201)
-async def upload_web_asset(section: str=Form(...), service_id: str|None=Form(None), sort_order: int=Form(0), file: UploadFile=File(...), actor: AdminUser=Depends(require_module("gestion-web")), db: Session=Depends(get_db)) -> WebAssetOut:
-    if section not in {"hero","servicio","faq"}: raise HTTPException(422,"Sección inválida")
-    if section=="servicio" and not service_id: raise HTTPException(422,"service_id es obligatorio para servicios")
-    allowed={"image/jpeg":".jpg","image/png":".png","image/webp":".webp","image/avif":".avif"}
-    if file.content_type not in allowed: raise HTTPException(415,"Formato de imagen no permitido")
-    settings=get_settings(); content=await file.read(settings.max_upload_mb*1024*1024+1)
-    if len(content)>settings.max_upload_mb*1024*1024: raise HTTPException(413,f"La imagen supera {settings.max_upload_mb} MB")
-    directory=Path(settings.upload_directory); directory.mkdir(parents=True,exist_ok=True); filename=f"{uuid4().hex}{allowed[file.content_type]}"; (directory/filename).write_bytes(content)
-    item=WebAsset(section=section,service_id=service_id,name=file.filename or filename,file_url=f"{settings.public_upload_url}/{filename}",mime_type=file.content_type,sort_order=sort_order); db.add(item); audit(db,actor,"Gestión web","Agregó",item.name,f"Agregó una imagen a {section}."); db.commit(); db.refresh(item); return web_asset_out(item)
+async def upload_web_asset(
+    section: str = Form(...),
+    service_id: str | None = Form(None),
+    sort_order: int = Form(0),
+    file: UploadFile = File(...),
+    actor: AdminUser = Depends(require_module("gestion-web")),
+    db: Session = Depends(get_db),
+) -> WebAssetOut:
+    if section not in WEB_ASSET_SECTIONS:
+        raise HTTPException(422, "Sección inválida")
+    if section == "servicio" and not service_id:
+        raise HTTPException(422, "service_id es obligatorio para servicios")
+    if sort_order < 0:
+        raise HTTPException(422, "El orden no puede ser negativo")
+
+    content_type = file.content_type or ""
+    extension = ALLOWED_MEDIA_TYPES.get(content_type)
+    if extension is None:
+        raise HTTPException(415, "Formato no permitido. Usa imágenes JPG, PNG, WebP, AVIF, GIF o videos MP4, WebM, MOV, OGV o M4V.")
+
+    settings = get_settings()
+    is_video = content_type.startswith("video/")
+    limit_mb = settings.max_video_upload_mb if is_video else settings.max_upload_mb
+    limit_bytes = limit_mb * 1024 * 1024
+    directory = Path(settings.upload_directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    filename = f"{uuid4().hex}{extension}"
+    path = directory / filename
+
+    try:
+        total = 0
+        with path.open("wb") as destination:
+            while chunk := await file.read(1024 * 1024):
+                total += len(chunk)
+                if total > limit_bytes:
+                    raise HTTPException(413, f"El archivo supera el límite de {limit_mb} MB")
+                destination.write(chunk)
+    except HTTPException:
+        path.unlink(missing_ok=True)
+        raise
+    except Exception as exc:
+        path.unlink(missing_ok=True)
+        raise HTTPException(500, "No se pudo guardar el archivo") from exc
+    finally:
+        await file.close()
+
+    original_name = Path(file.filename or filename).name
+    item = WebAsset(
+        section=section,
+        service_id=service_id,
+        name=original_name,
+        file_url=f"{settings.public_upload_url.rstrip('/')}/{filename}",
+        mime_type=content_type,
+        sort_order=sort_order,
+    )
+    db.add(item)
+    audit(db, actor, "Gestión web", "Agregó", original_name, f"Agregó un archivo multimedia a {section}.")
+    db.commit()
+    db.refresh(item)
+    return web_asset_out(item)
+
+
+@router.patch("/web-assets/{item_id}", response_model=WebAssetOut)
+def update_web_asset(
+    item_id: str,
+    payload: WebAssetUpdate,
+    actor: AdminUser = Depends(require_module("gestion-web")),
+    db: Session = Depends(get_db),
+) -> WebAssetOut:
+    item = db.get(WebAsset, item_id)
+    if item is None:
+        raise HTTPException(404, "Archivo no encontrado")
+
+    changes = payload.model_dump(exclude_unset=True)
+    if "name" in changes:
+        item.name = changes["name"]
+    if "section" in changes:
+        if changes["section"] not in WEB_ASSET_SECTIONS:
+            raise HTTPException(422, "Sección inválida")
+        item.section = changes["section"]
+    if "serviceId" in changes:
+        item.service_id = changes["serviceId"]
+    if "sortOrder" in changes:
+        item.sort_order = changes["sortOrder"]
+    if "isActive" in changes:
+        item.is_active = changes["isActive"]
+
+    if item.section == "servicio":
+        if not item.service_id:
+            raise HTTPException(422, "service_id es obligatorio para servicios")
+    else:
+        item.service_id = None
+
+    audit(db, actor, "Gestión web", "Editó", item.name, f"Actualizó un archivo multimedia de {item.section}.")
+    db.commit()
+    db.refresh(item)
+    return web_asset_out(item)
 
 
 @router.delete("/web-assets/{item_id}", status_code=204)
-def delete_web_asset(item_id: str,actor: AdminUser=Depends(require_module("gestion-web")),db: Session=Depends(get_db)) -> None:
-    item=db.get(WebAsset,item_id)
-    if item is None: raise HTTPException(404,"Imagen no encontrada")
-    filename=Path(item.file_url).name; path=Path(get_settings().upload_directory)/filename
-    if path.is_file(): path.unlink()
-    audit(db,actor,"Gestión web","Eliminó",item.name,f"Eliminó una imagen de {item.section}."); db.delete(item); db.commit()
+def delete_web_asset(item_id: str, actor: AdminUser = Depends(require_module("gestion-web")), db: Session = Depends(get_db)) -> None:
+    item = db.get(WebAsset, item_id)
+    if item is None:
+        raise HTTPException(404, "Archivo no encontrado")
+    filename = Path(item.file_url).name
+    path = Path(get_settings().upload_directory) / filename
+    path.unlink(missing_ok=True)
+    audit(db, actor, "Gestión web", "Eliminó", item.name, f"Eliminó un archivo multimedia de {item.section}.")
+    db.delete(item)
+    db.commit()

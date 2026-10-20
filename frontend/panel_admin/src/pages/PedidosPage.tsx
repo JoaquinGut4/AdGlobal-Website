@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { ClipboardList, FileText, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { CheckCircle2, ClipboardList, FileText, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { GuideModal } from '@/components/modals/GuideModal';
 import { Modal } from '@/components/ui/Modal';
 import { formatFecha, parseDireccionLlegada } from '@/lib/utils';
@@ -35,11 +35,14 @@ function DetallesPedido({ pedido }: { pedido: PedidoRegistro }) {
   const detalles: Array<[string, ReactNode]> = [
     ['Fecha de creación', formatFecha(pedido.fechaEmision)],
     ['Nombre de la empresa / persona', destino.destinatario || '—'],
+    ['Número de contacto', pedido.telefonoContacto || '—'],
     ['Dirección', destino.direccion || '—'],
     ['Distrito', destino.distrito || '—'],
     ['Provincia', destino.provincia || '—'],
     ['Departamento', destino.departamento || '—'],
     ['Motivo del traslado', pedido.motivoTraslado],
+    ['Estado del pedido', pedido.estadoPedido ?? 'Activo'],
+    ...(pedido.fechaFinalizacion ? [['Fecha de finalización', new Date(pedido.fechaFinalizacion).toLocaleString('es-PE')] as [string, string]] : []),
     ['Descripción de los productos', pedido.descripcionProductos],
     ['Cantidad de los productos', pedido.cantidadProductos],
   ];
@@ -74,10 +77,11 @@ interface PedidosPageProps {
   pedidos: PedidoRegistro[];
   onOpenOrder: () => void;
   onEdit: (pedido: PedidoRegistro) => void;
+  onFinish: (pedido: PedidoRegistro) => void;
   onDelete: (pedido: PedidoRegistro) => void;
 }
 
-export function PedidosPage({ pedidos, onOpenOrder, onEdit, onDelete }: PedidosPageProps) {
+export function PedidosPage({ pedidos, onOpenOrder, onEdit, onFinish, onDelete }: PedidosPageProps) {
   const [search, setSearch] = useState('');
   const [tipoActivo, setTipoActivo] = useState<TipoFiltro>('all');
   const [selectedPedido, setSelectedPedido] = useState<PedidoRegistro | null>(null);
@@ -191,6 +195,10 @@ export function PedidosPage({ pedidos, onOpenOrder, onEdit, onDelete }: PedidosP
                     <span className="inline-flex items-center gap-2 font-mono font-bold text-[#2B5C94] group-hover:underline">
                       {pedido.numeroPedido}
                     </span>
+                    <span className={`mt-1 block w-fit rounded px-1.5 py-0.5 text-[10px] font-bold ${pedido.estadoPedido === 'Finalizado'
+                      ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-[#2B5C94]'}`}>
+                      {pedido.estadoPedido ?? 'Activo'}
+                    </span>
                   </td>
                   <td className="whitespace-normal break-words px-3 py-3 align-top">{formatFecha(pedido.fechaEmision)}</td>
                   <td className="whitespace-normal break-words px-3 py-3 align-top leading-relaxed">{pedido.direccionLlegada}</td>
@@ -210,18 +218,34 @@ export function PedidosPage({ pedidos, onOpenOrder, onEdit, onDelete }: PedidosP
                         <FileText className="h-3.5 w-3.5" />
                         Guía
                       </button>
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onEdit(pedido);
-                        }}
-                        title={`Editar pedido ${pedido.numeroPedido}`}
-                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[11px] font-bold text-slate-700 hover:border-[#2B5C94] hover:bg-blue-50 hover:text-[#2B5C94]"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                        Editar
-                      </button>
+                      {pedido.estadoPedido !== 'Finalizado' && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onFinish(pedido);
+                            }}
+                            title={`Finalizar pedido ${pedido.numeroPedido}`}
+                            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] font-bold text-emerald-700 hover:bg-emerald-100"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            Finalizar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onEdit(pedido);
+                            }}
+                            title={`Editar pedido ${pedido.numeroPedido}`}
+                            aria-label={`Editar pedido ${pedido.numeroPedido}`}
+                            className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:border-[#2B5C94] hover:bg-blue-50 hover:text-[#2B5C94]"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        </>
+                      )}
                       <button
                         type="button"
                         onClick={(event) => {
@@ -229,10 +253,10 @@ export function PedidosPage({ pedidos, onOpenOrder, onEdit, onDelete }: PedidosP
                           onDelete(pedido);
                         }}
                         title={`Eliminar pedido ${pedido.numeroPedido}`}
-                        className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[11px] font-bold text-rose-700 hover:border-rose-400 hover:bg-rose-100"
+                        aria-label={`Eliminar pedido ${pedido.numeroPedido}`}
+                        className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:border-rose-400 hover:bg-rose-100"
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Eliminar
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                   </td>

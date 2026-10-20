@@ -31,6 +31,9 @@ def web_asset_out(item: WebAsset) -> WebAssetOut:
         serviceId=item.service_id,
         name=item.name,
         dataUrl=item.file_url,
+        mimeType=item.mime_type,
+        sortOrder=item.sort_order,
+        isActive=item.is_active,
         createdAt=item.created_at,
     )
 

@@ -1,8 +1,10 @@
-import { useState } from 'react';
-import { Globe, ImagePlus, Images, Trash2 } from 'lucide-react';
-import { STORAGE_KEYS } from '@/config/site';
-import { useLocalStorage } from '@/hooks/useLocalStorage';
-import type { WebImageAsset, WebImageSection } from '@/types';
+import { useEffect, useState } from 'react';
+import type { FormEvent } from 'react';
+import { Film, Globe, ImagePlus, Images, Pencil, Trash2 } from 'lucide-react';
+import { Modal } from '@/components/ui/Modal';
+import { ADMIN_CONFIG } from '@/config/site';
+import { apiRequest } from '@/lib/api';
+import type { WebAsset, WebImageSection } from '@/types';
 
 const SERVICES = [
   { id: 'laptops-computadores', label: 'Laptops y computadoras' },
@@ -16,98 +18,192 @@ const SERVICES = [
 ];
 
 const SECTIONS: Array<{ id: WebImageSection; label: string; description: string }> = [
-  { id: 'hero', label: 'Banner hero', description: 'Imágenes principales que rotan en la portada.' },
+  { id: 'hero', label: 'Banner hero', description: 'Imágenes y videos principales de la portada.' },
   { id: 'servicio', label: 'Servicios', description: 'Galerías específicas para cada línea de servicio.' },
-  { id: 'faq', label: 'Preguntas frecuentes', description: 'Imágenes del collage de preguntas frecuentes.' },
+  { id: 'faq', label: 'Preguntas frecuentes', description: 'Imágenes y videos del collage de preguntas frecuentes.' },
 ];
 
-function optimizeImage(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('No se pudo leer la imagen.'));
-    reader.onload = () => {
-      const image = new Image();
-      image.onerror = () => reject(new Error(`${file.name} no es una imagen válida.`));
-      image.onload = () => {
-        const maxSize = 1400;
-        const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.round(image.width * scale);
-        canvas.height = Math.round(image.height * scale);
-        const context = canvas.getContext('2d');
-        if (!context) return reject(new Error('No se pudo procesar la imagen.'));
-        context.drawImage(image, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL('image/webp', 0.76));
-      };
-      image.src = String(reader.result);
-    };
-    reader.readAsDataURL(file);
-  });
+const FIELD_CLASS =
+  'w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#2B5C94]';
+
+const API_ORIGIN = ADMIN_CONFIG.apiUrl.replace(/\/api\/v1\/?$/, '');
+
+function mediaUrl(url: string): string {
+  return /^https?:\/\//i.test(url) ? url : `${API_ORIGIN}${url.startsWith('/') ? '' : '/'}${url}`;
+}
+
+function isVideo(asset: WebAsset): boolean {
+  return asset.mimeType?.startsWith('video/') ?? /\.(mp4|webm|mov|ogv|m4v|mpeg)$/i.test(asset.dataUrl);
+}
+
+function sectionLabel(section: WebImageSection): string {
+  return SECTIONS.find((item) => item.id === section)?.label ?? section;
+}
+
+function serviceLabel(serviceId?: string | null): string {
+  return SERVICES.find((item) => item.id === serviceId)?.label ?? 'Sin servicio';
 }
 
 export function GestionWebPage() {
-  const [images, setImages] = useLocalStorage<WebImageAsset[]>(STORAGE_KEYS.webImagenes, []);
+  const [assets, setAssets] = useState<WebAsset[]>([]);
+  const [loading, setLoading] = useState(true);
   const [section, setSection] = useState<WebImageSection>('hero');
   const [serviceId, setServiceId] = useState(SERVICES[0].id);
   const [processing, setProcessing] = useState(false);
   const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [editingAsset, setEditingAsset] = useState<WebAsset | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editSection, setEditSection] = useState<WebImageSection>('hero');
+  const [editServiceId, setEditServiceId] = useState(SERVICES[0].id);
+  const [editSortOrder, setEditSortOrder] = useState('0');
+  const [editActive, setEditActive] = useState(true);
+  const [editError, setEditError] = useState('');
 
-  const visibleImages = images.filter(
-    (image) => image.section === section && (section !== 'servicio' || image.serviceId === serviceId),
-  );
   const currentSection = SECTIONS.find((item) => item.id === section) ?? SECTIONS[0];
+  const visibleAssets = assets.filter(
+    (asset) => asset.section === section && (section !== 'servicio' || asset.serviceId === serviceId),
+  );
 
-  const uploadImages = async (files: FileList | null) => {
+  const loadAssets = async () => {
+    try {
+      const data = await apiRequest<WebAsset[]>('/web-assets');
+      setAssets(data);
+      setError('');
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'No se pudieron cargar los archivos.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadAssets();
+  }, []);
+
+  const uploadFiles = async (files: FileList | null) => {
     if (!files?.length) return;
     setProcessing(true);
     setMessage('');
-    const uploaded: WebImageAsset[] = [];
+    setError('');
+    const uploaded: WebAsset[] = [];
 
     try {
-      for (const file of Array.from(files)) {
-        if (!file.type.startsWith('image/')) continue;
-        if (file.size > 10 * 1024 * 1024) throw new Error(`${file.name} supera el límite de 10 MB.`);
-        uploaded.push({
-          id: `web-img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          section,
-          serviceId: section === 'servicio' ? serviceId : undefined,
-          name: file.name,
-          dataUrl: await optimizeImage(file),
-          createdAt: new Date().toISOString(),
+      for (const [index, file] of Array.from(files).entries()) {
+        const video = file.type.startsWith('video/');
+        if (!video && !file.type.startsWith('image/')) {
+          throw new Error(`${file.name} no es una imagen ni un video compatible.`);
+        }
+        const limitMb = video ? 100 : 10;
+        if (file.size > limitMb * 1024 * 1024) {
+          throw new Error(`${file.name} supera el límite de ${limitMb} MB.`);
+        }
+
+        const formData = new FormData();
+        formData.append('section', section);
+        if (section === 'servicio') formData.append('service_id', serviceId);
+        formData.append('sort_order', String(visibleAssets.length + index));
+        formData.append('file', file);
+
+        const created = await apiRequest<WebAsset>('/web-assets', {
+          method: 'POST',
+          body: formData,
         });
+        uploaded.push(created);
       }
-      setImages((current) => [...current, ...uploaded]);
-      window.dispatchEvent(new Event('adglobal-web-images-updated'));
-      setMessage(`${uploaded.length} ${uploaded.length === 1 ? 'imagen agregada' : 'imágenes agregadas'}.`);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'No se pudieron procesar las imágenes.');
+
+      setAssets((current) => [...current, ...uploaded]);
+      setMessage(
+        `${uploaded.length} ${uploaded.length === 1 ? 'archivo agregado' : 'archivos agregados'} correctamente.`,
+      );
+    } catch (requestError) {
+      if (uploaded.length > 0) {
+        setAssets((current) => [...current, ...uploaded]);
+      }
+      setError(requestError instanceof Error ? requestError.message : 'No se pudieron subir los archivos.');
     } finally {
       setProcessing(false);
     }
   };
 
-  const removeImage = (id: string) => {
-    setImages((current) => current.filter((image) => image.id !== id));
-    window.dispatchEvent(new Event('adglobal-web-images-updated'));
+  const removeAsset = async (asset: WebAsset) => {
+    const confirmed = window.confirm(`¿Eliminar "${asset.name}"? Esta acción no se puede deshacer.`);
+    if (!confirmed) return;
+
+    try {
+      await apiRequest<void>(`/web-assets/${asset.id}`, { method: 'DELETE' });
+      setAssets((current) => current.filter((item) => item.id !== asset.id));
+      setMessage('Archivo eliminado correctamente.');
+      setError('');
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'No se pudo eliminar el archivo.');
+    }
+  };
+
+  const openEdit = (asset: WebAsset) => {
+    setEditingAsset(asset);
+    setEditName(asset.name);
+    setEditSection(asset.section);
+    setEditServiceId(asset.serviceId ?? SERVICES[0].id);
+    setEditSortOrder(String(asset.sortOrder));
+    setEditActive(asset.isActive);
+    setEditError('');
+  };
+
+  const closeEdit = () => {
+    setEditingAsset(null);
+    setEditError('');
+  };
+
+  const saveEdit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!editingAsset) return;
+    if (!editName.trim()) {
+      setEditError('Ingresa un nombre para el archivo.');
+      return;
+    }
+    if (editSection === 'servicio' && !editServiceId) {
+      setEditError('Selecciona el servicio al que pertenece el archivo.');
+      return;
+    }
+
+    try {
+      const saved = await apiRequest<WebAsset>(`/web-assets/${editingAsset.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          name: editName.trim(),
+          section: editSection,
+          serviceId: editSection === 'servicio' ? editServiceId : null,
+          sortOrder: Math.max(0, Number(editSortOrder) || 0),
+          isActive: editActive,
+        }),
+      });
+      setAssets((current) => current.map((item) => (item.id === saved.id ? saved : item)));
+      setMessage('Archivo actualizado correctamente.');
+      setError('');
+      closeEdit();
+    } catch (requestError) {
+      setEditError(requestError instanceof Error ? requestError.message : 'No se pudo actualizar el archivo.');
+    }
   };
 
   return (
     <div className="space-y-6">
       <div className="border-b border-slate-200 pb-4">
         <div className="flex flex-wrap items-center gap-2.5">
-          <h2 className="text-xl font-bold tracking-tight text-slate-900">Gestión de imágenes de la web</h2>
+          <h2 className="text-xl font-bold tracking-tight text-slate-900">Gestión de contenido de la web</h2>
           <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-[#2B5C94]">
-            {images.length} imágenes administradas
+            {assets.length} archivos administrados
           </span>
         </div>
         <p className="mt-1 text-xs text-slate-500">
-          Administra las imágenes dinámicas utilizadas por web_publica
+          Las imágenes y videos se publican directamente en web_publica.
         </p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {SECTIONS.map((item) => {
-          const total = images.filter((image) => image.section === item.id).length;
+          const total = assets.filter((asset) => asset.section === item.id).length;
           const active = section === item.id;
           return (
             <button
@@ -149,16 +245,18 @@ export function GestionWebPage() {
                 {SERVICES.map((service) => <option key={service.id} value={service.id}>{service.label}</option>)}
               </select>
             )}
-            <label className="inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-[#2B5C94] px-3.5 text-xs font-bold text-white hover:bg-[#1F4778]">
+            <label className={`inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg px-3.5 text-xs font-bold text-white ${
+              processing ? 'cursor-not-allowed bg-slate-400' : 'bg-[#2B5C94] hover:bg-[#1F4778]'
+            }`}>
               <ImagePlus className="h-4 w-4" />
-              {processing ? 'Procesando...' : 'Agregar imágenes'}
+              {processing ? 'Subiendo...' : 'Agregar imágenes o videos'}
               <input
                 type="file"
                 multiple
-                accept="image/png,image/jpeg,image/webp,image/avif"
+                accept="image/*,video/*"
                 disabled={processing}
                 onChange={(event) => {
-                  void uploadImages(event.target.files);
+                  void uploadFiles(event.target.files);
                   event.target.value = '';
                 }}
                 className="hidden"
@@ -168,48 +266,164 @@ export function GestionWebPage() {
         </div>
 
         {message && (
-          <div className="border-b border-slate-100 bg-blue-50/60 px-4 py-2 text-xs font-semibold text-[#2B5C94]">
+          <div className="border-b border-emerald-100 bg-emerald-50/60 px-4 py-2 text-xs font-semibold text-emerald-700">
             {message}
+          </div>
+        )}
+        {error && (
+          <div className="border-b border-rose-100 bg-rose-50/60 px-4 py-2 text-xs font-semibold text-rose-700">
+            {error}
           </div>
         )}
 
         <div className="p-4">
-          {visibleImages.length === 0 ? (
+          {loading ? (
+            <div className="py-16 text-center text-sm text-slate-500">Cargando archivos...</div>
+          ) : visibleAssets.length === 0 ? (
             <div className="flex min-h-52 flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-center">
               <Images className="h-8 w-8 text-slate-300" />
-              <p className="mt-3 text-sm font-bold text-slate-600">No hay imágenes administradas</p>
+              <p className="mt-3 text-sm font-bold text-slate-600">No hay archivos administrados</p>
               <p className="mt-1 max-w-md text-xs text-slate-500">
-                Mientras no agregues imágenes, web_publica seguirá utilizando sus imágenes originales.
+                Mientras no agregues archivos, web_publica seguirá utilizando sus imágenes originales.
               </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {visibleImages.map((image, index) => (
-                <article key={image.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs">
-                  <div className="relative aspect-[16/10] bg-slate-100">
-                    <img src={image.dataUrl} alt={image.name} className="h-full w-full object-cover" />
-                    <span className="absolute left-2 top-2 rounded-md bg-slate-900/75 px-2 py-1 text-[10px] font-bold text-white">
-                      {index === 0 ? 'Principal' : `Imagen ${index + 1}`}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between gap-2 p-3">
-                    <p className="min-w-0 truncate text-xs font-semibold text-slate-700" title={image.name}>{image.name}</p>
-                    <button
-                      type="button"
-                      onClick={() => removeImage(image.id)}
-                      aria-label={`Eliminar ${image.name}`}
-                      className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-700 hover:bg-rose-100"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                      Eliminar
-                    </button>
-                  </div>
-                </article>
-              ))}
+              {visibleAssets.map((asset, index) => {
+                const video = isVideo(asset);
+                return (
+                  <article key={asset.id} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xs">
+                    <div className="relative aspect-[16/10] bg-slate-100">
+                      {video ? (
+                        <video
+                          src={mediaUrl(asset.dataUrl)}
+                          controls
+                          muted
+                          playsInline
+                          preload="metadata"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <img
+                          src={mediaUrl(asset.dataUrl)}
+                          alt={asset.name}
+                          className="h-full w-full object-cover"
+                        />
+                      )}
+                      <span className="absolute left-2 top-2 rounded-md bg-slate-900/75 px-2 py-1 text-[10px] font-bold text-white">
+                        {video ? 'Video' : 'Imagen'} {index + 1}
+                      </span>
+                      {!asset.isActive && (
+                        <span className="absolute right-2 top-2 rounded-md bg-amber-500 px-2 py-1 text-[10px] font-bold text-white">
+                          Oculto
+                        </span>
+                      )}
+                    </div>
+                    <div className="space-y-2 p-3">
+                      <p className="min-w-0 truncate text-xs font-semibold text-slate-700" title={asset.name}>
+                        {asset.name}
+                      </p>
+                      <p className="text-[10px] text-slate-500">
+                        {sectionLabel(asset.section)}
+                        {asset.section === 'servicio' ? ` · ${serviceLabel(asset.serviceId)}` : ''}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(asset)}
+                          className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-bold text-[#2B5C94] hover:bg-blue-100"
+                        >
+                          <Pencil className="h-3 w-3" />
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void removeAsset(asset)}
+                          aria-label={`Eliminar ${asset.name}`}
+                          className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-700 hover:bg-rose-100"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          Eliminar
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           )}
         </div>
       </section>
+
+      <Modal
+        isOpen={editingAsset !== null}
+        onClose={closeEdit}
+        labelledBy="web-asset-edit-title"
+        title="Editar archivo multimedia"
+        subtitle="Cambia el nombre, sección, servicio u orden de publicación"
+        icon={<Film className="h-4 w-4" />}
+        headerClass="bg-[#2B5C94]"
+        panelClass="max-w-xl"
+      >
+        <form onSubmit={saveEdit} className="flex-1 space-y-4 overflow-y-auto p-6">
+          <div>
+            <label className="mb-1 block text-xs font-bold uppercase text-slate-600">Nombre / descripción *</label>
+            <input required value={editName} onChange={(event) => setEditName(event.target.value)} className={FIELD_CLASS} />
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-bold uppercase text-slate-600">Sección *</label>
+              <select
+                value={editSection}
+                onChange={(event) => setEditSection(event.target.value as WebImageSection)}
+                className={FIELD_CLASS}
+              >
+                {SECTIONS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-bold uppercase text-slate-600">Orden</label>
+              <input
+                type="number"
+                min="0"
+                value={editSortOrder}
+                onChange={(event) => setEditSortOrder(event.target.value)}
+                className={FIELD_CLASS}
+              />
+            </div>
+          </div>
+
+          {editSection === 'servicio' && (
+            <div>
+              <label className="mb-1 block text-xs font-bold uppercase text-slate-600">Servicio *</label>
+              <select value={editServiceId} onChange={(event) => setEditServiceId(event.target.value)} className={FIELD_CLASS}>
+                {SERVICES.map((service) => <option key={service.id} value={service.id}>{service.label}</option>)}
+              </select>
+            </div>
+          )}
+
+          <label className="flex cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600">
+            <input type="checkbox" checked={editActive} onChange={(event) => setEditActive(event.target.checked)} />
+            Visible en la web pública
+          </label>
+
+          {editError && (
+            <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+              {editError}
+            </p>
+          )}
+
+          <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
+            <button type="button" onClick={closeEdit} className="cursor-pointer rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100">
+              Cancelar
+            </button>
+            <button type="submit" className="cursor-pointer rounded-xl bg-[#2B5C94] px-5 py-2 text-xs font-bold text-white hover:bg-[#1F4778]">
+              Guardar cambios
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

@@ -3,7 +3,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 
 ADMIN_MODULES = {
@@ -215,11 +215,22 @@ class OrderIn(Schema):
     fechaEmision: date
     direccionPartida: str
     direccionLlegada: str
+    telefonoContacto: str = Field(default="", max_length=30)
     descripcionProductos: str
     cantidadProductos: int = Field(gt=0)
     unidadMedida: Literal["UND"] = "UND"
     motivoTraslado: str
     observaciones: str = ""
+
+    @field_validator("telefonoContacto")
+    @classmethod
+    def valid_contact_phone(cls, value: str) -> str:
+        if value:
+            validate_phone(value)
+            digits = re.sub(r"\D", "", value)
+            if len(digits) < 7 or len(digits) > 15:
+                raise ValueError("El número de contacto debe tener entre 7 y 15 dígitos")
+        return value
 
 
 class OrderOut(OrderIn):
@@ -244,9 +255,23 @@ class TicketIn(Schema):
     cliente: str
     prioridad: Literal["Urgente", "Alta", "Media", "Baja"]
     descripcion: str
+    numeroPedidoEstado: str = Field(min_length=1, max_length=2048)
+    tipoTicket: Literal["pedido", "general"] | None = None
+    numeroPedido: str = Field(default="", max_length=30)
+    telefonoContacto: str = Field(default="", max_length=40)
+    direccionPedido: str = Field(default="", max_length=1000)
+    estadoEquipo: str = Field(default="", max_length=80)
     tecnicoId: str | None = None
     tecnico: str = ""
     tecnicoTelefono: str = ""
+
+    @model_validator(mode="after")
+    def validate_context(self) -> "TicketIn":
+        if self.tipoTicket == "pedido" and not (self.numeroPedido and self.telefonoContacto and self.cliente):
+            raise ValueError("El ticket por pedido requiere número de pedido, cliente y número de contacto")
+        if self.tipoTicket == "general" and not self.estadoEquipo:
+            raise ValueError("El ticket general requiere el estado del equipo")
+        return self
 
 
 class TicketUpdate(Schema):
@@ -258,6 +283,8 @@ class TicketUpdate(Schema):
 
 
 class TicketOut(TicketIn):
+    # Los tickets anteriores a la migración pueden tener la referencia vacía.
+    numeroPedidoEstado: str
     id: str
     codigo: str
     estado: str
@@ -313,4 +340,15 @@ class WebAssetOut(Schema):
     serviceId: str | None
     name: str
     dataUrl: str
+    mimeType: str
+    sortOrder: int
+    isActive: bool
     createdAt: datetime
+
+
+class WebAssetUpdate(Schema):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    section: str | None = None
+    serviceId: str | None = None
+    sortOrder: int | None = Field(default=None, ge=0)
+    isActive: bool | None = None

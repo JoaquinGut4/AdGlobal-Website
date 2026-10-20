@@ -61,6 +61,7 @@ interface HeroExhibit {
   id: string;
   title: string;
   featuredImage: string;
+  type: 'image' | 'video';
 }
 
 export const Hero: React.FC<HeroProps> = ({ onQuote }) => {
@@ -72,6 +73,7 @@ export const Hero: React.FC<HeroProps> = ({ onQuote }) => {
         id: image.id,
         title: image.name || `Banner ${index + 1}`,
         featuredImage: image.dataUrl,
+        type: image.type,
       }));
     }
 
@@ -81,6 +83,7 @@ export const Hero: React.FC<HeroProps> = ({ onQuote }) => {
         id: service.id,
         title: service.title,
         featuredImage: service.featuredImage as string,
+        type: 'image' as const,
       }));
   }, [managedImages]);
 
@@ -104,17 +107,31 @@ export const Hero: React.FC<HeroProps> = ({ onQuote }) => {
     <section id="inicio" className="relative flex min-h-[100svh] flex-col">
       {/* Escenario: un objeto iluminado dentro de la sala oscura */}
       <div className="hero__stage relative flex-1 min-h-[42svh] w-full overflow-hidden bg-surface">
-        {exhibits.map((service, index) => (
-          <img
-            key={service.id}
-            src={service.featuredImage}
-            alt={index === active ? `${service.title} de AD GLOBAL` : ''}
-            aria-hidden={index !== active}
-            loading={index === 0 ? 'eager' : 'lazy'}
-            decoding="async"
-            className={`hero__exhibit ${index === active ? 'is-on' : ''}`}
-          />
-        ))}
+        {exhibits.map((service, index) =>
+          service.type === 'video' ? (
+            <video
+              key={service.id}
+              src={service.featuredImage}
+              aria-hidden={index !== active}
+              autoPlay
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              className={`hero__exhibit ${index === active ? 'is-on' : ''}`}
+            />
+          ) : (
+            <img
+              key={service.id}
+              src={service.featuredImage}
+              alt={index === active ? `${service.title} de AD GLOBAL` : ''}
+              aria-hidden={index !== active}
+              loading={index === 0 ? 'eager' : 'lazy'}
+              decoding="async"
+              className={`hero__exhibit ${index === active ? 'is-on' : ''}`}
+            />
+          ),
+        )}
         <div className="hero__scrim pointer-events-none absolute inset-0" aria-hidden="true" />
 
         <div className="absolute inset-x-0 bottom-0 z-10">

@@ -56,3 +56,11 @@ export const parseDireccionLlegada = (direccionLlegada: string): DireccionLlegad
     departamento: obtener('Departamento:'),
   };
 };
+
+/** Dirección legible del destino del pedido, sin repetir el nombre del cliente. */
+export const formatDireccionLlegada = (direccionLlegada: string): string => {
+  const { direccion, distrito, provincia, departamento } = parseDireccionLlegada(direccionLlegada);
+  if (direccion) return [direccion, distrito, provincia, departamento].filter(Boolean).join(', ');
+  const raw = direccionLlegada.trim();
+  return /(?:Dirección|Distrito|Provincia|Departamento):/i.test(raw) ? '' : raw;
+};

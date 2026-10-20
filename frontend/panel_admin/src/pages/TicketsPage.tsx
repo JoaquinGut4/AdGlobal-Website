@@ -24,9 +24,7 @@ const ESTADO_CLASSES: Record<SupportTicket['estado'], string> = {
 };
 
 export function TicketsPage({ tickets, onAvanzarEstado, onCompletar, onEliminar, onOpenTicket }: TicketsPageProps) {
-  const enTaller = tickets.filter(
-    (t) => t.estado === 'En Diagnóstico' || t.estado === 'En Reparación'
-  ).length;
+  const enTaller = tickets.filter((ticket) => ticket.estado !== 'Resuelto').length;
   const abiertos = tickets.filter((t) => t.estado === 'Abierto').length;
   const urgentes = tickets.filter((t) => t.prioridad === 'Urgente' && t.estado !== 'Resuelto').length;
 
@@ -129,14 +127,16 @@ export function TicketsPage({ tickets, onAvanzarEstado, onCompletar, onEliminar,
                 >
                   {ticket.estado}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => void onAvanzarEstado(ticket.id)}
-                  title="Avanzar etapa del ticket"
-                  className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg transition-colors cursor-pointer"
-                >
-                  Avanzar etapa
-                </button>
+                {ticket.estado !== 'Resuelto' && (
+                  <button
+                    type="button"
+                    onClick={() => void onAvanzarEstado(ticket.id)}
+                    title="Avanzar etapa del ticket"
+                    className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                  >
+                    Avanzar etapa
+                  </button>
+                )}
                 {ticket.estado !== 'Resuelto' && (
                   <button
                     type="button"
@@ -168,6 +168,22 @@ export function TicketsPage({ tickets, onAvanzarEstado, onCompletar, onEliminar,
               <p className="text-xs text-slate-600 leading-relaxed bg-slate-50/70 p-3 rounded-xl border border-slate-100 font-sans">
                 {ticket.descripcion}
               </p>
+              {ticket.numeroPedidoEstado && (
+                <p className="text-xs text-slate-600">
+                  <span className="font-bold">{ticket.tipoTicket === 'pedido' ? 'Pedido: ' : 'Estado anterior: '}</span>
+                  {ticket.numeroPedidoEstado}
+                </p>
+              )}
+              {ticket.telefonoContacto && (
+                <p className="text-xs text-slate-600">
+                  <span className="font-bold">Contacto: </span>{ticket.telefonoContacto}
+                </p>
+              )}
+              {ticket.direccionPedido && (
+                <p className="text-xs text-slate-600">
+                  <span className="font-bold">Dirección de llegada: </span>{ticket.direccionPedido}
+                </p>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400 pt-1">

@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     upload_directory: str = "backend/uploads"
     public_upload_url: str = "/uploads"
     max_upload_mb: int = 10
+    max_video_upload_mb: int = 100
 
     initial_samuel_password: str | None = None
     initial_joaquin_password: str | None = None

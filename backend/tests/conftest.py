@@ -1,8 +1,10 @@
 import os
+from pathlib import Path
 
 
+Path('.pytest_cache').mkdir(exist_ok=True)
 os.environ["SECRET_KEY"] = "test-secret-key-with-more-than-thirty-two-characters"
-os.environ["DATABASE_URL_OVERRIDE"] = "sqlite:///./adglobal_test.db"
+os.environ["DATABASE_URL_OVERRIDE"] = "sqlite:///./.pytest_cache/adglobal_test.db"
 os.environ["UPLOAD_DIRECTORY"] = "backend/tests/uploads"
 
 import pytest

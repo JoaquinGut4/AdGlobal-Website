@@ -25,6 +25,7 @@ export const STORAGE_KEYS = {
   inventario: 'adglobal_inventory_v2',
   inventarioCategorias: 'adglobal_inventory_categories',
   inventarioEstados: 'adglobal_inventory_statuses',
+  inventarioEstadosV2: 'adglobal_inventory_states_v2',
   pedidos: 'adglobal_orders_v8',
   movimientos: 'adglobal_movements',
   webImagenes: 'adglobal_web_images_v1',

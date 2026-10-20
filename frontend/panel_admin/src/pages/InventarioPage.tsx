@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import {
   Check,
   ChevronDown,
   Laptop,
+  LockKeyhole,
   Monitor,
   Package,
   Pencil,
@@ -15,12 +17,10 @@ import {
 } from 'lucide-react';
 import { InventoryModal } from '@/components/modals/InventoryModal';
 import { Modal } from '@/components/ui/Modal';
-import { STORAGE_KEYS } from '@/config/site';
+import { esEstadoInmutable } from '@/lib/inventoryStates';
 import {
   FLOTA_RESUMEN,
-  INVENTARIO_REGISTROS,
 } from '@/data/inventario';
-import { useLocalStorage } from '@/hooks/useLocalStorage';
 import type {
   InventarioCategoria,
   InventarioCategoriaBaseId,
@@ -33,6 +33,10 @@ import type {
 interface InventarioPageProps {
   filtro: InventarioFiltro;
   onFiltroChange: (filtro: InventarioFiltro) => void;
+  registrosInventario: InventarioRegistro[];
+  setRegistrosInventario: Dispatch<SetStateAction<InventarioRegistro[]>>;
+  estadosInventario: string[];
+  setEstadosInventario: Dispatch<SetStateAction<string[]>>;
   categoriasPersonalizadas: InventarioCategoria[];
   onAgregarCategoria: (categoria: InventarioCategoria) => void;
   onRegistrarMovimiento: (
@@ -199,14 +203,7 @@ const ESTADOS_BASE = [
   { id: 'taller', label: 'En taller' },
 ] as const;
 
-const ESTADOS_REGISTRO_BASE = [
-  'Almacén 1',
-  'Oficina',
-  'Alquiler',
-  'Reparación',
-  'Taller',
-  'Mantenimiento',
-];
+
 
 const precioFormatter = new Intl.NumberFormat('es-PE', {
   style: 'currency',
@@ -248,7 +245,21 @@ function EstadoBadge({ estado }: { estado: string }) {
   );
 }
 
-function valorCelda(registro: InventarioRegistro, campo: CampoInventarioTabla, detail = false) {
+function nombreCategoria(
+  registro: InventarioRegistro,
+  categoriasPersonalizadas: InventarioCategoria[],
+): string {
+  const base = CATEGORIAS_BASE.find((item) => item.id === registro.categoriaId);
+  const personalizada = categoriasPersonalizadas.find((item) => item.id === registro.categoriaId);
+  return base?.label ?? personalizada?.label ?? `Categoría ${registro.categoria}`;
+}
+
+function valorCelda(
+  registro: InventarioRegistro,
+  campo: CampoInventarioTabla,
+  detail = false,
+  categoriaNombre?: string,
+) {
   if (campo.startsWith('custom:')) {
     return registro.especificacionesPersonalizadas?.[campo.replace('custom:', '')] || '—';
   }
@@ -266,6 +277,7 @@ function valorCelda(registro: InventarioRegistro, campo: CampoInventarioTabla, d
   }
   if (campoBase === 'precio') return precioFormatter.format(registro.precio);
   if (campoBase === 'estado') return <EstadoBadge estado={registro.estado} />;
+  if (campoBase === 'categoria') return categoriaNombre ?? `Categoría ${registro.categoria}`;
   const value = registro[campoBase];
   return value === undefined || value === '' ? '—' : String(value);
 }
@@ -296,7 +308,12 @@ function DetallesInventario({
                   {columna.label}
                 </th>
                 <td className="px-4 py-3 leading-relaxed text-slate-700">
-                  {valorCelda(registro, columna.key, true)}
+                  {valorCelda(
+                    registro,
+                    columna.key,
+                    true,
+                    nombreCategoria(registro, categoriasPersonalizadas),
+                  )}
                 </td>
               </tr>
             ))}
@@ -310,6 +327,10 @@ function DetallesInventario({
 export function InventarioPage({
   filtro,
   onFiltroChange,
+  registrosInventario,
+  setRegistrosInventario,
+  estadosInventario,
+  setEstadosInventario,
   categoriasPersonalizadas,
   onAgregarCategoria,
   onRegistrarMovimiento,
@@ -323,55 +344,247 @@ export function InventarioPage({
   const [editingRegistro, setEditingRegistro] = useState<InventarioRegistro | null>(null);
   const [selectedRegistro, setSelectedRegistro] = useState<InventarioRegistro | null>(null);
   const [nuevoEstado, setNuevoEstado] = useState('');
-  const [registrosInventario, setRegistrosInventario] = useLocalStorage<InventarioRegistro[]>(
-    STORAGE_KEYS.inventario,
-    INVENTARIO_REGISTROS,
-  );
+  const [editingEstado, setEditingEstado] = useState<string | null>(null);
+  const [isAddingEstado, setIsAddingEstado] = useState(false);
+  const [nombreEstadoEditado, setNombreEstadoEditado] = useState('');
+  const [estadoError, setEstadoError] = useState('');
   const categorias = [
     ...CATEGORIAS_BASE,
     ...categoriasPersonalizadas.map((item) => ({ ...item, icon: Package })),
   ];
-  const [estadosPersonalizados, setEstadosPersonalizados] = useLocalStorage<string[]>(
-    STORAGE_KEYS.inventarioEstados,
-    [],
-  );
-  const estadosRegistro = [...ESTADOS_REGISTRO_BASE, ...estadosPersonalizados];
-  const filtrosEstado = [
-    ...ESTADOS_BASE,
-    ...estadosPersonalizados.map((estado) => ({ id: `custom:${estado}`, label: estado })),
-  ];
+  const estadosRegistro = estadosInventario;
+  const filtrosEstados = estadosInventario.map((estado) => ({
+    id: `custom:${estado}`,
+    label: estado,
+  }));
+  // Los filtros agrupadores se conservan solo para el Dashboard y las etiquetas.
+  const filtrosEstado = [...ESTADOS_BASE, ...filtrosEstados];
   const categoryMenuRef = useRef<HTMLDivElement>(null);
   const statusMenuRef = useRef<HTMLDivElement>(null);
   const categoria = categorias.find((item) => item.id === categoriaActiva) ?? categorias[0];
   const CategoriaIcon = categoria.icon;
   const columnas = obtenerColumnas(categoriaActiva, categoriasPersonalizadas);
-  const columnasVisibles = columnas.slice(0, 8);
   const terminosBusqueda = normalizarBusqueda(search).split(/\s+/).filter(Boolean);
+  const isGlobalSearch = terminosBusqueda.length > 0;
+  const columnasGlobales: ColumnaInventario[] = [
+    { key: 'sku', label: 'SKU' },
+    { key: 'qr', label: 'Código QR' },
+    { key: 'categoria', label: 'Categoría' },
+    { key: 'descripcion', label: 'Descripción del equipo' },
+    { key: 'marca', label: 'Marca' },
+    { key: 'numeroSerial', label: 'Número serial' },
+    { key: 'estado', label: 'Estado' },
+    { key: 'proveedor', label: 'Proveedor' },
+  ];
+  const columnasVisibles = isGlobalSearch ? columnasGlobales : columnas.slice(0, 8);
 
   const registros = registrosInventario.filter((registro) => {
-    if (registro.categoriaId !== categoriaActiva || !coincideEstado(registro, estadoActivo)) return false;
-    if (terminosBusqueda.length === 0) return true;
+    if (!coincideEstado(registro, estadoActivo)) return false;
+    if (!isGlobalSearch) return registro.categoriaId === categoriaActiva;
 
-    const especificaciones = normalizarBusqueda([
+    const columnasRegistro = obtenerColumnas(registro.categoriaId, categoriasPersonalizadas);
+    const contenido = normalizarBusqueda([
       ...Object.values(registro),
+      ...Object.values(registro.especificacionesPersonalizadas ?? {}),
+      ...columnasRegistro.map((columna) => columna.label),
+      nombreCategoria(registro, categoriasPersonalizadas),
       precioFormatter.format(registro.precio),
-      categoria.label,
     ].join(' '));
 
-    return terminosBusqueda.every((termino) => especificaciones.includes(termino));
+    return terminosBusqueda.every((termino) => contenido.includes(termino));
   });
   const productosAgregados = registrosInventario.filter((registro) => registro.id.startsWith('inv-')).length;
   const estadoLabel = filtrosEstado.find((item) => item.id === estadoActivo)?.label ?? 'Estados';
 
+  const toggleStatusMenu = () => {
+    const next = !isStatusMenuOpen;
+    setIsStatusMenuOpen(next);
+    if (!next) {
+      setEditingEstado(null);
+      setIsAddingEstado(false);
+      setEstadoError('');
+    }
+  };
+
+  const iniciarEdicionEstado = (estado: string) => {
+    setEditingEstado(estado);
+    setIsAddingEstado(false);
+    setNombreEstadoEditado(estado);
+    setNuevoEstado('');
+    setEstadoError('');
+  };
+
+  const cancelarEdicionEstado = () => {
+    setEditingEstado(null);
+    setIsAddingEstado(false);
+    setNombreEstadoEditado('');
+    setEstadoError('');
+  };
+
+  const guardarEstadoEditado = () => {
+    if (!editingEstado) return;
+    if (esEstadoInmutable(editingEstado)) {
+      setEstadoError('Alquiler, Taller y Venta son estados inmutables.');
+      return;
+    }
+    const nuevo = nombreEstadoEditado.trim();
+    if (!nuevo) {
+      setEstadoError('Escribe un nombre para el estado.');
+      return;
+    }
+    if (esEstadoInmutable(nuevo)) {
+      setEstadoError('Alquiler, Taller y Venta son nombres reservados.');
+      return;
+    }
+    const duplicado = estadosInventario.some(
+      (estado) => estado.toLowerCase() === nuevo.toLowerCase() && estado.toLowerCase() !== editingEstado.toLowerCase(),
+    );
+    if (duplicado) {
+      setEstadoError('Ya existe un estado con ese nombre.');
+      return;
+    }
+
+    if (nuevo !== editingEstado) {
+      setEstadosInventario((current) =>
+        current.map((estado) => (estado === editingEstado ? nuevo : estado)),
+      );
+      setRegistrosInventario((current) =>
+        current.map((registro) =>
+          registro.estado.toLowerCase() === editingEstado.toLowerCase()
+            ? { ...registro, estado: nuevo }
+            : registro,
+        ),
+      );
+      setEstadoActivo((current) =>
+        current === `custom:${editingEstado}` ? `custom:${nuevo}` : current,
+      );
+    }
+
+    setEditingEstado(null);
+    setIsAddingEstado(false);
+    setNombreEstadoEditado('');
+    setEstadoError('');
+    setIsStatusMenuOpen(false);
+  };
+
+  const eliminarEstado = (estado: string) => {
+    if (esEstadoInmutable(estado)) {
+      setEstadoError('Alquiler, Taller y Venta no se pueden eliminar.');
+      return;
+    }
+    if (estadosInventario.length <= 1) {
+      setEstadoError('Debe existir al menos un estado en el inventario.');
+      return;
+    }
+
+    const enUso = registrosInventario.filter(
+      (registro) => registro.estado.toLowerCase() === estado.toLowerCase(),
+    ).length;
+    if (enUso > 0) {
+      setEstadoError(
+        `No se puede eliminar "${estado}": ${enUso} ${enUso === 1 ? 'producto lo usa' : 'productos lo usan'}. Cambia su estado primero.`,
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `¿Eliminar el estado "${estado}"? Esta acción no se puede deshacer.`,
+    );
+    if (!confirmed) return;
+
+    setEstadosInventario((current) => current.filter((item) => item !== estado));
+    if (estadoActivo === `custom:${estado}`) {
+      setEstadoActivo('all');
+      onFiltroChange('all');
+    }
+    if (editingEstado === estado) {
+      setEditingEstado(null);
+      setNombreEstadoEditado('');
+    }
+    setEstadoError('');
+  };
+
   const agregarEstado = () => {
     const estado = nuevoEstado.trim();
     if (!estado) return;
-    if (!estadosRegistro.some((item) => item.toLowerCase() === estado.toLowerCase())) {
-      setEstadosPersonalizados((current) => [...current, estado]);
+    if (esEstadoInmutable(estado)) {
+      setEstadoError('Alquiler, Taller y Venta ya existen y son inmutables.');
+      return;
     }
+    const existente = estadosInventario.find(
+      (item) => item.toLowerCase() === estado.toLowerCase(),
+    );
+    if (existente) {
+      setEstadoError('Ese estado ya existe.');
+      return;
+    }
+    setEstadosInventario((current) => [...current, estado]);
     setEstadoActivo(`custom:${estado}`);
     setNuevoEstado('');
+    setIsAddingEstado(false);
+    setEstadoError('');
     setIsStatusMenuOpen(false);
+  };
+
+  const renderFiltroEstado = (item: { id: string; label: string }) => {
+    const active = estadoActivo === item.id;
+    return (
+      <div key={item.id} className="flex items-center gap-1">
+        <button
+          type="button"
+          role="menuitemradio"
+          aria-checked={active}
+          title={active ? 'Quitar filtro y ver todos' : `Filtrar por ${item.label}`}
+          onClick={() => {
+            const next = active ? 'all' : item.id;
+            setEstadoActivo(next);
+            if (next === 'all') onFiltroChange('all');
+            setEditingEstado(null);
+            setIsAddingEstado(false);
+            setEstadoError('');
+            setIsStatusMenuOpen(false);
+          }}
+          className={`flex flex-1 cursor-pointer items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs ${
+            active
+              ? 'bg-blue-50 font-bold text-[#2B5C94]'
+              : 'font-semibold text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <span>{item.label}</span>
+          {active && <Check className="h-3.5 w-3.5" />}
+        </button>
+        {esEstadoInmutable(item.label) ? (
+          <span
+            title="Estado inmutable: no se puede editar ni eliminar"
+            aria-label={`${item.label}: estado inmutable`}
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-400"
+          >
+            <LockKeyhole className="h-3.5 w-3.5" />
+          </span>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => iniciarEdicionEstado(item.label)}
+              title={`Editar estado ${item.label}`}
+              aria-label={`Editar estado ${item.label}`}
+              className="inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:border-blue-300 hover:bg-blue-50 hover:text-[#2B5C94]"
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+            <button
+              type="button"
+              onClick={() => eliminarEstado(item.label)}
+              title={`Eliminar estado ${item.label}`}
+              aria-label={`Eliminar estado ${item.label}`}
+              className="inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-rose-200 text-rose-500 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </>
+        )}
+      </div>
+    );
   };
 
   const eliminarProducto = (registro: InventarioRegistro) => {
@@ -392,6 +605,9 @@ export function InventarioPage({
       }
       if (!statusMenuRef.current?.contains(event.target as Node)) {
         setIsStatusMenuOpen(false);
+        setEditingEstado(null);
+        setIsAddingEstado(false);
+        setEstadoError('');
       }
     };
 
@@ -515,9 +731,11 @@ export function InventarioPage({
                 type="search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="SKU, serie, marca, procesador, RAM..."
-                aria-label={`Buscar por especificaciones en ${categoria.label}`}
-                className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs text-slate-900 focus:border-[#2B5C94] focus:bg-white focus:outline-none"
+                placeholder="SKU, QR, columna, categoría, serie, proveedor..."
+                aria-label="Buscar en todo el inventario por valores o nombres de columnas"
+                className={`h-9 w-full rounded-lg border pl-9 pr-3 text-xs text-slate-900 focus:border-[#2B5C94] focus:bg-white focus:outline-none ${
+                  isGlobalSearch ? 'border-[#2B5C94] bg-white' : 'border-slate-200 bg-slate-50'
+                }`}
               />
             </div>
           </div>
@@ -525,7 +743,7 @@ export function InventarioPage({
           <div ref={statusMenuRef} className="relative shrink-0">
             <button
               type="button"
-              onClick={() => setIsStatusMenuOpen((current) => !current)}
+              onClick={toggleStatusMenu}
               aria-haspopup="menu"
               aria-expanded={isStatusMenuOpen}
               className={`inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border px-3 text-xs font-bold transition-colors ${
@@ -540,74 +758,160 @@ export function InventarioPage({
 
             {isStatusMenuOpen && (
               <div role="menu" className="absolute right-0 top-full z-30 mt-2 w-72 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
-                <div className="px-2.5 pb-1.5 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Filtrar por estado
+                <div className="flex items-center justify-between gap-2 px-2.5 pb-1.5 pt-1">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Filtrar por estado
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingEstado(null);
+                      setNuevoEstado('');
+                      setEstadoError('');
+                      setIsAddingEstado((current) => !current);
+                    }}
+                    className="inline-flex items-center gap-1 rounded-md bg-[#2B5C94] px-2 py-1 text-[10px] font-bold text-white transition-colors hover:bg-[#1F4778]"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Agregar
+                  </button>
                 </div>
-                {filtrosEstado.map((item) => {
-                  const active = estadoActivo === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={active}
-                      onClick={() => {
-                        setEstadoActivo(item.id);
-                        if (!item.id.startsWith('custom:')) {
-                          onFiltroChange(item.id as InventarioFiltro);
-                        }
-                        setIsStatusMenuOpen(false);
-                      }}
-                      className={`flex w-full cursor-pointer items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs ${
-                        active
-                          ? 'bg-blue-50 font-bold text-[#2B5C94]'
-                          : 'font-semibold text-slate-600 hover:bg-slate-50'
-                      }`}
-                    >
-                      <span>{item.label}</span>
-                      {active && <Check className="h-3.5 w-3.5" />}
-                    </button>
-                  );
-                })}
 
-                <div className="mt-1 border-t border-slate-100 p-2">
-                  <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    Agregar nuevo estado
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={nuevoEstado}
-                      onChange={(event) => setNuevoEstado(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter') {
-                          event.preventDefault();
-                          agregarEstado();
-                        }
-                      }}
-                      placeholder="Ej. En tránsito"
-                      className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs focus:border-[#2B5C94] focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={agregarEstado}
-                      className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-[#2B5C94] px-2.5 py-1.5 text-xs font-bold text-white hover:bg-[#1F4778]"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      Agregar
-                    </button>
+                {estadoError && (
+                  <p className="mx-1 mb-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[11px] font-semibold text-rose-700">
+                    {estadoError}
+                  </p>
+                )}
+
+                {(editingEstado || isAddingEstado) && (
+                  <div className="mx-1 mb-1.5 rounded-lg border border-slate-200 bg-slate-50 p-2">
+                    {editingEstado ? (
+                      <>
+                        <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                          Editar estado: {editingEstado}
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={nombreEstadoEditado}
+                            onChange={(event) => {
+                              setNombreEstadoEditado(event.target.value);
+                              setEstadoError('');
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') {
+                                event.preventDefault();
+                                guardarEstadoEditado();
+                              }
+                              if (event.key === 'Escape') cancelarEdicionEstado();
+                            }}
+                            autoFocus
+                            className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs focus:border-[#2B5C94] focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={guardarEstadoEditado}
+                            className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-[#2B5C94] px-2.5 py-1.5 text-xs font-bold text-white hover:bg-[#1F4778]"
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                            Guardar
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={cancelarEdicionEstado}
+                          className="mt-1.5 cursor-pointer text-[11px] font-semibold text-slate-500 hover:text-slate-800"
+                        >
+                          Cancelar edición
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                          Nuevo estado
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={nuevoEstado}
+                            onChange={(event) => {
+                              setNuevoEstado(event.target.value);
+                              setEstadoError('');
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') {
+                                event.preventDefault();
+                                agregarEstado();
+                              }
+                              if (event.key === 'Escape') {
+                                setIsAddingEstado(false);
+                                setEstadoError('');
+                              }
+                            }}
+                            autoFocus
+                            placeholder="Ej. En tránsito"
+                            className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs focus:border-[#2B5C94] focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={agregarEstado}
+                            className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-[#2B5C94] px-2.5 py-1.5 text-xs font-bold text-white hover:bg-[#1F4778]"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            Agregar
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
+                )}
+
+                <div
+                  role="group"
+                  aria-label="Filtros y estados"
+                  className="max-h-64 overflow-y-auto overscroll-contain pr-1 [scrollbar-color:#94a3b8_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent"
+                >
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={estadoActivo === 'all'}
+                    onClick={() => {
+                      setEstadoActivo('all');
+                      onFiltroChange('all');
+                      setEditingEstado(null);
+                      setIsAddingEstado(false);
+                      setEstadoError('');
+                      setIsStatusMenuOpen(false);
+                    }}
+                    className={`mx-1 flex w-[calc(100%-0.5rem)] cursor-pointer items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs ${
+                      estadoActivo === 'all'
+                        ? 'bg-blue-50 font-bold text-[#2B5C94]'
+                        : 'font-semibold text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span>Todos los estados</span>
+                    {estadoActivo === 'all' && <Check className="h-3.5 w-3.5" />}
+                  </button>
+                  <div className="mx-1 my-1 border-t border-slate-100" />
+                  {filtrosEstados.map((item) => renderFiltroEstado(item))}
                 </div>
+
               </div>
             )}
           </div>
         </div>
 
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-800">{categoria.label}</span>
-            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">
-              Categoría {categoria.codigo}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold text-slate-800">
+              {isGlobalSearch ? 'Resultados globales' : categoria.label}
+            </span>
+            <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+              isGlobalSearch
+                ? 'border border-blue-200 bg-blue-50 text-[#2B5C94]'
+                : 'bg-slate-100 text-slate-500'
+            }`}>
+              {isGlobalSearch ? 'Todas las categorías' : `Categoría ${categoria.codigo}`}
             </span>
           </div>
           <span className="text-[11px] text-slate-500">
@@ -678,7 +982,12 @@ export function InventarioPage({
                             : ''
                         }`}
                       >
-                        {valorCelda(registro, columna.key)}
+                        {valorCelda(
+                          registro,
+                          columna.key,
+                          false,
+                          nombreCategoria(registro, categoriasPersonalizadas),
+                        )}
                       </td>
                     ))}
                     <td className="px-1.5 py-2.5 text-center align-top">

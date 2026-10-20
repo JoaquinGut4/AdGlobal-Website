@@ -149,6 +149,9 @@ def test_create_ticket_assigns_support_user(client: TestClient, auth_headers: di
         json={
             "cliente": "Empresa Prueba",
             "equipo": "LAP-0001 — Laptop",
+            "numeroPedidoEstado": "LAP-0001: Almacén 1",
+            "tipoTicket": "general",
+            "estadoEquipo": "Almacén 1",
             "prioridad": "Alta",
             "descripcion": "No enciende",
             "tecnicoId": support_id,
@@ -159,6 +162,54 @@ def test_create_ticket_assigns_support_user(client: TestClient, auth_headers: di
     ticket = created.json()
     assert ticket["tecnico"] == "Andre Reyes"
     assert ticket["tecnicoTelefono"] == "955746704"
+    assert ticket["numeroPedidoEstado"] == "LAP-0001: Almacén 1"
+    assert ticket["tipoTicket"] == "general"
+    assert ticket["estadoEquipo"] == "Almacén 1"
+
+    missing_reference = client.post(
+        "/api/v1/tickets",
+        headers=auth_headers,
+        json={"cliente": "Empresa Prueba", "equipo": "LAP-0001", "prioridad": "Alta", "descripcion": "No enciende"},
+    )
+    assert missing_reference.status_code == 422
+
+    missing_contact = client.post(
+        "/api/v1/tickets",
+        headers=auth_headers,
+        json={
+            "cliente": "Empresa Prueba", "equipo": "LAP-0001", "prioridad": "Alta",
+            "descripcion": "No enciende", "numeroPedidoEstado": "PED-2026-001",
+            "tipoTicket": "pedido", "numeroPedido": "PED-2026-001",
+        },
+    )
+    assert missing_contact.status_code == 422
+
+    by_order = client.post(
+        "/api/v1/tickets",
+        headers=auth_headers,
+        json={
+            "cliente": "Empresa Prueba", "equipo": "LAP-0001", "prioridad": "Alta",
+            "descripcion": "No enciende", "numeroPedidoEstado": "PED-2026-001",
+            "tipoTicket": "pedido", "numeroPedido": "PED-2026-001",
+            "telefonoContacto": "955746704",
+            "direccionPedido": "Av. Principal 123, Miraflores, Lima",
+        },
+    )
+    assert by_order.status_code == 201, by_order.text
+    assert by_order.json()["tipoTicket"] == "pedido"
+    assert by_order.json()["numeroPedido"] == "PED-2026-001"
+    assert by_order.json()["telefonoContacto"] == "955746704"
+    assert by_order.json()["direccionPedido"] == "Av. Principal 123, Miraflores, Lima"
+
+    missing_state = client.post(
+        "/api/v1/tickets",
+        headers=auth_headers,
+        json={
+            "cliente": "Inventario interno", "equipo": "LAP-0001", "prioridad": "Media",
+            "descripcion": "Revisión", "numeroPedidoEstado": "Almacén 1", "tipoTicket": "general",
+        },
+    )
+    assert missing_state.status_code == 422
 
     completed = client.patch(
         f"/api/v1/tickets/{ticket['id']}",
@@ -174,6 +225,61 @@ def test_create_ticket_assigns_support_user(client: TestClient, auth_headers: di
         item["id"] != ticket["id"]
         for item in client.get("/api/v1/tickets", headers=auth_headers).json()
     )
+
+
+def test_existing_ticket_without_reference_is_still_readable(client: TestClient, auth_headers: dict[str, str]) -> None:
+    from backend.app.core.database import SessionLocal
+    from backend.app.models import SupportTicket
+
+    with SessionLocal() as db:
+        db.add(SupportTicket(
+            code="TKT-LEGACY-001", equipment="Equipo antiguo", customer="Cliente antiguo",
+            priority="Media", description="Incidencia registrada antes del nuevo campo",
+            technician_name="Técnico", order_or_status="",
+        ))
+        db.commit()
+
+    response = client.get("/api/v1/tickets", headers=auth_headers)
+    assert response.status_code == 200, response.text
+    assert response.json()[0]["numeroPedidoEstado"] == ""
+    assert response.json()[0]["direccionPedido"] == ""
+
+
+def test_order_contact_phone_is_saved_and_editable(client: TestClient, auth_headers: dict[str, str]) -> None:
+    order = {
+        "fechaEmision": "2026-10-20",
+        "direccionPartida": "Almacén",
+        "direccionLlegada": "Cliente de prueba",
+        "telefonoContacto": "+51 955 746 704",
+        "descripcionProductos": "LAP-0001 · Laptop",
+        "cantidadProductos": 1,
+        "unidadMedida": "UND",
+        "motivoTraslado": "Alquiler",
+        "observaciones": "",
+    }
+    created = client.post("/api/v1/pedidos", json=order, headers=auth_headers)
+    assert created.status_code == 201, created.text
+    assert created.json()["telefonoContacto"] == order["telefonoContacto"]
+    order_id = created.json()["id"]
+
+    listed = client.get("/api/v1/pedidos", headers=auth_headers)
+    assert listed.status_code == 200
+    assert listed.json()[0]["telefonoContacto"] == order["telefonoContacto"]
+
+    updated = client.put(
+        f"/api/v1/pedidos/{order_id}",
+        json={**order, "telefonoContacto": "987654321"},
+        headers=auth_headers,
+    )
+    assert updated.status_code == 200
+    assert updated.json()["telefonoContacto"] == "987654321"
+
+    invalid = client.post(
+        "/api/v1/pedidos",
+        json={**order, "telefonoContacto": "123"},
+        headers=auth_headers,
+    )
+    assert invalid.status_code == 422
 
 
 def test_inventory_crud(client: TestClient, auth_headers: dict[str, str]) -> None:

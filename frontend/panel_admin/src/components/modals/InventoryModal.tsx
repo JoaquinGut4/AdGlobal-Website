@@ -144,6 +144,41 @@ const INITIAL_VALUES: Record<string, string> = {
   alquiler: 'Sí',
 };
 
+const PREFIJOS_BASE: Record<string, string> = {
+  laptops: 'LAP',
+  computadoras: 'PC',
+  monitores: 'MON',
+  tablets: 'TAB',
+  televisores: 'TV',
+  impresoras: 'IMP',
+  proyectores: 'PRO',
+};
+
+function prefijoCategoria(categoria: InventarioCategoria): string {
+  if (PREFIJOS_BASE[categoria.id]) return PREFIJOS_BASE[categoria.id];
+  const letras = categoria.label
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .toUpperCase()
+    .slice(0, 3);
+  return letras || `C${categoria.codigo}`;
+}
+
+function generarIdentificadores(
+  categoria: InventarioCategoria,
+  existingSkus: string[],
+): { sku: string; qr: string } {
+  const prefijo = prefijoCategoria(categoria);
+  const siguiente = existingSkus.reduce((max, sku) => {
+    const [skuPrefijo, correlativo] = sku.toUpperCase().split('-');
+    if (skuPrefijo !== prefijo || !correlativo || !/^\d+$/.test(correlativo)) return max;
+    return Math.max(max, Number(correlativo));
+  }, 0) + 1;
+  const sku = `${prefijo}-${String(siguiente).padStart(4, '0')}`;
+  return { sku, qr: `QR-${sku}` };
+}
+
 function optimizarFoto(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -203,8 +238,13 @@ export function InventoryModal({
     setProductError('');
 
     if (!editingRegistro) {
-      setValues({ ...INITIAL_VALUES });
-      setCategoriaId('laptops');
+      const initialCategory =
+        categorias.find((item) => item.id === 'laptops') ?? categorias[0];
+      setCategoriaId(initialCategory.id);
+      setValues({
+        ...INITIAL_VALUES,
+        ...generarIdentificadores(initialCategory, existingSkus),
+      });
       return;
     }
 
@@ -229,8 +269,12 @@ export function InventoryModal({
   };
 
   const handleCategoryChange = (nextCategory: InventarioCategoriaId) => {
+    const selected = categorias.find((item) => item.id === nextCategory) ?? categoria;
     setCategoriaId(nextCategory);
-    setValues(INITIAL_VALUES);
+    setValues({
+      ...INITIAL_VALUES,
+      ...generarIdentificadores(selected, existingSkus),
+    });
   };
 
   const handleAddSpecification = () => {
@@ -287,7 +331,10 @@ export function InventoryModal({
 
     onCreateCategory(nuevaCategoria);
     setCategoriaId(nuevaCategoria.id);
-    setValues(INITIAL_VALUES);
+    setValues({
+      ...INITIAL_VALUES,
+      ...generarIdentificadores(nuevaCategoria, existingSkus),
+    });
     setNewCategoryName('');
     setNewCategoryCode('');
     setNewCategorySpecs([]);
@@ -497,6 +544,10 @@ export function InventoryModal({
           </p>
         </div>
 
+        <div className="rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2 text-[11px] font-medium text-[#2B5C94]">
+          El SKU y el código QR se generan automáticamente según la categoría y el correlativo existente.
+        </div>
+
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {fields.map((field) => (
             <div key={field.key} className={field.wide ? 'sm:col-span-2 lg:col-span-3' : ''}>
@@ -579,10 +630,16 @@ export function InventoryModal({
                   min={field.type === 'number' ? '0' : undefined}
                   step={field.type === 'number' ? '0.01' : undefined}
                   required={field.required}
+                  readOnly={field.key === 'sku' || field.key === 'qr'}
+                  aria-readonly={field.key === 'sku' || field.key === 'qr'}
                   value={values[field.key] ?? ''}
                   onChange={(event) => updateValue(field.key, event.target.value)}
                   placeholder={field.placeholder}
-                  className={FIELD_CLASS}
+                  className={`${FIELD_CLASS} ${
+                    field.key === 'sku' || field.key === 'qr'
+                      ? 'cursor-not-allowed bg-slate-100 font-mono font-bold text-slate-600'
+                      : ''
+                  }`}
                 />
               )}
             </div>

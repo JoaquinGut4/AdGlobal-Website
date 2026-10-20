@@ -36,8 +36,11 @@ export const FaqCollage: React.FC = () => {
   const managedImages = useManagedWebImages();
   const managedFaq = managedImages
     .filter((image) => image.section === 'faq')
-    .map((image) => image.dataUrl);
-  const fotos = managedFaq.length > 0 ? managedFaq : FOTOS;
+    .map((image) => ({ url: image.dataUrl, type: image.type }));
+  const fotos =
+    managedFaq.length > 0
+      ? managedFaq
+      : FOTOS.map((url) => ({ url, type: 'image' as const }));
 
   useEffect(() => {
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -76,16 +79,30 @@ export const FaqCollage: React.FC = () => {
         const activa = (tick + slot) % fotos.length;
         return (
           <div key={pieza + slot} className={`collage__slot ${pieza}`}>
-            {fotos.map((foto, index) => (
-              <img
-                key={foto}
-                src={foto}
-                alt=""
-                loading="lazy"
-                decoding="async"
-                className={`collage__img ${index === activa ? 'is-on' : ''}`}
-              />
-            ))}
+            {fotos.map((foto, index) =>
+              foto.type === 'video' ? (
+                <video
+                  key={foto.url}
+                  src={foto.url}
+                  aria-hidden="true"
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  preload="metadata"
+                  className={`collage__img ${index === activa ? 'is-on' : ''}`}
+                />
+              ) : (
+                <img
+                  key={foto.url}
+                  src={foto.url}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  className={`collage__img ${index === activa ? 'is-on' : ''}`}
+                />
+              ),
+            )}
           </div>
         );
       })}

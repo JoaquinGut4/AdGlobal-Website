@@ -21,11 +21,12 @@ export const ServicePanel: React.FC<ServicePanelProps> = ({
     () =>
       managedImages
         .filter((image) => image.section === 'servicio' && image.serviceId === service.id)
-        .map((image) => ({ type: 'image' as const, url: image.dataUrl, caption: image.name })),
+        .map((image) => ({ type: image.type, url: image.dataUrl, caption: image.name })),
     [managedImages, service.id]
   );
   const media = managedMedia.length > 0 ? managedMedia : service.gallery;
-  const featuredImage = managedMedia[0]?.url ?? service.featuredImage;
+  const featuredImage =
+    managedMedia.find((item) => item.type === 'image')?.url ?? service.featuredImage;
   const [active, setActive] = useState(() => {
     const firstVideo = media.findIndex((item) => item.type === 'video');
     return firstVideo >= 0 ? firstVideo : 0;

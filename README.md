@@ -222,6 +222,24 @@ Reglas:
 > El video y el póster del **Hero** sí son manuales: `src/assets/hero/` y se
 > referencian en `src/data/contenido.ts`.
 
+### Contenido multimedia de la web
+
+El módulo **Gestión web** del panel sube imágenes y videos al backend y permite:
+
+- Ver archivos por sección: banner, servicios y preguntas frecuentes.
+- Editar nombre, sección, servicio, orden y visibilidad.
+- Eliminar el archivo del servidor y de la base de datos.
+
+La web pública consume los archivos activos desde:
+
+```text
+GET /api/v1/public/web-assets
+```
+
+Configura `VITE_API_URL` en `frontend/web_publica/.env` con la URL del backend.
+Formatos admitidos: JPG, PNG, WebP, AVIF, GIF, MP4, WebM, MOV, OGV, M4V y MPEG.
+Límites: 10 MB para imágenes y 100 MB para videos.
+
 ## Panel administrativo (`frontend/panel_admin`)
 
 Frontend interno construido con el **mismo stack** de la web pública (React 19, Vite 8,
