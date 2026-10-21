@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     max_upload_mb: int = 10
     max_video_upload_mb: int = 100
 
+    login_account_max_attempts: int = 5
+    login_ip_max_attempts: int = 30
+    login_attempt_window_seconds: int = 300
+    trust_forwarded_for: bool = False
+
     initial_samuel_password: str | None = None
     initial_joaquin_password: str | None = None
 

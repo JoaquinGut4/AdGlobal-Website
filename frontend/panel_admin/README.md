@@ -10,25 +10,21 @@ administrativo) y sirve como base del modelo final del apartado admin.
 
 | Vista | Descripción |
 | --- | --- |
-| Login | Acceso corporativo contra la API, sesión JWT y opción "recordarme". |
-| Dashboard | Estadísticas y actividad en tiempo real: distribución de flota, comparativo alquiler vs ventas (semana/mes/año) y estado de almacén. |
-| Inventario | Equipos, características, cantidades, estados y disponibilidad (filtros y detalle expandible). |
-| Alquileres | Reservas, contratos, periodos y devoluciones. *(estructura en preparación)* |
-| Ventas | Solicitudes, pedidos y ventas de equipos tecnológicos. *(estructura en preparación)* |
-| Cotizaciones | Bandeja de propuestas comerciales, cambio de estado y respuesta por WhatsApp. |
-| Pedidos | Registro y seguimiento de pedidos de equipos hasta su entrega. *(estructura en preparación)* |
-| Clientes | Registro de clientes/empresas, contacto e historial comercial. |
-| Movimientos | Entradas, salidas, traslados y cambios de ubicación. *(estructura en preparación)* |
+| Login | Acceso corporativo contra la API, sesión JWT, refresh token y opción "recordarme". |
+| Dashboard | Distribución de flota, comparativo alquiler vs ventas y clientes activos. |
+| Inventario | Equipos, características, estados y categorías (filtros y detalle expandible). |
+| Pedidos | Registro y seguimiento de pedidos; guía de remisión y control de estados. |
+| Clientes | Directorio derivado de los pedidos (oculto en el menú, accesible desde el Dashboard). |
+| Movimientos | Historial de acciones locales de Pedidos, Inventario y Tickets. |
 | Tickets de soporte | Incidencias técnicas y ciclo de vida (abierto → diagnóstico → reparación → resuelto). |
-| Gestión web | Productos, imágenes, servicios y contenido de la web pública. *(estructura en preparación)* |
-| Reportes | Resultados operativos y comerciales. *(estructura en preparación)* |
-| Configuración | Usuarios, roles, permisos y parámetros generales. *(estructura en preparación)* |
+| Gestión web | Imágenes y videos de la web pública (subida, orden, visibilidad y borrado). |
+| Configuración | Usuarios, roles, módulos y teléfonos de contacto. |
 
-> Los módulos marcados "en preparación" muestran su propósito y capacidades planificadas con el
-> componente `components/ui/ModulePlaceholder.tsx`, listos para desarrollar su operación completa.
-
-Acciones globales (barra superior): **Aperturar Ticket** y **Aperturar Cotización**, con sus
+Acciones globales (barra superior): **Aperturar Ticket** y **Aperturar Pedido**, con sus
 modales y notificaciones toast.
+
+> Cotizaciones web y Presupuestos aún no tienen pantalla en el panel; la API de
+> `/cotizaciones` está disponible para una siguiente fase.
 
 ## Estructura
 
@@ -36,18 +32,18 @@ modales y notificaciones toast.
 src/
 ├── components/
 │   ├── layout/      # AdminLayout, Sidebar, Topbar
-│   ├── ui/          # Modal, ProgressBar / StackedDistribution
-│   ├── dashboard/   # FleetDistribution, FlotaChart, RecentQuotes, WarehouseStatus
+│   ├── ui/          # Modal, ProgressBar, LocalDataNotice
+│   ├── dashboard/   # FleetDistribution, FlotaChart, ClientesChart
 │   ├── login/       # LoginScreen
-│   ├── modals/      # TicketModal, QuoteModal
+│   ├── modals/      # TicketModal, OrderModal, InventoryModal, GuideModal
 │   └── AdGlobalLogo.tsx
-├── pages/           # Dashboard, Inventario, Alquileres, Ventas, Cotizaciones, Pedidos,
-│                    # Clientes, Movimientos, Tickets, Gestión web, Reportes, Configuración
-├── data/            # contenido editable y datos semilla (servicios, inventario, tickets...)
+├── pages/           # Dashboard, Inventario, Pedidos, Clientes, Movimientos,
+│                    # Tickets, Gestión web, Configuración
+├── data/            # datos semilla de pedidos, inventario y movimientos
 ├── hooks/           # useAuth, useLocalStorage
 ├── context/         # ToastContext
 ├── config/          # site.ts (env), navigation.ts (menú)
-├── lib/             # utilidades (WhatsApp, formato, marcas de tiempo)
+├── lib/             # API, sincronización de inventario, tickets y utilidades
 ├── types/           # tipos compartidos
 ├── App.tsx
 └── main.tsx
@@ -78,13 +74,18 @@ Solo las variables con prefijo `VITE_` se exponen al navegador:
 | `VITE_ADMIN_NAME` | Nombre mostrado en el login | `AD GLOBAL PERÚ` |
 | `VITE_PUBLIC_SITE_URL` | URL de la web pública (botón "Volver a la web") | `https://adglobalperu.com` |
 | `VITE_API_URL` | URL base versionada del backend | `http://localhost:8000/api/v1` |
-| `VITE_AUTH_MAX_ATTEMPTS` | Política máxima de intentos | `5` |
 
 ## Datos y persistencia
 
-La autenticación y la administración de usuarios consumen el backend. Algunos módulos
-operativos aún mantienen estado local mientras se completa su conexión visual con los endpoints.
-Las cuentas iniciales se crean mediante el *seed* seguro del backend.
+Consumen la API/MySQL: autenticación (con refresh token), usuarios, gestión web y tickets.
+Los tickets se cargan con `GET /tickets` al iniciar sesión y se combinan con los vínculos
+locales de inventario (`equiposIds` y `estadosAnteriores`).
+
+Siguen en `localStorage` (etiqueta **“Solo este navegador”**): inventario, pedidos, clientes
+derivados y movimientos. Esto significa que no se comparten entre equipos ni sobreviven al
+borrado de datos del navegador. Como la clave es del navegador y no de la cuenta, dos usuarios
+que usen el mismo equipo verán la misma información operativa. Las cuentas iniciales se crean
+mediante el *seed* seguro del backend.
 
 ### Ciclo de vida de pedidos e inventario
 

@@ -10,6 +10,11 @@ export function diaLocal(fecha: string): string | null {
   return `${year}-${month}-${day}`;
 }
 
+/** Día de calendario local actual en formato YYYY-MM-DD; cadena vacía si el reloj no es válido. */
+export function hoyLocal(): string {
+  return diaLocal(new Date().toISOString()) ?? '';
+}
+
 /** Consulta inclusiva por fecha, ordenada de más reciente a más antigua. */
 export function movimientosPorFecha(
   movimientos: MovimientoAuditoria[],

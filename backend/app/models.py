@@ -16,6 +16,16 @@ def utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
 
 
+def as_utc(value: datetime) -> datetime:
+    """Marca como UTC una fecha guardada sin zona horaria.
+
+    MySQL no conserva el offset, así que las columnas se guardan en UTC sin
+    ``tzinfo``. Al serializar hay que devolver el offset para que el navegador
+    no interprete la hora como local.
+    """
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
@@ -34,6 +44,7 @@ class AdminUser(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_super_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     modules: Mapped[list[str]] = mapped_column(JSON, default=list)
+    token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 

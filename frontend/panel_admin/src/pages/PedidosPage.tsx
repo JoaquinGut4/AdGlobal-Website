@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { CheckCircle2, ClipboardList, FileText, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { GuideModal } from '@/components/modals/GuideModal';
+import { LocalDataNotice } from '@/components/ui/LocalDataNotice';
 import { Modal } from '@/components/ui/Modal';
 import { formatFecha, parseDireccionLlegada } from '@/lib/utils';
 import type { PedidoRegistro } from '@/types';
@@ -79,9 +80,17 @@ interface PedidosPageProps {
   onEdit: (pedido: PedidoRegistro) => void;
   onFinish: (pedido: PedidoRegistro) => void;
   onDelete: (pedido: PedidoRegistro) => void;
+  onGuardarBorradorGuia?: (pedido: PedidoRegistro, numeroGuia: string) => void;
 }
 
-export function PedidosPage({ pedidos, onOpenOrder, onEdit, onFinish, onDelete }: PedidosPageProps) {
+export function PedidosPage({
+  pedidos,
+  onOpenOrder,
+  onEdit,
+  onFinish,
+  onDelete,
+  onGuardarBorradorGuia,
+}: PedidosPageProps) {
   const [search, setSearch] = useState('');
   const [tipoActivo, setTipoActivo] = useState<TipoFiltro>('all');
   const [selectedPedido, setSelectedPedido] = useState<PedidoRegistro | null>(null);
@@ -106,6 +115,7 @@ export function PedidosPage({ pedidos, onOpenOrder, onEdit, onFinish, onDelete }
               <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-[#2B5C94]">
                 {pedidos.length} pedidos registrados
               </span>
+              <LocalDataNotice />
             </div>
             <p className="mt-1 text-xs text-slate-500">
               Emisión de pedidos y datos necesarios para el traslado de productos
@@ -291,6 +301,7 @@ export function PedidosPage({ pedidos, onOpenOrder, onEdit, onFinish, onDelete }
         isOpen={selectedGuide !== null}
         pedido={selectedGuide}
         onClose={() => setSelectedGuide(null)}
+        onSaveDraft={onGuardarBorradorGuia}
       />
     </div>
   );

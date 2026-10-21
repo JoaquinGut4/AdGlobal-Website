@@ -2,6 +2,12 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { PackagePlus, Plus, Tags, X } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
+import {
+  CAMPOS_BASE_OPCIONALES,
+  CAMPOS_BASE_OPCIONALES_KEYS,
+  camposBaseHabilitados,
+} from '@/lib/inventoryCategoryFields';
+import type { CampoBaseOpcional } from '@/lib/inventoryCategoryFields';
 import type {
   InventarioCategoria,
   InventarioCategoriaBaseId,
@@ -227,11 +233,24 @@ export function InventoryModal({
   const [newSpecName, setNewSpecName] = useState('');
   const [newSpecType, setNewSpecType] = useState<InventarioCampoPersonalizado['type']>('text');
   const [newCategorySpecs, setNewCategorySpecs] = useState<InventarioCampoPersonalizado[]>([]);
+  const [newCategoryBaseFields, setNewCategoryBaseFields] = useState<string[]>([
+    ...CAMPOS_BASE_OPCIONALES_KEYS,
+  ]);
   const [productError, setProductError] = useState('');
   const categoria = categorias.find((item) => item.id === categoriaId) ?? categorias[0];
   const specificFields = SPECIFIC_FIELDS[categoriaId as InventarioCategoriaBaseId] ?? [];
   const customFields = categoria.camposPersonalizados ?? [];
-  const fields = [...BASE_FIELDS, ...specificFields, ...PURCHASE_FIELDS];
+  const enabledBaseFields = new Set<CampoBaseOpcional>(camposBaseHabilitados(categoria));
+  const baseFields = BASE_FIELDS.filter(
+    (field) =>
+      field.key === 'sku' ||
+      field.key === 'qr' ||
+      enabledBaseFields.has(field.key as CampoBaseOpcional),
+  );
+  const purchaseFields = PURCHASE_FIELDS.filter((field) =>
+    enabledBaseFields.has(field.key as CampoBaseOpcional),
+  );
+  const fields = [...baseFields, ...specificFields, ...purchaseFields];
 
   useEffect(() => {
     if (!isOpen) return;
@@ -275,6 +294,12 @@ export function InventoryModal({
       ...INITIAL_VALUES,
       ...generarIdentificadores(selected, existingSkus),
     });
+  };
+
+  const toggleNewCategoryBaseField = (key: CampoBaseOpcional) => {
+    setNewCategoryBaseFields((current) =>
+      current.includes(key) ? current.filter((item) => item !== key) : [...current, key],
+    );
   };
 
   const handleAddSpecification = () => {
@@ -326,6 +351,7 @@ export function InventoryModal({
       id: `custom-${slug}-${Date.now()}`,
       label,
       codigo,
+      camposBase: newCategoryBaseFields,
       camposPersonalizados: newCategorySpecs,
     };
 
@@ -338,6 +364,7 @@ export function InventoryModal({
     setNewCategoryName('');
     setNewCategoryCode('');
     setNewCategorySpecs([]);
+    setNewCategoryBaseFields([...CAMPOS_BASE_OPCIONALES_KEYS]);
     setNewSpecName('');
     setNewSpecType('text');
     setCategoryError('');
@@ -356,22 +383,23 @@ export function InventoryModal({
       return;
     }
 
+    const textValue = (key: string) => (values[key] ?? '').trim();
     const registro: InventarioRegistro = {
       id: editingRegistro?.id ?? `inv-${Date.now()}`,
       categoriaId,
       categoria: categoria.codigo,
-      sku: values.sku.trim(),
-      qr: values.qr.trim(),
+      sku: textValue('sku'),
+      qr: textValue('qr'),
       foto: values.foto ?? '',
-      marca: values.marca.trim(),
-      descripcion: values.descripcion.trim(),
-      numeroSerial: values.numeroSerial.trim(),
-      fechaCompra: values.fechaCompra,
-      facturaGuiaCompra: values.facturaGuiaCompra.trim(),
-      precio: Number(values.precio),
-      proveedor: values.proveedor.trim(),
-      estado: values.estado,
-      observaciones: values.observaciones?.trim() ?? '',
+      marca: textValue('marca'),
+      descripcion: textValue('descripcion'),
+      numeroSerial: textValue('numeroSerial'),
+      fechaCompra: values.fechaCompra ?? '',
+      facturaGuiaCompra: textValue('facturaGuiaCompra'),
+      precio: Number(values.precio) || 0,
+      proveedor: textValue('proveedor'),
+      estado: values.estado ?? estados[0] ?? '',
+      observaciones: textValue('observaciones'),
     };
 
     for (const field of specificFields) {
@@ -433,7 +461,9 @@ export function InventoryModal({
           <button
             type="button"
             onClick={() => {
-              setIsAddingCategory((current) => !current);
+              const next = !isAddingCategory;
+              setIsAddingCategory(next);
+              if (next) setNewCategoryBaseFields([...CAMPOS_BASE_OPCIONALES_KEYS]);
               setCategoryError('');
             }}
             className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-[#2B5C94] transition-colors hover:bg-blue-50"
@@ -465,6 +495,56 @@ export function InventoryModal({
                   placeholder="Código"
                   className={FIELD_CLASS}
                 />
+              </div>
+
+              <div className="mt-3 border-t border-slate-100 pt-3">
+                <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    Campos por defecto de la categoría
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setNewCategoryBaseFields([...CAMPOS_BASE_OPCIONALES_KEYS])}
+                      className="cursor-pointer rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"
+                    >
+                      Todos
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewCategoryBaseFields([])}
+                      className="cursor-pointer rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"
+                    >
+                      Ninguno
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+                  {CAMPOS_BASE_OPCIONALES.map((campo) => {
+                    const enabled = newCategoryBaseFields.includes(campo.key);
+                    return (
+                      <label
+                        key={campo.key}
+                        className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium ${
+                          enabled
+                            ? 'border-blue-200 bg-blue-50 text-[#2B5C94]'
+                            : 'border-slate-200 bg-white text-slate-600'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={enabled}
+                          onChange={() => toggleNewCategoryBaseField(campo.key)}
+                        />
+                        <span>{campo.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="mt-1.5 text-[10px] text-slate-500">
+                  SKU y código QR se incluyen siempre. Desmarca los campos que esta categoría no necesite;
+                  abajo puedes agregar campos propios.
+                </p>
               </div>
 
               <div className="mt-3 border-t border-slate-100 pt-3">

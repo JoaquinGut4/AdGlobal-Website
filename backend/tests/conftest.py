@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.core.database import Base, SessionLocal, engine
+from backend.app.core.rate_limit import account_login_limiter, ip_login_limiter
 from backend.app.core.security import hash_password
 from backend.app.main import app
 from backend.app.models import AdminUser, InventoryCategory, Service
@@ -19,6 +20,8 @@ from backend.app.schemas import ADMIN_MODULES
 
 @pytest.fixture(autouse=True)
 def database():
+    account_login_limiter.reset_all()
+    ip_login_limiter.reset_all()
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     with SessionLocal() as db:

@@ -10,7 +10,6 @@ export const ADMIN_CONFIG = {
   publicSiteUrl: import.meta.env.VITE_PUBLIC_SITE_URL ?? 'https://adglobalperu.com',
   /** URL base versionada del backend. */
   apiUrl: import.meta.env.VITE_API_URL ?? '',
-  maxAuthAttempts: Number(import.meta.env.VITE_AUTH_MAX_ATTEMPTS ?? '5'),
 } as const;
 
 /** Clave de persistencia de la sesión administrativa. */
@@ -28,6 +27,4 @@ export const STORAGE_KEYS = {
   inventarioEstadosV2: 'adglobal_inventory_states_v2',
   pedidos: 'adglobal_orders_v8',
   movimientos: 'adglobal_movements',
-  webImagenes: 'adglobal_web_images_v1',
-  usuarios: 'adglobal_admin_users',
 } as const;

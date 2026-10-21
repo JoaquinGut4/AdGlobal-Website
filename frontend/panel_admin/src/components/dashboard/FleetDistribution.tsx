@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react';
 import { ArrowRight, Building2, Layers, Truck, Wrench } from 'lucide-react';
 import { ProgressBar } from '@/components/ui/ProgressBar';
-import { FLOTA_RESUMEN, porcentajeFlota } from '@/data/inventario';
-import type { InventarioFiltro } from '@/types';
+import { porcentajeFlota, resumirFlota } from '@/lib/inventorySummary';
+import type { InventarioFiltro, InventarioRegistro } from '@/types';
 
 interface FleetDistributionProps {
+  registrosInventario: InventarioRegistro[];
   onVerFiltro: (filtro: InventarioFiltro) => void;
 }
 
@@ -12,6 +13,7 @@ interface FleetBoxProps {
   icon: ReactNode;
   label: string;
   value: number;
+  total: number;
   percent: number;
   percentLabel: string;
   footerLeft: string;
@@ -32,6 +34,7 @@ function FleetBox({
   icon,
   label,
   value,
+  total,
   percent,
   percentLabel,
   footerLeft,
@@ -82,7 +85,7 @@ function FleetBox({
             {value}
           </span>
           <span className="text-[11px] text-slate-400 font-medium">
-            / {FLOTA_RESUMEN.total} equipos
+            / {total} equipos
           </span>
         </div>
 
@@ -108,10 +111,11 @@ function FleetBox({
   );
 }
 
-export function FleetDistribution({ onVerFiltro }: FleetDistributionProps) {
-  const pctAlquiler = Math.round(porcentajeFlota(FLOTA_RESUMEN.alquiler) * 10) / 10;
-  const pctOficina = Math.round(porcentajeFlota(FLOTA_RESUMEN.oficina) * 10) / 10;
-  const pctTaller = Math.round(porcentajeFlota(FLOTA_RESUMEN.taller) * 10) / 10;
+export function FleetDistribution({ registrosInventario, onVerFiltro }: FleetDistributionProps) {
+  const flota = resumirFlota(registrosInventario);
+  const pctAlquiler = Math.round(porcentajeFlota(flota.alquiler, flota.total) * 10) / 10;
+  const pctOficina = Math.round(porcentajeFlota(flota.oficina, flota.total) * 10) / 10;
+  const pctTaller = Math.round(porcentajeFlota(flota.taller, flota.total) * 10) / 10;
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
@@ -126,11 +130,11 @@ export function FleetDistribution({ onVerFiltro }: FleetDistributionProps) {
                 Distribución de Equipos en Flota
               </h2>
               <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-[#2B5C94] border border-blue-200">
-                Total: {FLOTA_RESUMEN.total} unidades
+                Total: {flota.total} unidades
               </span>
             </div>
             <p className="text-[11px] text-slate-500">
-              Haz clic en cualquier recuadro para ver el detalle en Control de Inventario
+              Sincronizado con Control de Inventario · Haz clic en un recuadro para ver el detalle
             </p>
           </div>
         </div>
@@ -149,10 +153,11 @@ export function FleetDistribution({ onVerFiltro }: FleetDistributionProps) {
         <FleetBox
           icon={<Truck className="w-5 h-5" />}
           label="Equipos en alquiler"
-          value={FLOTA_RESUMEN.alquiler}
+          value={flota.alquiler}
+          total={flota.total}
           percent={pctAlquiler}
           percentLabel={`${pctAlquiler}%`}
-          footerLeft={FLOTA_RESUMEN.alquiler > 0 ? 'Servicios de alquiler' : 'Sin equipos en alquiler'}
+          footerLeft={flota.alquiler > 0 ? 'Servicios de alquiler' : 'Sin equipos en alquiler'}
           footerRight="En campo y eventos"
           boxHover="hover:border-[#2B5C94]"
           iconIdle="bg-blue-50 text-[#2B5C94] border-blue-100"
@@ -168,10 +173,11 @@ export function FleetDistribution({ onVerFiltro }: FleetDistributionProps) {
         <FleetBox
           icon={<Building2 className="w-5 h-5" />}
           label="Equipos en oficina"
-          value={FLOTA_RESUMEN.oficina}
+          value={flota.oficina}
+          total={flota.total}
           percent={pctOficina}
           percentLabel={`${pctOficina}%`}
-          footerLeft={FLOTA_RESUMEN.oficina > 0 ? 'Listos para entrega' : 'Sin equipos en oficina'}
+          footerLeft={flota.oficina > 0 ? 'Listos para entrega' : 'Sin equipos en oficina'}
           footerRight="Almacén central"
           boxHover="hover:border-emerald-500"
           iconIdle="bg-emerald-50 text-emerald-600 border-emerald-100"
@@ -187,10 +193,11 @@ export function FleetDistribution({ onVerFiltro }: FleetDistributionProps) {
         <FleetBox
           icon={<Wrench className="w-5 h-5" />}
           label="Equipos en taller"
-          value={FLOTA_RESUMEN.taller}
+          value={flota.taller}
+          total={flota.total}
           percent={pctTaller}
           percentLabel={`${pctTaller}%`}
-          footerLeft={FLOTA_RESUMEN.taller > 0 ? 'En revisión técnica' : 'Sin equipos en taller'}
+          footerLeft={flota.taller > 0 ? 'En revisión técnica' : 'Sin equipos en taller'}
           footerRight="Laboratorio & calibración"
           boxHover="hover:border-amber-500"
           iconIdle="bg-amber-50 text-amber-600 border-amber-100"

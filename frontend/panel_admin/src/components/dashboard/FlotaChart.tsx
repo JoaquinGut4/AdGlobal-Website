@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { BarChart3, ChevronRight, Laptop, Truck } from 'lucide-react';
-import { ANALYTICS_BY_PERIOD } from '@/data/analytics';
-import type { ChartTypeFilter, StatsPeriodo } from '@/types';
+import { construirAnaliticaPedidos } from '@/lib/orderAnalytics';
+import type { ChartTypeFilter, PedidoRegistro, StatsPeriodo } from '@/types';
 
 interface FlotaChartProps {
+  pedidos: PedidoRegistro[];
   onVerInventario: () => void;
 }
 
@@ -13,11 +14,11 @@ const PERIODOS: { id: StatsPeriodo; label: string }[] = [
   { id: 'año', label: 'Por Año' },
 ];
 
-export function FlotaChart({ onVerInventario }: FlotaChartProps) {
+export function FlotaChart({ pedidos, onVerInventario }: FlotaChartProps) {
   const [period, setPeriod] = useState<StatsPeriodo>('mes');
   const [typeFilter, setTypeFilter] = useState<ChartTypeFilter>('todos');
 
-  const data = ANALYTICS_BY_PERIOD[period];
+  const data = useMemo(() => construirAnaliticaPedidos(pedidos, period), [pedidos, period]);
   const totalComparativo = data.resumen.totalAlquiler + data.resumen.totalVentas;
   const hasData = data.items.length > 0 && totalComparativo > 0;
   const pctAlquiler = totalComparativo === 0 ? 0 : Math.round((data.resumen.totalAlquiler / totalComparativo) * 100);
@@ -41,7 +42,7 @@ export function FlotaChart({ onVerInventario }: FlotaChartProps) {
               </span>
             </h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              {data.subtitle} · Comparativa en unidades operadas
+              {data.subtitle} · Comparativa en unidades operadas de pedidos
             </p>
           </div>
         </div>
@@ -173,8 +174,10 @@ export function FlotaChart({ onVerInventario }: FlotaChartProps) {
           </div>
 
           {hasData ? data.items.map((item) => {
-            const hAlquiler = Math.min(100, Math.max(12, (item.alquiler / data.maxVal) * 100));
-            const hVentas = Math.min(100, Math.max(10, (item.ventas / data.maxVal) * 100));
+            const hAlquiler =
+              item.alquiler === 0 ? 0 : Math.min(100, Math.max(8, (item.alquiler / data.maxVal) * 100));
+            const hVentas =
+              item.ventas === 0 ? 0 : Math.min(100, Math.max(8, (item.ventas / data.maxVal) * 100));
 
             return (
               <div
@@ -199,7 +202,7 @@ export function FlotaChart({ onVerInventario }: FlotaChartProps) {
                 </div>
 
                 <div className="w-full flex items-end justify-center gap-2 sm:gap-3.5 h-full pb-1">
-                  {showAlquiler && (
+                  {showAlquiler && item.alquiler > 0 && (
                     <div
                       style={{ height: `${hAlquiler}%` }}
                       className="w-3.5 sm:w-6 bg-gradient-to-t from-[#1F4778] to-[#2B5C94] hover:to-[#3878BE] rounded-t-md transition-all duration-300 relative group/bar cursor-pointer shadow-xs flex flex-col justify-between items-center pb-1 shrink-0"
@@ -210,7 +213,7 @@ export function FlotaChart({ onVerInventario }: FlotaChartProps) {
                     </div>
                   )}
 
-                  {showVentas && (
+                  {showVentas && item.ventas > 0 && (
                     <div
                       style={{ height: `${hVentas}%` }}
                       className="w-3.5 sm:w-6 bg-gradient-to-t from-emerald-700 to-emerald-500 hover:to-emerald-400 rounded-t-md transition-all duration-300 relative group/bar cursor-pointer shadow-xs flex flex-col justify-between items-center pb-1 shrink-0"

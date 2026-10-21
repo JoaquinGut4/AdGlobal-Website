@@ -16,11 +16,11 @@ import {
   Tv,
 } from 'lucide-react';
 import { InventoryModal } from '@/components/modals/InventoryModal';
+import { LocalDataNotice } from '@/components/ui/LocalDataNotice';
 import { Modal } from '@/components/ui/Modal';
 import { esEstadoInmutable } from '@/lib/inventoryStates';
-import {
-  FLOTA_RESUMEN,
-} from '@/data/inventario';
+import { camposBaseHabilitados, esCategoriaPrincipal } from '@/lib/inventoryCategoryFields';
+import type { CampoBaseOpcional } from '@/lib/inventoryCategoryFields';
 import type {
   InventarioCategoria,
   InventarioCategoriaBaseId,
@@ -39,6 +39,7 @@ interface InventarioPageProps {
   setEstadosInventario: Dispatch<SetStateAction<string[]>>;
   categoriasPersonalizadas: InventarioCategoria[];
   onAgregarCategoria: (categoria: InventarioCategoria) => void;
+  onEliminarCategoria: (categoriaId: InventarioCategoriaId) => void;
   onRegistrarMovimiento: (
     accion: Extract<MovimientoAccion, 'Agregó' | 'Modificó' | 'Eliminó'>,
     registro: InventarioRegistro,
@@ -158,13 +159,10 @@ const COLUMNAS_POR_CATEGORIA: Record<InventarioCategoriaBaseId, ColumnaInventari
   ],
 };
 
-const COLUMNAS_CATEGORIA_PERSONALIZADA: ColumnaInventario[] = [
-  ...COLUMNAS_COMUNES,
+const COLUMNAS_IDENTIDAD: ColumnaInventario[] = [
   { key: 'marca', label: 'Marca' },
   { key: 'descripcion', label: 'Descripción del equipo', width: 'min-w-52' },
   { key: 'numeroSerial', label: 'Número serial', width: 'min-w-36' },
-  ...COLUMNAS_COMPRA,
-  ...COLUMNAS_CIERRE,
 ];
 
 function obtenerColumnas(
@@ -175,14 +173,23 @@ function obtenerColumnas(
   if (columnasBase) return columnasBase;
 
   const categoria = categoriasPersonalizadas.find((item) => item.id === categoriaId);
+  const habilitados = new Set<CampoBaseOpcional>(camposBaseHabilitados(categoria));
   const columnasPersonalizadas: ColumnaInventario[] = (categoria?.camposPersonalizados ?? []).map(
     (field) => ({ key: `custom:${field.id}`, label: field.label, width: 'min-w-32' }),
   );
 
   return [
-    ...COLUMNAS_CATEGORIA_PERSONALIZADA.slice(0, 7),
+    ...COLUMNAS_COMUNES.filter(
+      (columna) =>
+        columna.key === 'sku' ||
+        columna.key === 'qr' ||
+        columna.key === 'categoria' ||
+        habilitados.has(columna.key as CampoBaseOpcional),
+    ),
+    ...COLUMNAS_IDENTIDAD.filter((columna) => habilitados.has(columna.key as CampoBaseOpcional)),
     ...columnasPersonalizadas,
-    ...COLUMNAS_CATEGORIA_PERSONALIZADA.slice(7),
+    ...COLUMNAS_COMPRA.filter((columna) => habilitados.has(columna.key as CampoBaseOpcional)),
+    ...COLUMNAS_CIERRE.filter((columna) => habilitados.has(columna.key as CampoBaseOpcional)),
   ];
 }
 
@@ -333,6 +340,7 @@ export function InventarioPage({
   setEstadosInventario,
   categoriasPersonalizadas,
   onAgregarCategoria,
+  onEliminarCategoria,
   onRegistrarMovimiento,
 }: InventarioPageProps) {
   const [search, setSearch] = useState('');
@@ -376,7 +384,11 @@ export function InventarioPage({
     { key: 'estado', label: 'Estado' },
     { key: 'proveedor', label: 'Proveedor' },
   ];
-  const columnasVisibles = isGlobalSearch ? columnasGlobales : columnas.slice(0, 8);
+  const columnasVisibles = isGlobalSearch
+    ? columnasGlobales
+    : categoriaActiva.startsWith('custom-')
+      ? columnas
+      : columnas.slice(0, 8);
 
   const registros = registrosInventario.filter((registro) => {
     if (!coincideEstado(registro, estadoActivo)) return false;
@@ -393,8 +405,34 @@ export function InventarioPage({
 
     return terminosBusqueda.every((termino) => contenido.includes(termino));
   });
-  const productosAgregados = registrosInventario.filter((registro) => registro.id.startsWith('inv-')).length;
   const estadoLabel = filtrosEstado.find((item) => item.id === estadoActivo)?.label ?? 'Estados';
+
+  const eliminarCategoria = (categoriaItem: InventarioCategoria) => {
+    if (esCategoriaPrincipal(categoriaItem.id)) return;
+
+    const cantidad = registrosInventario.filter(
+      (registro) => registro.categoriaId === categoriaItem.id,
+    ).length;
+    if (cantidad > 0) {
+      window.alert(
+        `No se puede eliminar "${categoriaItem.label}" porque tiene ${cantidad} ${
+          cantidad === 1 ? 'producto registrado' : 'productos registrados'
+        }. Cambia esos productos a otra categoría primero.`,
+      );
+      return;
+    }
+
+    if (!window.confirm(`¿Eliminar la categoría "${categoriaItem.label}"? Esta acción no se puede deshacer.`)) {
+      return;
+    }
+
+    onEliminarCategoria(categoriaItem.id);
+    if (categoriaActiva === categoriaItem.id) {
+      setCategoriaActiva('laptops');
+      onFiltroChange('all');
+    }
+    setIsCategoryMenuOpen(false);
+  };
 
   const toggleStatusMenu = () => {
     const next = !isStatusMenuOpen;
@@ -640,8 +678,9 @@ export function InventarioPage({
                 Control de Inventario de Equipos
               </h2>
               <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-[#2B5C94]">
-                {FLOTA_RESUMEN.total + productosAgregados} equipos registrados
+                {registrosInventario.length} equipos registrados
               </span>
+              <LocalDataNotice />
             </div>
             <p className="mt-1 text-xs text-slate-500">
               Fichas técnicas y distribución operativa por categoría de activo
@@ -696,29 +735,45 @@ export function InventarioPage({
                   {categorias.map((item) => {
                     const Icon = item.icon;
                     const active = categoriaActiva === item.id;
+                    const eliminable = !esCategoriaPrincipal(item.id);
                     return (
-                      <button
+                      <div
                         key={item.id}
-                        type="button"
-                        role="menuitemradio"
-                        aria-checked={active}
-                        onClick={() => {
-                          setCategoriaActiva(item.id);
-                          setIsCategoryMenuOpen(false);
-                        }}
-                        className={`flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs transition-colors ${
-                          active
-                            ? 'bg-blue-50 font-bold text-[#2B5C94]'
-                            : 'font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                        }`}
+                        className={`flex items-center gap-1 rounded-lg ${active ? 'bg-blue-50' : ''}`}
                       >
-                        <Icon className="h-4 w-4 shrink-0" />
-                        <span className="flex-1">{item.label}</span>
-                        <span className={active ? 'text-blue-400' : 'text-slate-400'}>
-                          #{item.codigo}
-                        </span>
-                        {active && <Check className="h-3.5 w-3.5" />}
-                      </button>
+                        <button
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={active}
+                          onClick={() => {
+                            setCategoriaActiva(item.id);
+                            setIsCategoryMenuOpen(false);
+                          }}
+                          className={`flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs transition-colors ${
+                            active
+                              ? 'font-bold text-[#2B5C94]'
+                              : 'font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                          }`}
+                        >
+                          <Icon className="h-4 w-4 shrink-0" />
+                          <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                          <span className={active ? 'text-blue-400' : 'text-slate-400'}>
+                            #{item.codigo}
+                          </span>
+                          {active && <Check className="h-3.5 w-3.5" />}
+                        </button>
+                        {eliminable && (
+                          <button
+                            type="button"
+                            onClick={() => eliminarCategoria(item)}
+                            aria-label={`Eliminar categoría ${item.label}`}
+                            title={`Eliminar categoría ${item.label}`}
+                            className="mr-1 inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
@@ -1060,10 +1115,11 @@ export function InventarioPage({
           setEditingRegistro(null);
           setIsInventoryModalOpen(false);
         }}
-        categorias={categorias.map(({ id, label, codigo, camposPersonalizados }) => ({
+        categorias={categorias.map(({ id, label, codigo, camposBase, camposPersonalizados }) => ({
           id,
           label,
           codigo,
+          camposBase,
           camposPersonalizados,
         }))}
         onCreateCategory={onAgregarCategoria}

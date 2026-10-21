@@ -23,25 +23,3 @@ export function ProgressBar({
     </div>
   );
 }
-
-interface DistributionSegment {
-  percent: number;
-  fillClass: string;
-  title?: string;
-}
-
-/** Barra apilada de distribución (alquiler / oficina / taller). */
-export function StackedDistribution({ segments }: { segments: DistributionSegment[] }) {
-  return (
-    <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden flex">
-      {segments.map((segment, index) => (
-        <div
-          key={index}
-          title={segment.title}
-          className={`h-full ${segment.fillClass}`}
-          style={{ width: `${Math.max(0, Math.min(100, segment.percent))}%` }}
-        />
-      ))}
-    </div>
-  );
-}

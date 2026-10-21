@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { FileText, Printer, Save } from 'lucide-react';
+import { FileText, Lock, Printer, Save } from 'lucide-react';
 import { AdGlobalLogo } from '@/components/AdGlobalLogo';
 import { Modal } from '@/components/ui/Modal';
 import logo from '@/assets/logo/adglobal-logo.png';
@@ -9,10 +9,11 @@ interface GuideModalProps {
   isOpen: boolean;
   pedido: PedidoRegistro | null;
   onClose: () => void;
+  onSaveDraft?: (pedido: PedidoRegistro, numeroGuia: string) => void;
 }
 
 const FIELD_CLASS =
-  'w-full rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs text-slate-800 focus:border-[#2B5C94] focus:outline-none focus:ring-1 focus:ring-[#2B5C94]';
+  'w-full rounded-lg border border-slate-300 px-2.5 py-2 text-xs focus:border-[#2B5C94] focus:outline-none focus:ring-1 focus:ring-[#2B5C94]';
 
 const MOTIVOS = [
   'Venta',
@@ -41,11 +42,45 @@ function escapeHtml(value: unknown) {
   })[character] ?? character);
 }
 
-export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
+interface BienTrasladado {
+  id: string;
+  descripcion: string;
+  cantidad: string;
+  unidad: string;
+  observaciones: string;
+  peso: string;
+}
+
+/** Crea una fila por producto. La cantidad total del pedido se reparte entre las líneas. */
+function crearBienes(pedido: PedidoRegistro): BienTrasladado[] {
+  const lineas = pedido.descripcionProductos
+    .split('\n')
+    .map((linea) => linea.trim())
+    .filter(Boolean);
+  if (lineas.length === 0) return [];
+
+  const total = Math.max(0, Number(pedido.cantidadProductos) || 0);
+  const base = Math.floor(total / lineas.length);
+  const resto = total - base * lineas.length;
+
+  return lineas.map((linea, index) => ({
+    id: `bien-${index}`,
+    descripcion: linea,
+    cantidad: String(base + (index < resto ? 1 : 0)),
+    unidad: pedido.unidadMedida,
+    observaciones: index === 0 ? pedido.observaciones : '',
+    peso: '0',
+  }));
+}
+
+export function GuideModal({ isOpen, pedido, onClose, onSaveDraft }: GuideModalProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const [numeroGuia, setNumeroGuia] = useState('');
   const [fechaTraslado, setFechaTraslado] = useState('');
   const [status, setStatus] = useState('');
+  const [bienes, setBienes] = useState<BienTrasladado[]>([]);
+  const previewRef = useRef<HTMLIFrameElement>(null);
+  const [previewHtml, setPreviewHtml] = useState<string | null>(null);
 
   useEffect(() => {
     if (!pedido || !isOpen) return;
@@ -53,20 +88,36 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
     setNumeroGuia(sequence.padStart(6, '0'));
     setFechaTraslado(pedido.fechaEmision);
     setStatus('');
+    setBienes(crearBienes(pedido));
   }, [isOpen, pedido]);
 
   if (!pedido) return null;
 
+  const soloLectura = pedido.estadoPedido === 'Finalizado';
+  const fieldClass = `${FIELD_CLASS} ${soloLectura ? 'bg-slate-100 text-slate-600' : 'bg-white text-slate-800'}`;
+  const formatearNumero = (value: number) =>
+    value.toLocaleString('es-PE', { maximumFractionDigits: 2 });
+  const totalCantidad = bienes.reduce((total, bien) => total + (Number(bien.cantidad) || 0), 0);
+  const totalPeso = bienes.reduce((total, bien) => total + (Number(bien.peso) || 0), 0);
+
+  const actualizarBien = (
+    index: number,
+    campo: 'cantidad' | 'unidad' | 'observaciones' | 'peso',
+    valor: string,
+  ) => {
+    setBienes((current) =>
+      current.map((bien, position) => (position === index ? { ...bien, [campo]: valor } : bien)),
+    );
+  };
   const segmentosLlegada = pedido.direccionLlegada.split(' · ');
   const destinatario = segmentosLlegada[0].replace(/^(Empresa|Persona natural):\s*/, '');
   const datoLlegada = (label: string) =>
     segmentosLlegada.find((segmento) => segmento.startsWith(`${label}:`))?.replace(`${label}:`, '').trim() ?? '';
 
   const guardarBorrador = () => {
-    if (!formRef.current) return;
-    const data = Object.fromEntries(new FormData(formRef.current).entries());
-    window.localStorage.setItem(`adglobal_guia_${pedido.id}`, JSON.stringify(data));
-    setStatus('Borrador guardado en este navegador.');
+    if (soloLectura) return;
+    onSaveDraft?.(pedido, numeroGuia);
+    setStatus('Borrador registrado en los movimientos del pedido.');
   };
 
   const imprimirGuia = () => {
@@ -78,40 +129,80 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
 
     const data = new FormData(formRef.current);
     const value = (name: string) => escapeHtml(data.get(name));
-    const motivosSeleccionados = new Set(data.getAll('motivo').map(String));
+    const motivosSeleccionados = new Set(
+      Array.from(formRef.current.querySelectorAll<HTMLInputElement>('input[name="motivo"]:checked')).map(
+        (input) => input.value,
+      ),
+    );
     const logoUrl = new URL(logo, window.location.href).href;
-    const printWindow = window.open('', '_blank', 'width=900,height=1100');
-    if (!printWindow) {
-      setStatus('El navegador bloqueó la ventana de impresión.');
-      return;
-    }
+
+    const bienesHtml = bienes.length > 0
+      ? bienes
+          .map((bien) => {
+            const [sku, ...resto] = bien.descripcion.split(' · ');
+            const detalle = resto.join(' · ');
+            return `<tr class="item"><td>${escapeHtml(bien.cantidad || '0')}</td><td>${escapeHtml(bien.unidad)}</td><td><strong>${escapeHtml(sku)}</strong>${detalle ? ` · ${escapeHtml(detalle)}` : ''}</td><td>${escapeHtml(bien.observaciones)}</td><td>${escapeHtml(bien.peso || '0')} kg</td></tr>`;
+          })
+          .join('')
+      : '<tr class="item"><td colspan="5">Sin productos registrados</td></tr>';
+
+    const totalesHtml = bienes.length > 0
+      ? `<tfoot><tr><td>${escapeHtml(formatearNumero(totalCantidad))}</td><td></td><td colspan="2">Total (${bienes.length} ${bienes.length === 1 ? 'producto' : 'productos'})</td><td>${escapeHtml(formatearNumero(totalPeso))} kg</td></tr></tfoot>`
+      : '';
+    const alturaRelleno = Math.max(0, 78 - bienes.length * 7);
+    const rellenoHtml = alturaRelleno > 0
+      ? `<tr class="filler" style="height:${alturaRelleno}mm"><td></td><td></td><td></td><td></td><td></td></tr>`
+      : '';
+    const cuerpoHtml = `${bienesHtml}${rellenoHtml}`;
+
 
     const motivosHtml = MOTIVOS.map(
       (motivo, index) => `
         <div class="reason"><span class="check">${motivosSeleccionados.has(motivo) ? '✓' : ''}</span>${index + 1}. ${escapeHtml(motivo)}</div>`,
     ).join('');
 
-    printWindow.document.write(`<!doctype html>
+    const html = `<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><title>Guía ${value('numero_guia')}</title>
 <style>
-@page{size:A4 portrait;margin:7mm}*{box-sizing:border-box}body{margin:0;background:#fff;font-family:Arial,sans-serif;color:#183b6a;font-size:9px}.guide{width:100%;min-height:276mm;border:1.5px solid #285a97;padding:6mm;position:relative}.header{display:grid;grid-template-columns:1.15fr .85fr;gap:8px;align-items:stretch}.company{display:grid;grid-template-columns:170px 1fr;gap:9px;align-items:center}.logo{max-width:165px;filter:brightness(0) saturate(100%) invert(34%) sepia(18%) saturate(2026%) hue-rotate(171deg) brightness(89%) contrast(91%)}.company-info{text-align:center;font-weight:700;line-height:1.35}.services{border:1px dashed #285a97;border-radius:7px;padding:5px;margin-bottom:5px;text-align:left;font-size:8px}.docbox{border:2px solid #285a97;border-radius:10px;overflow:hidden;text-align:center}.ruc{font-size:20px;font-weight:900;padding:11px}.doctype{background:#285a97;color:#fff;padding:10px;font-size:15px;font-weight:900}.number{padding:11px;font-size:18px;font-weight:900;color:#c63d3d}.number strong{color:#285a97}.dates{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:7px}.date{display:grid;grid-template-columns:120px 1fr;border:1.5px solid #285a97;border-radius:6px;overflow:hidden}.date b{background:#285a97;color:#fff;padding:7px;text-transform:uppercase}.date span{padding:7px;color:#222}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:7px}.box{border:1.5px solid #285a97;border-radius:8px;overflow:hidden;min-height:59px}.box h3,.goods h3,.bottom h3{margin:0;background:#285a97;color:#fff;text-align:center;text-transform:uppercase;letter-spacing:.5px;padding:5px;font-size:10px}.box-content{padding:7px;color:#222;line-height:1.55;white-space:pre-wrap}.line{border-bottom:1px dotted #667992;min-height:17px;padding:2px 0}.goods{border:1.5px solid #285a97;border-radius:8px;overflow:hidden;margin-top:7px}.goods table{width:100%;border-collapse:collapse;color:#222}.goods th{background:#285a97;color:#fff;padding:5px;border-right:1px solid #fff;text-transform:uppercase}.goods td{border-right:1px solid #285a97;padding:7px;vertical-align:top}.goods .item{height:78mm}.bottom-grid{display:grid;grid-template-columns:.8fr 1.2fr;gap:7px;margin-top:7px}.bottom{border:1.5px solid #285a97;border-radius:8px;overflow:hidden}.bottom-content{padding:7px;color:#222}.reason-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 10px}.reason{display:flex;gap:5px;align-items:flex-start;line-height:1.2}.check{width:12px;height:12px;border:1px solid #285a97;display:inline-flex;align-items:center;justify-content:center;font-weight:900;flex:none}.signatures{display:grid;grid-template-columns:1fr 1fr;gap:60px;margin:18mm 20mm 0;text-align:center;color:#183b6a;font-weight:700}.signature{border-top:1px solid #183b6a;padding-top:5px}.foot{margin-top:8px;text-align:center;font-size:7px;color:#777}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}.guide{page-break-inside:avoid}}
+@page{size:A4 portrait;margin:7mm}*{box-sizing:border-box}body{margin:0;background:#fff;font-family:Arial,sans-serif;color:#183b6a;font-size:9px}.guide{width:100%;min-height:276mm;border:1.5px solid #285a97;padding:6mm;position:relative}.header{display:grid;grid-template-columns:1.15fr .85fr;gap:8px;align-items:stretch}.company{display:grid;grid-template-columns:170px 1fr;gap:9px;align-items:center}.logo{max-width:165px;filter:brightness(0) saturate(100%) invert(34%) sepia(18%) saturate(2026%) hue-rotate(171deg) brightness(89%) contrast(91%)}.company-info{text-align:center;font-weight:700;line-height:1.35}.services{border:1px dashed #285a97;border-radius:7px;padding:5px;margin-bottom:5px;text-align:left;font-size:8px}.docbox{border:2px solid #285a97;border-radius:10px;overflow:hidden;text-align:center}.ruc{font-size:20px;font-weight:900;padding:11px}.doctype{background:#285a97;color:#fff;padding:10px;font-size:15px;font-weight:900}.number{padding:11px;font-size:18px;font-weight:900;color:#c63d3d}.number strong{color:#285a97}.dates{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:7px}.date{display:grid;grid-template-columns:120px 1fr;border:1.5px solid #285a97;border-radius:6px;overflow:hidden}.date b{background:#285a97;color:#fff;padding:7px;text-transform:uppercase}.date span{padding:7px;color:#222}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:7px}.box{border:1.5px solid #285a97;border-radius:8px;overflow:hidden;min-height:59px}.box h3,.goods h3,.bottom h3{margin:0;background:#285a97;color:#fff;text-align:center;text-transform:uppercase;letter-spacing:.5px;padding:5px;font-size:10px}.box-content{padding:7px;color:#222;line-height:1.55;white-space:pre-wrap}.line{border-bottom:1px dotted #667992;min-height:17px;padding:2px 0}.goods{border:1.5px solid #285a97;border-radius:8px;overflow:hidden;margin-top:7px}.goods table{width:100%;border-collapse:collapse;color:#222}.goods .filler td{padding:0}.goods thead{display:table-header-group}.goods th{background:#285a97;color:#fff;padding:5px;border-right:1px solid #fff;text-transform:uppercase}.goods td{border-right:1px solid #285a97;padding:7px;vertical-align:top}.goods tfoot td{border-top:1.5px solid #285a97;background:#eef2f7;font-weight:700}.bottom-grid{display:grid;grid-template-columns:.8fr 1.2fr;gap:7px;margin-top:7px}.bottom{border:1.5px solid #285a97;border-radius:8px;overflow:hidden}.bottom-content{padding:7px;color:#222}.reason-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 10px}.reason{display:flex;gap:5px;align-items:flex-start;line-height:1.2}.check{width:12px;height:12px;border:1px solid #285a97;display:inline-flex;align-items:center;justify-content:center;font-weight:900;flex:none}.signatures{display:grid;grid-template-columns:1fr 1fr;gap:60px;margin:18mm 20mm 0;text-align:center;color:#183b6a;font-weight:700}.signature{border-top:1px solid #183b6a;padding-top:5px}.foot{margin-top:8px;text-align:center;font-size:7px;color:#777}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}.goods tr,.signatures{page-break-inside:avoid}}
 </style></head><body><main class="guide">
 <section class="header"><div class="company"><img class="logo" src="${escapeHtml(logoUrl)}"><div class="company-info"><div class="services">Tecnología de Información<br>Sistemas Audiovisuales<br>Pantallas LED Gigantes<br>Computadoras y Portátiles<br>Impresoras y Proyectores Multimedia</div>Av. Húsares de Junín 527, Jesús María – Lima – Lima<br>Telf: 01-7353734 · Cel: 957586421 / 944825839<br>E-mail: atencionalcliente@adglobal.com</div></div><div class="docbox"><div class="ruc">RUC 20602583849</div><div class="doctype">GUÍA DE REMISIÓN - REMITENTE</div><div class="number"><strong>0001 -</strong> N° ${value('numero_guia')}</div></div></section>
 <section class="dates"><div class="date"><b>Fecha de emisión</b><span>${value('fecha_emision')}</span></div><div class="date"><b>Inicio del traslado</b><span>${value('fecha_traslado')}</span></div></section>
 <section class="grid2"><div class="box"><h3>Dirección de partida</h3><div class="box-content"><div class="line"><b>Dirección:</b> ${value('partida_direccion')}</div><div class="line"><b>Distrito:</b> ${value('partida_distrito')} &nbsp; <b>Provincia:</b> ${value('partida_provincia')} &nbsp; <b>Departamento:</b> ${value('partida_departamento')}</div></div></div><div class="box"><h3>Dirección de llegada</h3><div class="box-content"><div class="line"><b>Dirección:</b> ${value('llegada_direccion')}</div><div class="line"><b>Distrito:</b> ${value('llegada_distrito')} &nbsp; <b>Provincia:</b> ${value('llegada_provincia')} &nbsp; <b>Departamento:</b> ${value('llegada_departamento')}</div></div></div><div class="box"><h3>Dirección de partida</h3><div class="box-content"><div class="line"><b>Apellidos y nombres / Razón social:</b> ${value('destinatario')}</div><div class="line"><b>R.U.C.:</b> ${value('destinatario_ruc')} &nbsp; <b>D.I.:</b> ${value('destinatario_dni')}</div></div></div><div class="box"><h3>Unidad de transporte y conductor</h3><div class="box-content"><div class="line"><b>Vehículo, marca y placa:</b> ${value('vehiculo')}</div><div class="line"><b>Certificado de inscripción:</b> ${value('certificado')}</div><div class="line"><b>Licencia de conductor:</b> ${value('licencia')} &nbsp; <b>D.I.:</b> ${value('conductor_dni')}</div></div></div></section>
-<section class="goods"><h3>Descripción de los bienes trasladados</h3><table><thead><tr><th style="width:9%">Cant.</th><th style="width:11%">Unid. de med.</th><th>Descripción</th><th style="width:24%">Observaciones</th><th style="width:12%">Peso total</th></tr></thead><tbody><tr class="item"><td>${value('cantidad')}</td><td>${value('unidad')}</td><td>${value('descripcion')}</td><td>${value('item_observaciones')}</td><td>${value('peso')} kg</td></tr></tbody></table></section>
+<section class="goods"><h3>Descripción de los bienes trasladados</h3><table><thead><tr><th style="width:9%">Cant.</th><th style="width:11%">Unid. de med.</th><th>Descripción</th><th style="width:24%">Observaciones</th><th style="width:12%">Peso total</th></tr></thead><tbody>${cuerpoHtml}</tbody>${totalesHtml}</table></section>
 <section class="bottom-grid"><div><div class="bottom"><h3>Transportista</h3><div class="bottom-content"><div class="line"><b>Nombre:</b> ${value('transportista')}</div><div class="line"><b>R.U.C.:</b> ${value('transportista_ruc')}</div><div class="line"><b>Costo de traslado:</b> ${value('costo_traslado')}</div></div></div><div class="bottom" style="margin-top:6px"><h3>Comprobante de pago</h3><div class="bottom-content"><b>Tipo:</b> ${value('comprobante_tipo')} &nbsp; <b>N°:</b> ${value('comprobante_numero')}</div></div></div><div class="bottom"><h3>Motivo de traslado</h3><div class="bottom-content reason-grid">${motivosHtml}</div></div></section>
 <section class="signatures"><div class="signature">Firma del remitente</div><div class="signature">Conformidad del cliente / destinatario</div></section><p class="foot">Formato operativo. La emisión tributaria debe cumplir los requisitos vigentes de SUNAT.</p></main>
-<script>window.addEventListener('load',()=>setTimeout(()=>window.print(),250));<\/script></body></html>`);
-    printWindow.document.close();
-    setStatus('Vista de impresión generada.');
+<script>window.addEventListener('load',()=>setTimeout(()=>window.print(),250));<\/script></body></html>`;
+
+    const preview = html
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(
+        '</head>',
+        '<style>@media screen{html,body{background:#e5e7eb}body{max-width:210mm;margin:0 auto;padding:12px}}</style></head>',
+      );
+    setPreviewHtml(preview);
+    setStatus('Vista previa generada. Revisa el documento y usa «Imprimir / Guardar PDF».');
+  };
+
+  const imprimirVistaPrevia = () => {
+    const frame = previewRef.current;
+    const view = frame?.contentWindow;
+    if (!frame || !view || !frame.contentDocument?.body) {
+      setStatus('La vista previa aún se está cargando. Intenta de nuevo.');
+      return;
+    }
+    view.focus();
+    view.print();
   };
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      labelledBy="guide-modal-title"
+    <>
+      <Modal
+        isOpen={isOpen}
+        onClose={() => {
+          if (!previewHtml) onClose();
+        }}
+        labelledBy="guide-modal-title"
       title="Guía de remisión - Remitente"
       subtitle={`Documento asociado al pedido ${pedido.numeroPedido}`}
       icon={<FileText className="h-4 w-4" />}
@@ -120,10 +211,17 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
     >
       <form ref={formRef} className="flex-1 overflow-y-auto bg-[#eef2f7] p-4 sm:p-6" onSubmit={(event) => event.preventDefault()}>
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <button type="button" onClick={guardarBorrador} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[#2B5C94] px-3 py-2 text-xs font-bold text-white hover:bg-[#1F4778]">
-            <Save className="h-3.5 w-3.5" />
-            Guardar borrador
-          </button>
+          {soloLectura ? (
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">
+              <Lock className="h-3.5 w-3.5" />
+              Guía bloqueada · pedido finalizado
+            </span>
+          ) : (
+            <button type="button" onClick={guardarBorrador} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[#2B5C94] px-3 py-2 text-xs font-bold text-white hover:bg-[#1F4778]">
+              <Save className="h-3.5 w-3.5" />
+              Guardar borrador
+            </button>
+          )}
           <button type="button" onClick={imprimirGuia} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
             <Printer className="h-3.5 w-3.5" />
             Imprimir / PDF
@@ -156,7 +254,13 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
               </div>
               <div className="flex items-center justify-center gap-2 px-4 py-3 font-bold text-rose-700">
                 <span>0001 - N°</span>
-                <input name="numero_guia" value={numeroGuia} onChange={(event) => setNumeroGuia(event.target.value)} className="w-28 rounded border border-rose-200 px-2 py-1 text-center font-mono" />
+                <input
+                  name="numero_guia"
+                  value={numeroGuia}
+                  onChange={(event) => setNumeroGuia(event.target.value)}
+                  readOnly={soloLectura}
+                  className={`w-28 rounded border border-rose-200 px-2 py-1 text-center font-mono ${soloLectura ? 'bg-slate-100 text-slate-600' : ''}`}
+                />
               </div>
             </div>
           </div>
@@ -164,10 +268,10 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             <GuideSection title="Fechas del documento">
               <GuideField label="Fecha de emisión">
-                <input type="date" name="fecha_emision" defaultValue={pedido.fechaEmision} className={FIELD_CLASS} />
+                <input type="date" name="fecha_emision" defaultValue={pedido.fechaEmision} readOnly={soloLectura} className={fieldClass} />
               </GuideField>
               <GuideField label="Inicio del traslado">
-                <input type="date" name="fecha_traslado" value={fechaTraslado} onChange={(event) => setFechaTraslado(event.target.value)} className={FIELD_CLASS} />
+                <input type="date" name="fecha_traslado" value={fechaTraslado} onChange={(event) => setFechaTraslado(event.target.value)} readOnly={soloLectura} className={fieldClass} />
               </GuideField>
             </GuideSection>
 
@@ -188,70 +292,144 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
 
             <GuideSection title="Dirección de llegada">
               <GuideField label="Dirección" full>
-                <input name="llegada_direccion" defaultValue={datoLlegada('Dirección')} className={FIELD_CLASS} />
+                <input name="llegada_direccion" defaultValue={datoLlegada('Dirección')} readOnly={soloLectura} className={fieldClass} />
               </GuideField>
               <GuideField label="Distrito">
-                <input name="llegada_distrito" defaultValue={datoLlegada('Distrito')} className={FIELD_CLASS} />
+                <input name="llegada_distrito" defaultValue={datoLlegada('Distrito')} readOnly={soloLectura} className={fieldClass} />
               </GuideField>
               <GuideField label="Provincia">
-                <input name="llegada_provincia" defaultValue={datoLlegada('Provincia')} className={FIELD_CLASS} />
+                <input name="llegada_provincia" defaultValue={datoLlegada('Provincia')} readOnly={soloLectura} className={fieldClass} />
               </GuideField>
               <GuideField label="Departamento" full>
-                <input name="llegada_departamento" defaultValue={datoLlegada('Departamento')} className={FIELD_CLASS} />
+                <input name="llegada_departamento" defaultValue={datoLlegada('Departamento')} readOnly={soloLectura} className={fieldClass} />
               </GuideField>
             </GuideSection>
 
             <GuideSection title="Dirección de partida">
               <GuideField label="Apellidos y nombres / Razón social" full>
-                <input name="destinatario" defaultValue={destinatario} className={FIELD_CLASS} />
+                <input name="destinatario" defaultValue={destinatario} readOnly={soloLectura} className={fieldClass} />
               </GuideField>
               <GuideField label="R.U.C.">
-                <input name="destinatario_ruc" inputMode="numeric" maxLength={11} className={FIELD_CLASS} />
+                <input name="destinatario_ruc" inputMode="numeric" maxLength={11} readOnly={soloLectura} className={fieldClass} />
               </GuideField>
               <GuideField label="D.I.">
-                <input name="destinatario_dni" inputMode="numeric" maxLength={8} className={FIELD_CLASS} />
+                <input name="destinatario_dni" inputMode="numeric" maxLength={8} readOnly={soloLectura} className={fieldClass} />
               </GuideField>
             </GuideSection>
 
             <GuideSection title="Unidad de transporte y conductor">
-              <GuideField label="Vehículo, marca y placa" full><input name="vehiculo" className={FIELD_CLASS} /></GuideField>
-              <GuideField label="Certificado de inscripción" full><input name="certificado" className={FIELD_CLASS} /></GuideField>
-              <GuideField label="Licencia de conductor"><input name="licencia" className={FIELD_CLASS} /></GuideField>
-              <GuideField label="D.I."><input name="conductor_dni" maxLength={12} className={FIELD_CLASS} /></GuideField>
+              <GuideField label="Vehículo, marca y placa" full><input name="vehiculo" readOnly={soloLectura} className={fieldClass} /></GuideField>
+              <GuideField label="Certificado de inscripción" full><input name="certificado" readOnly={soloLectura} className={fieldClass} /></GuideField>
+              <GuideField label="Licencia de conductor"><input name="licencia" readOnly={soloLectura} className={fieldClass} /></GuideField>
+              <GuideField label="D.I."><input name="conductor_dni" maxLength={12} readOnly={soloLectura} className={fieldClass} /></GuideField>
             </GuideSection>
           </div>
 
           <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
-            <div className="bg-slate-50 px-4 py-2.5 text-xs font-black uppercase tracking-wider text-[#2B5C94]">
-              Descripción de los bienes trasladados
+            <div className="flex items-center justify-between gap-2 bg-slate-50 px-4 py-2.5">
+              <span className="text-xs font-black uppercase tracking-wider text-[#2B5C94]">
+                Descripción de los bienes trasladados
+              </span>
+              <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                {bienes.length} {bienes.length === 1 ? 'producto' : 'productos'}
+              </span>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full border-collapse text-left text-xs">
                 <thead className="bg-slate-100 text-[10px] uppercase text-slate-500">
-                  <tr><th className="px-3 py-2">Cant.</th><th className="px-3 py-2">Unid.</th><th className="px-3 py-2">Descripción</th><th className="px-3 py-2">Observaciones</th><th className="px-3 py-2">Peso (kg)</th></tr>
+                  <tr><th className="px-3 py-2">Cant.</th><th className="px-3 py-2">Unid.</th><th className="px-3 py-2">Descripción</th><th className="px-3 py-2">Observaciones</th><th className="px-3 py-2">Peso total</th></tr>
                 </thead>
                 <tbody>
-                  <tr className="border-t border-slate-200">
-                    <td className="p-2"><input name="cantidad" type="number" min="1" value={pedido.cantidadProductos} readOnly className={`${FIELD_CLASS} bg-slate-100 text-slate-600`} /></td>
-                    <td className="p-2"><input name="unidad" defaultValue={pedido.unidadMedida} className={FIELD_CLASS} /></td>
-                    <td className="p-2"><textarea name="descripcion" rows={2} value={pedido.descripcionProductos} readOnly className={`${FIELD_CLASS} bg-slate-100 text-slate-600`} /></td>
-                    <td className="p-2"><textarea name="item_observaciones" rows={2} defaultValue={pedido.observaciones} placeholder="Observaciones del producto trasladado" className={FIELD_CLASS} /></td>
-                    <td className="p-2"><input name="peso" type="number" min="0" step="0.01" defaultValue="0" className={FIELD_CLASS} /></td>
-                  </tr>
+                  {bienes.length > 0 ? bienes.map((bien, index) => {
+                    const [sku, ...resto] = bien.descripcion.split(' · ');
+                    const detalle = resto.join(' · ');
+                    return (
+                      <tr key={bien.id} className="border-t border-slate-200 align-top">
+                        <td className="p-2">
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={bien.cantidad}
+                            onChange={(event) => actualizarBien(index, 'cantidad', event.target.value)}
+                            readOnly={soloLectura}
+                            aria-label={`Cantidad de ${sku}`}
+                            className={`${fieldClass} text-right font-mono`}
+                          />
+                        </td>
+                        <td className="p-2">
+                          <input
+                            value={bien.unidad}
+                            onChange={(event) => actualizarBien(index, 'unidad', event.target.value)}
+                            readOnly={soloLectura}
+                            aria-label={`Unidad de medida de ${sku}`}
+                            className={fieldClass}
+                          />
+                        </td>
+                        <td className="p-2">
+                          <p className="text-xs leading-relaxed text-slate-700">
+                            <span className="font-mono font-bold text-[#2B5C94]">{sku}</span>
+                            {detalle && <span className="text-slate-600"> · {detalle}</span>}
+                          </p>
+                        </td>
+                        <td className="p-2">
+                          <textarea
+                            rows={2}
+                            value={bien.observaciones}
+                            onChange={(event) => actualizarBien(index, 'observaciones', event.target.value)}
+                            readOnly={soloLectura}
+                            aria-label={`Observaciones de ${sku}`}
+                            placeholder="Observaciones del producto trasladado"
+                            className={fieldClass}
+                          />
+                        </td>
+                        <td className="p-2">
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={bien.peso}
+                            onChange={(event) => actualizarBien(index, 'peso', event.target.value)}
+                            readOnly={soloLectura}
+                            aria-label={`Peso de ${sku}`}
+                            className={`${fieldClass} text-right font-mono`}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  }) : (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-6 text-center text-xs text-slate-500">
+                        Sin productos registrados
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
+                {bienes.length > 0 && (
+                  <tfoot>
+                    <tr className="border-t-2 border-slate-300 bg-slate-100 font-bold text-slate-800">
+                      <td className="p-2 text-right font-mono">{formatearNumero(totalCantidad)}</td>
+                      <td className="p-2" />
+                      <td colSpan={2} className="p-2 text-right text-[10px] uppercase tracking-wide text-slate-500">
+                        Total · {bienes.length} {bienes.length === 1 ? 'producto' : 'productos'}
+                      </td>
+                      <td className="p-2 font-mono">{formatearNumero(totalPeso)} kg</td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           </div>
 
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <GuideSection title="Transportista">
-              <GuideField label="Nombre / Razón social" full><input name="transportista" className={FIELD_CLASS} /></GuideField>
-              <GuideField label="R.U.C."><input name="transportista_ruc" maxLength={11} className={FIELD_CLASS} /></GuideField>
-              <GuideField label="Costo de traslado"><input name="costo_traslado" type="number" min="0" step="0.01" className={FIELD_CLASS} /></GuideField>
+              <GuideField label="Nombre / Razón social" full><input name="transportista" readOnly={soloLectura} className={fieldClass} /></GuideField>
+              <GuideField label="R.U.C."><input name="transportista_ruc" maxLength={11} readOnly={soloLectura} className={fieldClass} /></GuideField>
+              <GuideField label="Costo de traslado"><input name="costo_traslado" type="number" min="0" step="0.01" readOnly={soloLectura} className={fieldClass} /></GuideField>
             </GuideSection>
             <GuideSection title="Comprobante de pago">
-              <GuideField label="Tipo"><input name="comprobante_tipo" placeholder="Factura, boleta, etc." className={FIELD_CLASS} /></GuideField>
-              <GuideField label="Número"><input name="comprobante_numero" className={FIELD_CLASS} /></GuideField>
+              <GuideField label="Tipo"><input name="comprobante_tipo" placeholder="Factura, boleta, etc." readOnly={soloLectura} className={fieldClass} /></GuideField>
+              <GuideField label="Número"><input name="comprobante_numero" readOnly={soloLectura} className={fieldClass} /></GuideField>
             </GuideSection>
           </div>
 
@@ -260,7 +438,7 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {MOTIVOS.map((motivo, index) => (
                 <label key={motivo} className="flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-700">
-                  <input type="checkbox" name="motivo" value={motivo} defaultChecked={pedido.motivoTraslado === motivo} className="mt-0.5" />
+                  <input type="checkbox" name="motivo" value={motivo} defaultChecked={pedido.motivoTraslado === motivo} disabled={soloLectura} className="mt-0.5" />
                   <span>{index + 1}. {motivo}</span>
                 </label>
               ))}
@@ -277,7 +455,52 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
           </p>
         </div>
       </form>
-    </Modal>
+      </Modal>
+
+      <Modal
+        isOpen={previewHtml !== null}
+        onClose={() => setPreviewHtml(null)}
+        labelledBy="guide-preview-title"
+        title="Vista previa de la guía"
+        subtitle={`Documento asociado al pedido ${pedido.numeroPedido}`}
+        icon={<Printer className="h-4 w-4" />}
+        headerClass="bg-slate-800"
+        panelClass="max-w-6xl"
+      >
+        <div className="flex min-h-0 flex-1 flex-col bg-slate-100">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-3">
+            <p className="text-xs text-slate-500">
+              Revisa el documento antes de imprimir o guardar como PDF.
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={imprimirVistaPrevia}
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[#2B5C94] px-3 py-2 text-xs font-bold text-white hover:bg-[#1F4778]"
+              >
+                <Printer className="h-3.5 w-3.5" />
+                Imprimir / Guardar PDF
+              </button>
+              <button
+                type="button"
+                onClick={() => setPreviewHtml(null)}
+                className="cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Volver
+              </button>
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 p-3">
+            <iframe
+              ref={previewRef}
+              title={`Vista previa de la guía ${pedido.numeroPedido}`}
+              srcDoc={previewHtml ?? ''}
+              className="h-[70vh] w-full rounded-lg border border-slate-200 bg-white shadow-xs"
+            />
+          </div>
+        </div>
+      </Modal>
+    </>
   );
 }
 

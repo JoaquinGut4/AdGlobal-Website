@@ -14,7 +14,7 @@ export function LoginScreen({ onAuthenticate }: LoginScreenProps) {
   const [usuario, setUsuario] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [remember, setRemember] = useState(true);
+  const [remember, setRemember] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -91,7 +91,7 @@ export function LoginScreen({ onAuthenticate }: LoginScreenProps) {
                   onChange={(event) => setEmail(event.target.value)}
                   required
                   autoComplete="username"
-                  placeholder="nombre@adglobalperu.com"
+                  placeholder="nombre@gmail.com"
                   className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#2B5C94] focus:border-transparent transition-all font-mono"
                 />
               </div>
@@ -114,6 +114,7 @@ export function LoginScreen({ onAuthenticate }: LoginScreenProps) {
                   value={usuario}
                   onChange={(event) => setUsuario(event.target.value)}
                   required
+                  minLength={2}
                   autoComplete="username"
                   placeholder="Tu usuario"
                   className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#2B5C94] focus:border-transparent transition-all font-mono"
@@ -138,6 +139,7 @@ export function LoginScreen({ onAuthenticate }: LoginScreenProps) {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   required
+                  minLength={8}
                   autoComplete="current-password"
                   placeholder="••••••••"
                   className="w-full pl-9 pr-10 py-2.5 rounded-xl border border-slate-300 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#2B5C94] focus:border-transparent transition-all font-mono"

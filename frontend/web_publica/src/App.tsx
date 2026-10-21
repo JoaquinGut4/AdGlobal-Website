@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { SITE } from './config/site';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
 import { ServicesSection } from './components/ServicesSection';
@@ -17,6 +18,12 @@ export default function App() {
   const [quoteService, setQuoteService] = useState('pantallas-led');
 
   useReveal();
+
+  // Mantiene el canonical alineado con VITE_SITE_URL (también en el build).
+  useEffect(() => {
+    const canonical = document.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+    if (canonical) canonical.href = `${SITE.url.replace(/\/$/, '')}/`;
+  }, []);
 
   const goToQuote = (serviceId?: string) => {
     if (serviceId) setQuoteService(serviceId);

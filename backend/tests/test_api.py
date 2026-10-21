@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 
@@ -14,6 +15,18 @@ def test_login_and_me(client: TestClient, auth_headers: dict[str, str]) -> None:
     assert response.status_code == 200
     assert response.json()["usuario"] == "TestAdmin"
     assert response.json()["superAdmin"] is True
+
+
+def test_refresh_token_returns_a_usable_access_token(client: TestClient) -> None:
+    session = login_as(client, "test@adglobalperu.com", "TestAdmin", "password-segura")
+    refreshed = client.post(
+        "/api/v1/auth/refresh",
+        json={"refreshToken": session["refreshToken"]},
+    )
+    assert refreshed.status_code == 200, refreshed.text
+    assert refreshed.json()["refreshToken"]
+    headers = {"Authorization": f"Bearer {refreshed.json()['accessToken']}"}
+    assert client.get("/api/v1/auth/me", headers=headers).status_code == 200
 
 
 def test_public_quote_flow(client: TestClient) -> None:
@@ -165,6 +178,7 @@ def test_create_ticket_assigns_support_user(client: TestClient, auth_headers: di
     assert ticket["numeroPedidoEstado"] == "LAP-0001: Almacén 1"
     assert ticket["tipoTicket"] == "general"
     assert ticket["estadoEquipo"] == "Almacén 1"
+    assert ticket["fecha"].endswith(("Z", "+00:00"))
 
     missing_reference = client.post(
         "/api/v1/tickets",
@@ -306,5 +320,248 @@ def test_inventory_crud(client: TestClient, auth_headers: dict[str, str]) -> Non
     assert listed.status_code == 200
     assert len(listed.json()) == 1
 
+    invalid_update = client.put(
+        f"/api/v1/inventario/{item_id}",
+        json={**payload, "categoriaId": "categoria-inexistente"},
+        headers=auth_headers,
+    )
+    assert invalid_update.status_code == 422
+
     deleted = client.delete(f"/api/v1/inventario/{item_id}", headers=auth_headers)
     assert deleted.status_code == 204
+
+
+def test_customer_update_conflict_returns_409(client: TestClient, auth_headers: dict[str, str]) -> None:
+    first = client.post(
+        "/api/v1/clientes",
+        headers=auth_headers,
+        json={
+            "name": "Cliente Uno",
+            "ruc": "20123456789",
+            "sector": "Tecnología",
+            "contacto": "Contacto Uno",
+            "email": "uno@empresa.com",
+            "telefono": "999888777",
+            "eventos": 1,
+            "rating": "VIP",
+            "estado": "Activo",
+        },
+    )
+    assert first.status_code == 201, first.text
+
+    second = client.post(
+        "/api/v1/clientes",
+        headers=auth_headers,
+        json={
+            "name": "Cliente Dos",
+            "ruc": "20987654321",
+            "sector": "Retail",
+            "contacto": "Contacto Dos",
+            "email": "dos@empresa.com",
+            "telefono": "999888666",
+            "eventos": 0,
+            "rating": "Estándar",
+            "estado": "Activo",
+        },
+    )
+    assert second.status_code == 201, second.text
+
+    duplicated = client.put(
+        f"/api/v1/clientes/{second.json()['id']}",
+        headers=auth_headers,
+        json={
+            "name": "Cliente Dos",
+            "ruc": first.json()["ruc"],
+            "sector": "Retail",
+            "contacto": "Contacto Dos",
+            "email": "dos@empresa.com",
+            "telefono": "999888666",
+            "eventos": 0,
+            "rating": "Estándar",
+            "estado": "Activo",
+        },
+    )
+    assert duplicated.status_code == 409
+
+
+def login_as(client: TestClient, email: str, usuario: str, password: str) -> dict:
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": email, "usuario": usuario, "password": password},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def create_user(client: TestClient, auth_headers: dict[str, str], **overrides: object) -> dict:
+    payload: dict[str, object] = {
+        "nombre": "Usuario de Prueba",
+        "email": "usuario.prueba@adglobalperu.com",
+        "usuario": "UsuarioPrueba",
+        "password": "UsuarioPrueba2026",
+        "rol": "Normal",
+        "telefono": "+51 900 000 003",
+        "activo": True,
+        "modulos": ["dashboard"],
+    }
+    payload.update(overrides)
+    response = client.post("/api/v1/usuarios", headers=auth_headers, json=payload)
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def test_staff_directory_requires_tickets_module(client: TestClient, auth_headers: dict[str, str]) -> None:
+    created = create_user(client, auth_headers)
+    session = login_as(client, created["email"], created["usuario"], "UsuarioPrueba2026")
+    limited = {"Authorization": f"Bearer {session['accessToken']}"}
+
+    assert client.get("/api/v1/usuarios/soporte", headers=limited).status_code == 403
+    assert client.get("/api/v1/tecnicos", headers=limited).status_code == 403
+    assert client.get("/api/v1/usuarios/soporte", headers=auth_headers).status_code == 200
+
+    granted = client.patch(
+        f"/api/v1/usuarios/{created['id']}",
+        headers=auth_headers,
+        json={"modulos": ["dashboard", "tickets"]},
+    )
+    assert granted.status_code == 200, granted.text
+
+    # Changing modules bumps the token version, so the previous session must be re-established.
+    assert client.get("/api/v1/usuarios/soporte", headers=limited).status_code == 401
+
+    renewed = login_as(client, created["email"], created["usuario"], "UsuarioPrueba2026")
+    allowed = {"Authorization": f"Bearer {renewed['accessToken']}"}
+    assert client.get("/api/v1/usuarios/soporte", headers=allowed).status_code == 200
+    assert client.get("/api/v1/tecnicos", headers=allowed).status_code == 200
+
+
+def test_password_change_revokes_existing_tokens(client: TestClient, auth_headers: dict[str, str]) -> None:
+    created = create_user(client, auth_headers)
+    session = login_as(client, created["email"], created["usuario"], "UsuarioPrueba2026")
+    old_access = {"Authorization": f"Bearer {session['accessToken']}"}
+
+    changed = client.patch(
+        f"/api/v1/usuarios/{created['id']}",
+        headers=auth_headers,
+        json={"password": "NuevaClave2026"},
+    )
+    assert changed.status_code == 200, changed.text
+
+    assert client.get("/api/v1/auth/me", headers=old_access).status_code == 401
+    refreshed = client.post("/api/v1/auth/refresh", json={"refreshToken": session["refreshToken"]})
+    assert refreshed.status_code == 401
+
+    login_as(client, created["email"], created["usuario"], "NuevaClave2026")
+
+
+def test_last_superadmin_cannot_deactivate_itself(client: TestClient, auth_headers: dict[str, str]) -> None:
+    me = client.get("/api/v1/auth/me", headers=auth_headers).json()
+
+    response = client.patch(
+        f"/api/v1/usuarios/{me['id']}",
+        headers=auth_headers,
+        json={"activo": False},
+    )
+    assert response.status_code == 400, response.text
+    assert client.get("/api/v1/auth/me", headers=auth_headers).status_code == 200
+
+
+def test_password_hash_uses_recommended_work_factor() -> None:
+    from backend.app.core.security import hash_password
+
+    digest = hash_password("PruebaSegura2026")
+    assert digest.startswith("$pbkdf2-sha256$600000$")
+
+
+def test_login_locks_the_account_after_repeated_failures(client: TestClient) -> None:
+    credentials = {"email": "test@adglobalperu.com", "usuario": "TestAdmin", "password": "incorrecta"}
+
+    for _ in range(5):
+        assert client.post("/api/v1/auth/login", json=credentials).status_code == 401
+
+    blocked = client.post("/api/v1/auth/login", json={**credentials, "password": "password-segura"})
+    assert blocked.status_code == 429
+    assert int(blocked.headers["Retry-After"]) >= 1
+
+
+def test_login_lockout_is_scoped_to_the_attempted_account(client: TestClient) -> None:
+    credentials = {"email": "test@adglobalperu.com", "usuario": "TestAdmin", "password": "incorrecta"}
+    for _ in range(5):
+        assert client.post("/api/v1/auth/login", json=credentials).status_code == 401
+
+    other = client.post(
+        "/api/v1/auth/login",
+        json={"email": "otra@adglobalperu.com", "usuario": "OtraCuenta", "password": "incorrecta"},
+    )
+    assert other.status_code == 401
+
+
+def test_unknown_user_still_runs_a_dummy_verification(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import backend.app.api.auth as auth_module
+
+    calls: list[str] = []
+    monkeypatch.setattr(auth_module, "verify_dummy_password", lambda password: calls.append(password) or False)
+
+    response = client.post(
+        "/api/v1/auth/login",
+        json={"email": "nadie@adglobalperu.com", "usuario": "Nadie", "password": "incorrecta"},
+    )
+    assert response.status_code == 401
+    assert calls == ["incorrecta"]
+
+
+def test_sliding_window_limiter_blocks_and_releases_the_key() -> None:
+    from backend.app.core.rate_limit import SlidingWindowLimiter
+
+    limiter = SlidingWindowLimiter(max_events=2, window_seconds=60)
+    assert limiter.check("cuenta").allowed
+    limiter.record("cuenta")
+    limiter.record("cuenta")
+    blocked = limiter.check("cuenta")
+    assert not blocked.allowed
+    assert blocked.retry_after >= 1
+
+    limiter.reset("cuenta")
+    assert limiter.check("cuenta").allowed
+
+
+def test_documentation_is_only_exposed_in_development() -> None:
+    from backend.app.main import documentation_urls
+
+    assert documentation_urls("development") == {
+        "openapi_url": "/openapi.json",
+        "docs_url": "/docs",
+        "redoc_url": "/redoc",
+    }
+    for environment in ("production", "staging", "test", "Development"):
+        assert documentation_urls(environment) == {
+            "openapi_url": None,
+            "docs_url": None,
+            "redoc_url": None,
+        }
+
+
+def test_ip_rate_limit_is_skipped_for_loopback_peers() -> None:
+    from backend.app.core.rate_limit import should_limit_by_ip
+
+    assert should_limit_by_ip("203.0.113.7") is True
+    assert should_limit_by_ip("127.0.0.1") is False
+    assert should_limit_by_ip("::1") is False
+
+
+def test_logout_revokes_the_current_session(client: TestClient) -> None:
+    session = login_as(client, "test@adglobalperu.com", "TestAdmin", "password-segura")
+    headers = {"Authorization": f"Bearer {session['accessToken']}"}
+
+    assert client.get("/api/v1/auth/me", headers=headers).status_code == 200
+    assert client.post("/api/v1/auth/logout", headers=headers).status_code == 204
+
+    assert client.get("/api/v1/auth/me", headers=headers).status_code == 401
+    refreshed = client.post("/api/v1/auth/refresh", json={"refreshToken": session["refreshToken"]})
+    assert refreshed.status_code == 401
+
+
+def test_logout_requires_authentication(client: TestClient) -> None:
+    assert client.post("/api/v1/auth/logout").status_code == 401

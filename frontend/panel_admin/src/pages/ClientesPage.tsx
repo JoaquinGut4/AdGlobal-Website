@@ -1,36 +1,30 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Search, UserCheck, UserX } from 'lucide-react';
-import { CLIENTES_DATA } from '@/data/clientes';
+import { derivarClientes, filtrarClientes } from '@/lib/clientes';
+import { formatFecha } from '@/lib/utils';
+import type { ClienteEstado, PedidoRegistro } from '@/types';
 
-type EstadoFiltro = 'Todos' | 'Activo' | 'Inactivo';
+type EstadoFiltro = 'Todos' | ClienteEstado;
 
-const RATING_CLASSES: Record<string, string> = {
-  VIP: 'bg-sky-100 text-sky-800',
-  'A+': 'bg-emerald-100 text-emerald-800',
-  Estándar: 'bg-slate-100 text-slate-600',
-};
-
-function normalizar(value: unknown) {
-  return String(value)
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase();
+interface ClientesPageProps {
+  pedidos: PedidoRegistro[];
 }
 
-export function ClientesPage() {
+export function ClientesPage({ pedidos }: ClientesPageProps) {
+  const clientes = useMemo(() => derivarClientes(pedidos), [pedidos]);
   const [search, setSearch] = useState('');
   const [estadoFiltro, setEstadoFiltro] = useState<EstadoFiltro>('Todos');
-  const activos = CLIENTES_DATA.filter((cliente) => cliente.estado === 'Activo').length;
-  const inactivos = CLIENTES_DATA.filter((cliente) => cliente.estado === 'Inactivo').length;
-  const porcentajeActivos = CLIENTES_DATA.length === 0 ? 0 : Math.round((activos / CLIENTES_DATA.length) * 100);
-  const porcentajeInactivos = CLIENTES_DATA.length === 0 ? 0 : Math.round((inactivos / CLIENTES_DATA.length) * 100);
-  const terminos = normalizar(search).trim().split(/\s+/).filter(Boolean);
-  const visibles = CLIENTES_DATA.filter((cliente) => {
-    if (estadoFiltro !== 'Todos' && cliente.estado !== estadoFiltro) return false;
-    if (terminos.length === 0) return true;
-    const contenido = normalizar(Object.values(cliente).join(' '));
-    return terminos.every((termino) => contenido.includes(termino));
-  });
+
+  const activos = clientes.filter((cliente) => cliente.estado === 'Activo').length;
+  const inactivos = clientes.length - activos;
+  const porcentajeActivos = clientes.length === 0 ? 0 : Math.round((activos / clientes.length) * 100);
+  const porcentajeInactivos = clientes.length === 0 ? 0 : 100 - porcentajeActivos;
+
+  const clientesDelEstado =
+    estadoFiltro === 'Todos'
+      ? clientes
+      : clientes.filter((cliente) => cliente.estado === estadoFiltro);
+  const visibles = filtrarClientes(clientesDelEstado, search);
 
   return (
     <div className="space-y-6">
@@ -40,11 +34,12 @@ export function ClientesPage() {
             Directorio de Clientes Corporativos
           </h2>
           <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-[#2B5C94]">
-            {CLIENTES_DATA.length} clientes registrados
+            {clientes.length} clientes desde pedidos
           </span>
         </div>
         <p className="mt-1 text-xs text-slate-500">
-          Relación de clientes activos e inactivos con su información comercial
+          Relación generada automáticamente a partir de los pedidos. Un cliente está activo mientras tenga
+          al menos un pedido vigente.
         </p>
       </div>
 
@@ -68,6 +63,7 @@ export function ClientesPage() {
           </div>
           <p className="mt-2 text-xs font-bold uppercase tracking-wider text-slate-500">Clientes activos</p>
           <span className="mt-1 block text-2xl font-black text-slate-900">{activos}</span>
+          <p className="mt-1 text-[11px] text-slate-500">Con al menos un pedido vigente</p>
         </button>
 
         <button
@@ -89,6 +85,7 @@ export function ClientesPage() {
           </div>
           <p className="mt-2 text-xs font-bold uppercase tracking-wider text-slate-500">Clientes inactivos</p>
           <span className="mt-1 block text-2xl font-black text-slate-900">{inactivos}</span>
+          <p className="mt-1 text-[11px] text-slate-500">Todos sus pedidos están finalizados</p>
         </button>
       </div>
 
@@ -100,7 +97,7 @@ export function ClientesPage() {
               type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar cliente, RUC, contacto, sector..."
+              placeholder="Buscar cliente, ubicación, teléfono o pedido..."
               className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs focus:border-[#2B5C94] focus:outline-none"
             />
           </div>
@@ -123,7 +120,9 @@ export function ClientesPage() {
         </div>
 
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
-          <span className="text-xs font-bold text-slate-800">{estadoFiltro === 'Todos' ? 'Todos los clientes' : `Clientes ${estadoFiltro.toLowerCase()}s`}</span>
+          <span className="text-xs font-bold text-slate-800">
+            {estadoFiltro === 'Todos' ? 'Todos los clientes' : `Clientes ${estadoFiltro.toLowerCase()}s`}
+          </span>
           <span className="text-[11px] text-slate-500">{visibles.length} clientes visibles</span>
         </div>
 
@@ -131,25 +130,56 @@ export function ClientesPage() {
           <table className="w-max min-w-full border-collapse text-left">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                {['Cliente / RUC', 'Sector', 'Contacto', 'Correo', 'Teléfono', 'Proyectos', 'Clasificación', 'Última actividad', 'Estado'].map((label) => (
+                {['Cliente', 'Ubicación', 'Contacto', 'Pedidos', 'Última actividad', 'Estado'].map((label) => (
                   <th key={label} className="whitespace-nowrap px-4 py-3">{label}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs text-slate-600">
               {visibles.length === 0 ? (
-                <tr><td colSpan={9} className="px-6 py-12 text-center text-sm text-slate-500">No se encontraron clientes con los criterios seleccionados.</td></tr>
+                <tr>
+                  <td colSpan={6} className="px-6 py-12 text-center text-sm text-slate-500">
+                    {clientes.length === 0
+                      ? 'Aún no hay clientes. Se generan automáticamente al registrar pedidos.'
+                      : 'No se encontraron clientes con los criterios seleccionados.'}
+                  </td>
+                </tr>
               ) : visibles.map((cliente) => (
-                <tr key={cliente.id} className="hover:bg-blue-50/30">
-                  <td className="min-w-56 px-4 py-3"><p className="font-bold text-slate-800">{cliente.name}</p><p className="font-mono text-[10px] text-slate-400">RUC {cliente.ruc}</p></td>
-                  <td className="min-w-40 px-4 py-3">{cliente.sector}</td>
-                  <td className="min-w-40 px-4 py-3 font-semibold text-slate-700">{cliente.contacto}</td>
-                  <td className="min-w-52 px-4 py-3"><a href={`mailto:${cliente.email}`} className="text-[#2B5C94] hover:underline">{cliente.email}</a></td>
-                  <td className="min-w-36 whitespace-nowrap px-4 py-3">{cliente.telefono}</td>
-                  <td className="min-w-24 px-4 py-3 text-center font-mono font-bold text-slate-800">{cliente.eventos}</td>
-                  <td className="min-w-28 px-4 py-3"><span className={`rounded px-2 py-0.5 text-[10px] font-bold ${RATING_CLASSES[cliente.rating]}`}>{cliente.rating}</span></td>
-                  <td className="min-w-32 whitespace-nowrap px-4 py-3">{cliente.ultimaActividad}</td>
-                  <td className="min-w-24 px-4 py-3"><span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold ${cliente.estado === 'Activo' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-100 text-slate-600'}`}>{cliente.estado}</span></td>
+                <tr key={cliente.id} className="align-top hover:bg-blue-50/30">
+                  <td className="min-w-56 px-4 py-3">
+                    <p className="font-bold text-slate-800">{cliente.nombre}</p>
+                    <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                      {cliente.tipo}
+                    </p>
+                  </td>
+                  <td className="min-w-44 px-4 py-3">{cliente.ubicacion || '—'}</td>
+                  <td className="min-w-32 whitespace-nowrap px-4 py-3">{cliente.telefono || '—'}</td>
+                  <td className="min-w-44 px-4 py-3">
+                    <span className="font-mono font-bold text-slate-800">{cliente.pedidos}</span>
+                    <span className="ml-1 text-[10px] text-slate-400">
+                      ({cliente.pedidosVigentes} {cliente.pedidosVigentes === 1 ? 'vigente' : 'vigentes'})
+                    </span>
+                    <p
+                      className="mt-0.5 max-w-48 truncate font-mono text-[10px] text-slate-400"
+                      title={cliente.numerosPedido.join(', ')}
+                    >
+                      {cliente.numerosPedido.join(' · ')}
+                    </p>
+                  </td>
+                  <td className="min-w-28 whitespace-nowrap px-4 py-3">
+                    {formatFecha(cliente.ultimaActividad) || '—'}
+                  </td>
+                  <td className="min-w-24 px-4 py-3">
+                    <span
+                      className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold ${
+                        cliente.estado === 'Activo'
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                          : 'border-slate-200 bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      {cliente.estado}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>

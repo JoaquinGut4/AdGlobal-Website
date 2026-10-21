@@ -1,5 +1,6 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ADMIN_CONFIG, AUTH_SESSION_STORAGE_KEY, AUTH_STORAGE_KEY, AUTH_TOKEN_STORAGE_KEY, REFRESH_TOKEN_STORAGE_KEY } from '@/config/site';
+import { apiRequest, extractApiErrorMessage } from '@/lib/api';
 import type { AdminSection, UsuarioRol } from '@/types';
 
 export interface LoginCredentials {
@@ -42,25 +43,87 @@ const EMPTY_SESSION: AuthSession = {
   superAdmin: false,
 };
 
+const SESSION_KEYS = [
+  AUTH_STORAGE_KEY,
+  AUTH_SESSION_STORAGE_KEY,
+  AUTH_TOKEN_STORAGE_KEY,
+  REFRESH_TOKEN_STORAGE_KEY,
+];
+
+/** Lee de localStorage o, si la sesión es solo de esta pestaña, de sessionStorage. */
+function readStored(key: string): string | null {
+  return window.localStorage.getItem(key) ?? window.sessionStorage.getItem(key);
+}
+
 function readSession(): AuthSession {
   try {
-    const stored = window.localStorage.getItem(AUTH_SESSION_STORAGE_KEY);
+    const stored = readStored(AUTH_SESSION_STORAGE_KEY);
     return stored ? (JSON.parse(stored) as AuthSession) : EMPTY_SESSION;
   } catch {
     return EMPTY_SESSION;
   }
 }
 
+/** Elimina la sesión de ambos almacenes. */
+function clearStoredSession() {
+  for (const storage of [window.localStorage, window.sessionStorage]) {
+    for (const key of SESSION_KEYS) storage.removeItem(key);
+  }
+}
+
 export function useAuth() {
   const [session, setSession] = useState<AuthSession>(readSession);
   const [isAuthenticated, setIsAuthenticated] = useState(
-    () => Boolean(readSession().id && window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)),
+    () => Boolean(
+      readSession().id &&
+      (readStored(AUTH_TOKEN_STORAGE_KEY) || readStored(REFRESH_TOKEN_STORAGE_KEY)),
+    ),
   );
+
+  const logout = useCallback(() => {
+    const token = readStored(AUTH_TOKEN_STORAGE_KEY);
+    if (token) {
+      // Revoca los tokens en el servidor; si falla, la sesión local se cierra igual.
+      void fetch(`${ADMIN_CONFIG.apiUrl}/auth/logout`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        keepalive: true,
+      }).catch(() => undefined);
+    }
+    setIsAuthenticated(false);
+    setSession(EMPTY_SESSION);
+    clearStoredSession();
+  }, []);
+
+  // Cualquier 401 de la API cierra la sesión local.
+  useEffect(() => {
+    window.addEventListener('adglobal:unauthorized', logout);
+    return () => window.removeEventListener('adglobal:unauthorized', logout);
+  }, [logout]);
+
+  // Valida el token guardado contra el servidor y refresca módulos y rol.
+  useEffect(() => {
+    if (!readStored(AUTH_TOKEN_STORAGE_KEY) && !readStored(REFRESH_TOKEN_STORAGE_KEY)) return;
+    apiRequest<AuthSession>('/auth/me')
+      .then((user) => {
+        setSession(user);
+        setIsAuthenticated(true);
+      })
+      .catch(() => {
+        /* Un 401 dispara adglobal:unauthorized; un fallo de red conserva la sesión cacheada. */
+      });
+  }, []);
 
   const authenticate = useCallback(async (credentials: LoginCredentials): Promise<LoginResult> => {
     const { email, usuario, password, remember } = credentials;
     if (!email.trim() || !usuario.trim() || !password) {
       return { ok: false, error: 'Todos los campos son obligatorios.' };
+    }
+    if (usuario.trim().length < 2) {
+      return { ok: false, error: 'El usuario debe tener al menos 2 caracteres.' };
+    }
+    if (password.length < 8) {
+      return { ok: false, error: 'La contraseña debe tener al menos 8 caracteres.' };
     }
     if (!ADMIN_CONFIG.apiUrl) {
       return { ok: false, error: 'La URL del backend no está configurada (VITE_API_URL).' };
@@ -72,27 +135,40 @@ export function useAuth() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.trim(), usuario: usuario.trim(), password }),
       });
-      const payload = (await response.json()) as AuthResponse & { detail?: string };
-      if (!response.ok) return { ok: false, error: payload.detail ?? 'Credenciales inválidas.' };
 
-      setSession(payload.user);
+      let payload: unknown = null;
+      try {
+        payload = await response.json();
+      } catch {
+        // La respuesta no contiene JSON.
+      }
+
+      if (!response.ok) {
+        return {
+          ok: false,
+          error: extractApiErrorMessage(payload, 'Credenciales inválidas.'),
+        };
+      }
+
+      const sessionPayload = payload as Partial<AuthResponse> | null;
+      if (!sessionPayload?.user || !sessionPayload.accessToken || !sessionPayload.refreshToken) {
+        return { ok: false, error: 'La respuesta del servidor no contiene una sesión válida.' };
+      }
+
+      const target = remember ? window.localStorage : window.sessionStorage;
+      const other = remember ? window.sessionStorage : window.localStorage;
+      for (const key of SESSION_KEYS) other.removeItem(key);
+
+      target.setItem(AUTH_STORAGE_KEY, 'true');
+      target.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify(sessionPayload.user));
+      target.setItem(AUTH_TOKEN_STORAGE_KEY, sessionPayload.accessToken);
+      target.setItem(REFRESH_TOKEN_STORAGE_KEY, sessionPayload.refreshToken);
+
+      setSession(sessionPayload.user);
       setIsAuthenticated(true);
-      window.localStorage.setItem(AUTH_STORAGE_KEY, 'true');
-      window.localStorage.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify(payload.user));
-      window.localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, payload.accessToken);
-      if (remember) window.localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, payload.refreshToken);
-      else window.localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
       return { ok: true };
     } catch {
       return { ok: false, error: 'No se pudo conectar con el servidor. Verifica que la API esté disponible.' };
-    }
-  }, []);
-
-  const logout = useCallback(() => {
-    setIsAuthenticated(false);
-    setSession(EMPTY_SESSION);
-    for (const key of [AUTH_STORAGE_KEY, AUTH_SESSION_STORAGE_KEY, AUTH_TOKEN_STORAGE_KEY, REFRESH_TOKEN_STORAGE_KEY]) {
-      window.localStorage.removeItem(key);
     }
   }, []);
 

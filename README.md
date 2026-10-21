@@ -38,7 +38,7 @@ mi-plataforma-web/
 │       ├── public/               # favicon y .htaccess (SPA + noindex)
 │       ├── src/
 │       │   ├── components/       # layout (Sidebar/Topbar), ui, modales y login
-│       │   ├── pages/            # Dashboard, Cotizaciones, Inventario, Presupuestos, Clientes, Tickets
+│       │   ├── pages/            # Dashboard, Inventario, Pedidos, Clientes, Movimientos, Tickets
 │       │   ├── data/             # contenido editable y datos semilla
 │       │   ├── hooks/            # useAuth, useLocalStorage
 │       │   ├── context/          # ToastContext
@@ -82,7 +82,9 @@ La API usa **FastAPI**, **SQLAlchemy 2**, **Alembic**, autenticación JWT y MySQ
 
 ### Arranque local
 
-Requiere Python 3.12+ y MySQL 8. El archivo `.env` de la raíz contiene la conexión local.
+Requiere Python 3.12+ y MySQL 8. Copia `.env.example` como `.env` en la raíz y ajusta
+`SECRET_KEY`, `MYSQL_*` y `CORS_ORIGINS`. El ejemplo de la raíz y el de `backend/` usan
+los mismos nombres de variables que lee `backend/app/core/config.py`.
 
 ```bash
 python -m venv .venv
@@ -106,6 +108,10 @@ de rutas son:
 
 Todas las rutas administrativas requieren `Authorization: Bearer <token>` y validan los
 módulos habilitados para la cuenta.
+
+> El panel consume actualmente `auth`, `usuarios`, `web-assets` y `tickets`. Los CRUD de
+> inventario, pedidos, clientes, movimientos, técnicos y cotizaciones están disponibles en
+> la API y cubiertos por tests, pero el panel aún opera esos módulos en local.
 
 ### Notificación de tickets por WhatsApp
 
@@ -240,6 +246,20 @@ Configura `VITE_API_URL` en `frontend/web_publica/.env` con la URL del backend.
 Formatos admitidos: JPG, PNG, WebP, AVIF, GIF, MP4, WebM, MOV, OGV, M4V y MPEG.
 Límites: 10 MB para imágenes y 100 MB para videos.
 
+### Importar las fotos existentes de la web pública
+
+Las fotos y videos que estaban en `frontend/web_publica/src/assets/servicios/` se
+migraron a Gestión web con:
+
+```bash
+python -m backend.scripts.import_web_media
+```
+
+El script copia los archivos a `backend/uploads/`, crea los registros en `web_assets`
+para las secciones **hero**, **servicios** y **FAQ**, y es idempotente: se puede
+ejecutar varias veces sin duplicar archivos. Los originales de `web_publica` se
+conservan como respaldo local.
+
 ## Panel administrativo (`frontend/panel_admin`)
 
 Frontend interno construido con el **mismo stack** de la web pública (React 19, Vite 8,
@@ -247,12 +267,27 @@ TypeScript y Tailwind CSS v4). Reproduce la maqueta de `Prototipo admin/` de for
 
 Incluye:
 
-- **Login corporativo** con autenticación JWT y sesión persistente.
-- **Dashboard** con distribución de flota, comparativo alquiler vs ventas y estado de almacén.
-- **Cotizaciones Web** (bandeja completa, cambio de estado y respuesta por WhatsApp).
-- **Control de Inventario** (filtros, búsqueda, distribución por alquiler/oficina/taller).
-- **Presupuestos & Proformas**, **Directorio de Clientes** y **Tickets de Soporte**.
-- Modales de **apertura de ticket** y **cotización** con notificaciones (toast).
+- **Login corporativo** con autenticación JWT, refresh token y sesión persistente.
+- **Dashboard** con distribución de flota y comparativo alquiler vs ventas.
+- **Control de Inventario** (filtros, búsqueda, estados y categorías personalizadas).
+- **Pedidos**, **Directorio de Clientes**, **Movimientos** y **Tickets de Soporte**.
+- **Gestión web** (imágenes y videos de la web pública) y **Configuración** de usuarios.
+- Modales de **apertura de ticket** y **pedido** con notificaciones (toast).
+
+### Estado de conexión del panel
+
+| Módulo | Persistencia |
+| --- | --- |
+| Login, usuarios, gestión web y tickets | API/MySQL |
+| Inventario, pedidos, clientes y movimientos | `localStorage` del navegador |
+| Cotizaciones web | API disponible; pantalla del panel pendiente |
+| Presupuestos | No implementado |
+
+Los módulos locales muestran la etiqueta **“Solo este navegador”**. Los tickets se leen
+desde `GET /api/v1/tickets` al iniciar sesión, de modo que los creados en otro equipo
+también aparecen; el vínculo de cada ticket con los equipos del inventario sigue siendo
+local. Al guardarse por navegador y no por cuenta, dos usuarios del mismo equipo comparten
+esos datos operativos.
 
 Desarrollo local:
 
@@ -263,13 +298,17 @@ cp .env.example .env     # ajusta nombre, URL de la web pública y API
 npm run dev              # http://localhost:3001
 ```
 
-> La autenticación y la gestión de usuarios ya consumen la API. Los módulos operativos mantienen
-> temporalmente sus datos semilla locales hasta completar el cableado visual de cada pantalla.
+> La autenticación, los usuarios, la gestión web y los tickets consumen la API. Inventario,
+> pedidos, clientes y movimientos mantienen sus datos en el navegador hasta completar su
+> cableado con los endpoints del backend; las pantallas lo indican con la etiqueta
+> **“Solo este navegador”**.
 
 ## Roadmap
 
 - **Fase 1 — Web pública** ✅ (este entregable)
 - **Fase 2 — Backend (Python):** ✅ API pública y administrativa, SQLAlchemy, Alembic,
   autenticación JWT y MySQL.
-- **Fase 3 — Panel admin:** 🚧 frontend en `frontend/panel_admin` (login, dashboard,
-  cotizaciones, inventario, presupuestos, clientes y tickets). Pendiente: conexión con la API.
+- **Fase 3 — Panel admin:** 🚧 frontend en `frontend/panel_admin`. Conectados a la API:
+  login/refresh, usuarios, gestión web y tickets. Pendiente: llevar inventario, pedidos,
+  clientes y movimientos de `localStorage` a los endpoints del backend, y construir las
+  pantallas de cotizaciones y presupuestos.

@@ -13,7 +13,3 @@ export const siguienteEstadoTicket = (estado: SupportTicket['estado']): SupportT
   const index = TICKET_ESTADOS.indexOf(estado);
   return TICKET_ESTADOS[(index + 1) % TICKET_ESTADOS.length];
 };
-
-/** Próximo código de ticket consecutivo. */
-export const siguienteCodigoTicket = (total: number): string =>
-  `TKT-${new Date().getFullYear()}-${String(total + 1).padStart(3, '0')}`;

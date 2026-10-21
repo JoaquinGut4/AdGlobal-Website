@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.core.database import get_db
-from backend.app.models import QuoteRequest, Service, WebAsset
+from backend.app.models import QuoteRequest, Service, WebAsset, as_utc
 from backend.app.schemas import QuoteIn, QuoteOut, ServiceIn, WebAssetOut
 
 
@@ -34,7 +34,7 @@ def web_asset_out(item: WebAsset) -> WebAssetOut:
         mimeType=item.mime_type,
         sortOrder=item.sort_order,
         isActive=item.is_active,
-        createdAt=item.created_at,
+        createdAt=as_utc(item.created_at),
     )
 
 
@@ -50,7 +50,7 @@ def quote_out(item: QuoteRequest) -> QuoteOut:
         ciudad=item.city,
         mensaje=item.message,
         estado=item.status,
-        createdAt=item.created_at,
+        createdAt=as_utc(item.created_at),
     )
 
 

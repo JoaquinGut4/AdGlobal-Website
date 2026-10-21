@@ -33,7 +33,9 @@ export function Sidebar({
   onToggleCollapsed,
 }: SidebarProps) {
   const initial = session.usuario.slice(0, 2).toUpperCase();
-  const visibleNavItems = NAV_ITEMS.filter((item) => session.modulos.includes(item.id));
+  const visibleNavItems = NAV_ITEMS.filter(
+    (item) => !item.hidden && session.modulos.includes(item.id),
+  );
 
   return (
     <>

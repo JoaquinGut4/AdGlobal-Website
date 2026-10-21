@@ -18,6 +18,8 @@ export interface NavItem {
   title: string;
   description: string;
   icon: LucideIcon;
+  /** Se conserva la página y sus permisos, pero no se muestra en el menú principal. */
+  hidden?: boolean;
 }
 
 /** Menú principal del panel administrativo (orden de operación). */
@@ -47,8 +49,9 @@ export const NAV_ITEMS: NavItem[] = [
     id: 'clientes',
     label: 'Clientes',
     title: 'Clientes',
-    description: 'Registrar clientes, empresas, datos de contacto e historial comercial.',
+    description: 'Consultar la relación de clientes generada desde los pedidos y su actividad.',
     icon: Users,
+    hidden: true,
   },
   {
     id: 'movimientos',

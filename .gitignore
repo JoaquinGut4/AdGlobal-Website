@@ -12,6 +12,7 @@ build/
 # Python / backend
 __pycache__/
 *.py[cod]
+*.db
 .venv/
 venv/
 env/

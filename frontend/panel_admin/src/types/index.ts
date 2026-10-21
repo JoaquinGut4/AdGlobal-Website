@@ -48,27 +48,6 @@ export interface SupportTicket {
   fecha: string;
 }
 
-export type InventarioIcon = 'laptop' | 'monitor' | 'tablet' | 'volume' | 'printer' | 'package';
-
-/** Fila del control de inventario. */
-export interface InventarioItem {
-  id: string;
-  name: string;
-  category: string;
-  iconName: InventarioIcon;
-  specs: string;
-  total: number;
-  unit: string;
-  alquiler: number;
-  oficina: number;
-  taller: number;
-  dispPercent: number;
-  statusText: string;
-  ubicacionOficina: string;
-  proyectosAlquiler: string;
-  diagnosticoTaller: string;
-}
-
 export type InventarioCategoriaBaseId =
   | 'laptops'
   | 'computadoras'
@@ -90,6 +69,8 @@ export interface InventarioCategoria {
   id: InventarioCategoriaId;
   label: string;
   codigo: number;
+  /** Claves de los campos comunes habilitados. Si se omite, se usan todos. */
+  camposBase?: string[];
   camposPersonalizados?: InventarioCampoPersonalizado[];
 }
 
@@ -161,7 +142,7 @@ export interface PedidoRegistro {
 }
 
 export type MovimientoModulo = 'Pedidos' | 'Inventario' | 'Tickets';
-export type MovimientoAccion = 'Creó' | 'Editó' | 'Eliminó' | 'Agregó' | 'Modificó';
+export type MovimientoAccion = 'Creó' | 'Editó' | 'Eliminó' | 'Agregó' | 'Modificó' | 'Guardó';
 
 export interface MovimientoAuditoria {
   id: string;
@@ -203,27 +184,22 @@ export interface UsuarioAdministrador {
   createdAt: string;
 }
 
-/** Cliente corporativo del directorio. */
-export interface ClienteCorporativo {
-  id: string;
-  name: string;
-  ruc: string;
-  sector: string;
-  contacto: string;
-  email: string;
-  telefono: string;
-  eventos: number;
-  rating: 'VIP' | 'A+' | 'Estándar';
-  ultimaActividad: string;
-  estado: 'Activo' | 'Inactivo';
-}
+export type ClienteEstado = 'Activo' | 'Inactivo';
 
-export interface PresupuestoMetric {
+/** Cliente generado automáticamente a partir de los pedidos registrados. */
+export interface ClienteDerivado {
   id: string;
-  label: string;
-  value: string;
-  detail: string;
-  tone: 'neutral' | 'positive' | 'brand';
+  nombre: string;
+  tipo: 'Empresa' | 'Persona natural';
+  telefono: string;
+  /** Distrito, provincia y departamento del último pedido. */
+  ubicacion: string;
+  pedidos: number;
+  /** Pedidos que aún no han sido finalizados. */
+  pedidosVigentes: number;
+  ultimaActividad: string;
+  estado: ClienteEstado;
+  numerosPedido: string[];
 }
 
 /** Filtros rápidos del inventario. */

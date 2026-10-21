@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { LoginScreen } from '@/components/login/LoginScreen';
 import { OrderModal } from '@/components/modals/OrderModal';
@@ -12,6 +12,8 @@ import { siguienteEstadoTicket } from '@/data/tickets';
 import { useAuth } from '@/hooks/useAuth';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { ApiError, apiRequest } from '@/lib/api';
+import { mergeServerTickets, toSupportTicket } from '@/lib/tickets';
+import type { TicketApiResponse } from '@/lib/tickets';
 import { restoreInventoryForOrder, syncInventoryForOrder } from '@/lib/inventorySync';
 import { asegurarEstadosInventario, normalizarEstadoInventario, normalizarEstadosAnteriores } from '@/lib/inventoryStates';
 import { occupiedByTicket, rebaseTicketsAfterOrderRelease, restoreAssetsFromTicket, sendAssetsToWorkshop } from '@/lib/ticketWorkflow';
@@ -35,31 +37,7 @@ import type {
   MovimientoModulo,
   PedidoRegistro,
   SupportTicket,
-  TicketArea,
-  TicketEstado,
-  TicketPrioridad,
-  TicketTipo,
 } from '@/types';
-
-interface TicketApiResponse {
-  id: string;
-  codigo: string;
-  area: TicketArea | null;
-  equipo: string;
-  cliente: string;
-  prioridad: TicketPrioridad;
-  estado: TicketEstado;
-  descripcion: string;
-  numeroPedidoEstado: string;
-  tipoTicket: TicketTipo;
-  numeroPedido: string;
-  telefonoContacto: string;
-  direccionPedido: string;
-  estadoEquipo: string;
-  tecnico: string;
-  tecnicoTelefono?: string;
-  fecha: string;
-}
 
 const reservesInventory = (pedido: PedidoRegistro) =>
   pedido.estadoPedido !== 'Finalizado' || pedido.motivoTraslado.startsWith('Venta');
@@ -68,27 +46,46 @@ export default function App() {
   const { isAuthenticated, session, authenticate, logout } = useAuth();
   const { notify } = useToast();
 
+  useEffect(() => {
+    const onStorageError = () => {
+      notify('No se pudieron guardar los cambios: el almacenamiento del navegador está lleno.');
+    };
+    window.addEventListener('adglobal:storage-error', onStorageError);
+    return () => window.removeEventListener('adglobal:storage-error', onStorageError);
+  }, [notify]);
+
   const [activeNav, setActiveNav] = useState<AdminSection>('dashboard');
   const [inventarioFiltro, setInventarioFiltro] = useState<InventarioFiltro>('all');
 
-  const [tickets, setTickets] = useLocalStorage<SupportTicket[]>(STORAGE_KEYS.tickets, []);
-  const [pedidos, setPedidos] = useLocalStorage<PedidoRegistro[]>(STORAGE_KEYS.pedidos, PEDIDOS_SEED);
+  // Modo local explícito: inventario, pedidos, clientes y movimientos viven en
+  // este navegador. Los tickets, usuarios y la gestión web sí usan la API.
+  const [tickets, setTickets] = useLocalStorage<SupportTicket[]>(STORAGE_KEYS.tickets, [], isAuthenticated);
+  const [pedidos, setPedidos] = useLocalStorage<PedidoRegistro[]>(STORAGE_KEYS.pedidos, PEDIDOS_SEED, isAuthenticated);
   const [inventario, setInventario] = useLocalStorage<InventarioRegistro[]>(
     STORAGE_KEYS.inventario,
     INVENTARIO_REGISTROS,
+    isAuthenticated,
   );
   const [estadosInventario, setEstadosInventario] = useLocalStorage<string[]>(
     STORAGE_KEYS.inventarioEstadosV2,
     ESTADOS_INVENTARIO_BASE,
+    isAuthenticated,
   );
   const [inventarioCategorias, setInventarioCategorias] = useLocalStorage<InventarioCategoria[]>(
     STORAGE_KEYS.inventarioCategorias,
     [],
+    isAuthenticated,
   );
   const [movimientos, setMovimientos] = useLocalStorage<MovimientoAuditoria[]>(
     STORAGE_KEYS.movimientos,
     MOVIMIENTOS_SEED,
+    isAuthenticated,
   );
+
+  const ticketsSnapshot = useRef(tickets);
+  useEffect(() => {
+    ticketsSnapshot.current = tickets;
+  }, [tickets]);
 
   const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
@@ -103,6 +100,26 @@ export default function App() {
       /* Almacenamiento no disponible */
     }
   }, []);
+
+  // Los tickets viven en el backend. Al iniciar sesión se refresca la lista
+  // para que los creados en otro equipo también aparezcan aquí.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    // Se captura la lista conocida al iniciar la petición para no descartar un
+    // ticket creado mientras la respuesta estaba en vuelo.
+    const knownAtRequest = new Set(ticketsSnapshot.current.map((ticket) => ticket.id));
+    let active = true;
+    apiRequest<TicketApiResponse[]>('/tickets')
+      .then((rows) => {
+        if (active) setTickets((current) => mergeServerTickets(rows, current, knownAtRequest));
+      })
+      .catch(() => {
+        /* Sin conexión: se conserva la copia local. */
+      });
+    return () => {
+      active = false;
+    };
+  }, [isAuthenticated, setTickets]);
 
   useEffect(() => {
     try {
@@ -302,30 +319,10 @@ export default function App() {
       }),
     });
 
-    const nuevo: SupportTicket = {
-      id: response.id,
-      codigo: response.codigo,
-      area: response.area ?? undefined,
-      equipo: response.equipo,
-      cliente: response.cliente,
-      prioridad: response.prioridad,
-      estado: response.estado,
-      descripcion: response.descripcion,
-      numeroPedidoEstado: response.numeroPedidoEstado,
-      tipoTicket: response.tipoTicket,
-      numeroPedido: response.numeroPedido,
-      telefonoContacto: response.telefonoContacto,
-      direccionPedido: response.direccionPedido,
-      estadoEquipo: response.estadoEquipo,
+    const nuevo = toSupportTicket(response, {
       equiposIds: input.equiposIds,
       estadosAnteriores: workshop.previousStates,
-      tecnico: response.tecnico,
-      tecnicoTelefono: response.tecnicoTelefono,
-      fecha: new Date(response.fecha).toLocaleString('es-PE', {
-        dateStyle: 'short',
-        timeStyle: 'short',
-      }),
-    };
+    });
 
     setInventario(workshop.inventory);
     setEstadosInventario((current) => current.some((state) => state.toLowerCase() === 'taller')
@@ -544,8 +541,11 @@ export default function App() {
       case 'dashboard':
         return (
           <DashboardPage
+            pedidos={pedidos}
+            registrosInventario={inventario}
             onVerFiltro={irAInventarioConFiltro}
             onVerInventario={() => navegar('inventario')}
+            onVerClientes={session.modulos.includes('clientes') ? () => navegar('clientes') : undefined}
           />
         );
       case 'inventario':
@@ -560,6 +560,11 @@ export default function App() {
             categoriasPersonalizadas={inventarioCategorias}
             onAgregarCategoria={(categoria) =>
               setInventarioCategorias((current) => [...current, categoria])
+            }
+            onEliminarCategoria={(categoriaId) =>
+              setInventarioCategorias((current) =>
+                current.filter((categoria) => categoria.id !== categoriaId),
+              )
             }
             onRegistrarMovimiento={(accion, registro) =>
               registrarMovimiento(
@@ -579,6 +584,14 @@ export default function App() {
             onEdit={editarPedido}
             onFinish={finalizarPedido}
             onDelete={eliminarPedido}
+            onGuardarBorradorGuia={(pedido, numeroGuia) =>
+              registrarMovimiento(
+                'Pedidos',
+                'Guardó',
+                `Guía ${numeroGuia}`,
+                `Guardó el borrador de la guía de remisión N.° ${numeroGuia} del pedido ${pedido.numeroPedido}.`,
+              )
+            }
           />
         );
       case 'movimientos':
@@ -594,7 +607,7 @@ export default function App() {
           />
         );
       case 'clientes':
-        return <ClientesPage />;
+        return <ClientesPage pedidos={pedidos} />;
       case 'gestion-web':
         return <GestionWebPage />;
       case 'configuracion':

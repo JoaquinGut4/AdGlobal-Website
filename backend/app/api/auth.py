@@ -1,13 +1,19 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from backend.app.api.dependencies import current_user
 from backend.app.core.config import get_settings
 from backend.app.core.database import get_db
-from backend.app.core.security import create_token, decode_token, verify_password
+from backend.app.core.rate_limit import account_login_limiter, ip_login_limiter, login_client_ip
+from backend.app.core.security import (
+    create_token,
+    decode_token,
+    verify_and_update_password,
+    verify_dummy_password,
+)
 from backend.app.models import AdminUser, utcnow
 from backend.app.schemas import LoginRequest, RefreshRequest, SessionUser, TokenResponse
 
@@ -31,27 +37,61 @@ def session_user(user: AdminUser) -> SessionUser:
 def token_response(user: AdminUser) -> TokenResponse:
     settings = get_settings()
     return TokenResponse(
-        accessToken=create_token(user.id, "access"),
-        refreshToken=create_token(user.id, "refresh"),
+        accessToken=create_token(user.id, "access", user.token_version),
+        refreshToken=create_token(user.id, "refresh", user.token_version),
         expiresIn=settings.access_token_minutes * 60,
         user=session_user(user),
     )
 
 
+def enforce_login_rate_limit(account_key: str, ip_key: str | None) -> None:
+    checks = [(account_login_limiter, account_key)]
+    if ip_key:
+        checks.append((ip_login_limiter, ip_key))
+    for limiter, key in checks:
+        result = limiter.check(key)
+        if not result.allowed:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Demasiados intentos fallidos. Inténtalo de nuevo más tarde.",
+                headers={"Retry-After": str(result.retry_after)},
+            )
+
+
 @router.post("/login", response_model=TokenResponse)
-def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
+def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)) -> TokenResponse:
     email = payload.email.lower()
     username = payload.usuario.lower()
+    account_key = f"{email}|{username}"
+    ip_key = login_client_ip(request)
+    enforce_login_rate_limit(account_key, ip_key)
+
     user = db.scalar(
         select(AdminUser).where(
             func.lower(AdminUser.email) == email,
             func.lower(AdminUser.username) == username,
         )
     )
-    if user is None or not verify_password(payload.password, user.password_hash):
+    if user is None:
+        # Keep the work comparable to a real check so the response time does not
+        # reveal whether the email+username pair exists.
+        verify_dummy_password(payload.password)
+        account_login_limiter.record(account_key)
+        if ip_key:
+            ip_login_limiter.record(ip_key)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales inválidas")
+
+    verified, updated_hash = verify_and_update_password(payload.password, user.password_hash)
+    if not verified:
+        account_login_limiter.record(account_key)
+        if ip_key:
+            ip_login_limiter.record(ip_key)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales inválidas")
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Esta cuenta está desactivada")
+    account_login_limiter.reset(account_key)
+    if updated_hash is not None:
+        user.password_hash = updated_hash
     user.last_login_at = utcnow()
     db.commit()
     return token_response(user)
@@ -59,11 +99,18 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse
 
 @router.post("/refresh", response_model=TokenResponse)
 def refresh(payload: RefreshRequest, db: Session = Depends(get_db)) -> TokenResponse:
-    user_id = decode_token(payload.refreshToken, "refresh")
-    user = db.get(AdminUser, user_id) if user_id else None
-    if user is None or not user.is_active:
+    claims = decode_token(payload.refreshToken, "refresh")
+    user = db.get(AdminUser, claims[0]) if claims else None
+    if user is None or not user.is_active or claims[1] != user.token_version:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token inválido")
     return token_response(user)
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(user: AdminUser = Depends(current_user), db: Session = Depends(get_db)) -> None:
+    """Cierra todas las sesiones de la cuenta invalidando los tokens ya emitidos."""
+    user.token_version += 1
+    db.commit()
 
 
 @router.get("/me", response_model=SessionUser)

@@ -7,7 +7,11 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from backend.app.api.dependencies import current_user, require_module, require_super_admin
+from backend.app.api.dependencies import (
+    require_any_module,
+    require_module,
+    require_super_admin,
+)
 from backend.app.api.public import quote_out, service_out, web_asset_out
 from backend.app.core.config import get_settings
 from backend.app.core.database import get_db
@@ -24,6 +28,7 @@ from backend.app.models import (
     SupportTicket,
     Technician,
     WebAsset,
+    as_utc,
 )
 from backend.app.schemas import (
     AdminUserCreate,
@@ -65,7 +70,7 @@ def audit(db: Session, user: AdminUser, module: str, action: str, element: str, 
 
 
 def user_out(item: AdminUser) -> AdminUserOut:
-    return AdminUserOut(id=item.id, nombre=item.full_name, email=item.email, usuario=item.username, rol=item.role, telefono=item.phone, activo=item.is_active, modulos=item.modules, superAdmin=item.is_super_admin, createdAt=item.created_at)
+    return AdminUserOut(id=item.id, nombre=item.full_name, email=item.email, usuario=item.username, rol=item.role, telefono=item.phone, activo=item.is_active, modulos=item.modules, superAdmin=item.is_super_admin, createdAt=as_utc(item.created_at))
 
 
 def category_out(item: InventoryCategory) -> CategoryOut:
@@ -116,7 +121,7 @@ def ticket_out(item: SupportTicket) -> TicketOut:
         tecnicoId=item.technician_id,
         tecnico=item.technician_name,
         tecnicoTelefono=item.technician_phone,
-        fecha=item.created_at,
+        fecha=as_utc(item.created_at),
     )
 
 
@@ -157,6 +162,22 @@ def update_user(user_id: str, payload: AdminUserUpdate, actor: AdminUser = Depen
     if item is None:
         raise HTTPException(404, "Usuario no encontrado")
     changes = payload.model_dump(exclude_unset=True)
+    if changes.get("activo") is False:
+        if item.id == actor.id:
+            raise HTTPException(400, "No puedes desactivar tu propia cuenta")
+        if item.is_super_admin:
+            remaining_superadmins = db.scalar(
+                select(func.count())
+                .select_from(AdminUser)
+                .where(
+                    AdminUser.is_super_admin.is_(True),
+                    AdminUser.is_active.is_(True),
+                    AdminUser.id != item.id,
+                )
+            ) or 0
+            if remaining_superadmins == 0:
+                raise HTTPException(400, "Debe quedar al menos un superadministrador activo")
+    before = (item.email, item.username, item.password_hash, item.role, item.modules, item.is_active)
     if "nombre" in changes: item.full_name = changes["nombre"]
     if "email" in changes: item.email = changes["email"].lower()
     if "usuario" in changes: item.username = changes["usuario"]
@@ -165,6 +186,8 @@ def update_user(user_id: str, payload: AdminUserUpdate, actor: AdminUser = Depen
     if "telefono" in changes: item.phone = changes["telefono"]
     if "activo" in changes: item.is_active = changes["activo"]
     if "modulos" in changes: item.modules = changes["modulos"]
+    if before != (item.email, item.username, item.password_hash, item.role, item.modules, item.is_active):
+        item.token_version += 1
     audit(db, actor, "Configuración", "Editó", item.username, f"Actualizó la cuenta {item.username}.")
     try:
         db.commit()
@@ -244,6 +267,7 @@ def create_inventory(payload: InventoryIn, actor: AdminUser = Depends(require_mo
 def update_inventory(item_id: str, payload: InventoryIn, actor: AdminUser = Depends(require_module("inventario")), db: Session = Depends(get_db)) -> InventoryOut:
     item = db.get(InventoryAsset, item_id)
     if item is None: raise HTTPException(404, "Activo no encontrado")
+    if db.get(InventoryCategory, payload.categoriaId) is None: raise HTTPException(422, "Categoría inexistente")
     apply_inventory(item, payload); audit(db, actor, "Inventario", "Modificó", payload.sku, f"Modificó el producto {payload.sku}.")
     try: db.commit()
     except IntegrityError: conflict(db, "El SKU, QR o número serial ya está registrado")
@@ -276,7 +300,10 @@ def update_customer(item_id: str, payload: CustomerIn, actor: AdminUser = Depend
     item = db.get(Customer, item_id)
     if item is None: raise HTTPException(404, "Cliente no encontrado")
     item.name=payload.name; item.ruc=payload.ruc; item.sector=payload.sector; item.contact_name=payload.contacto; item.email=payload.email; item.phone=payload.telefono; item.event_count=payload.eventos; item.rating=payload.rating; item.last_activity=payload.ultimaActividad; item.status=payload.estado
-    audit(db, actor, "Clientes", "Editó", item.ruc, f"Editó el cliente {item.name}."); db.commit(); return customer_out(item)
+    audit(db, actor, "Clientes", "Editó", item.ruc, f"Editó el cliente {item.name}.")
+    try: db.commit()
+    except IntegrityError: conflict(db, "El RUC ya está registrado")
+    return customer_out(item)
 
 
 @router.get("/pedidos", response_model=list[OrderOut])
@@ -320,7 +347,7 @@ def delete_order(item_id: str, actor: AdminUser = Depends(require_module("pedido
 
 @router.get("/usuarios/soporte", response_model=list[SupportResponsibleOut])
 def support_responsibles(
-    user: AdminUser = Depends(current_user),
+    user: AdminUser = Depends(require_module("tickets")),
     db: Session = Depends(get_db),
 ) -> list[SupportResponsibleOut]:
     support_users = list(
@@ -344,7 +371,7 @@ def support_responsibles(
 
 
 @router.get("/tecnicos", response_model=list[TechnicianOut])
-def technicians(_: AdminUser = Depends(current_user), db: Session = Depends(get_db)) -> list[TechnicianOut]:
+def technicians(_: AdminUser = Depends(require_any_module("tickets", "configuracion")), db: Session = Depends(get_db)) -> list[TechnicianOut]:
     return [technician_out(item) for item in db.scalars(select(Technician).where(Technician.is_active.is_(True)).order_by(Technician.name)).all()]
 
 
@@ -444,7 +471,7 @@ def movements(module: str | None=None, limit: int=Query(100,ge=1,le=500), _: Adm
     query=select(AuditLog)
     if module: query=query.where(AuditLog.module==module)
     rows=db.scalars(query.order_by(AuditLog.occurred_at.desc()).limit(limit)).all()
-    return [AuditOut(id=x.id,fecha=x.occurred_at,usuario=x.username,modulo=x.module,accion=x.action,elemento=x.element,detalle=x.detail) for x in rows]
+    return [AuditOut(id=x.id,fecha=as_utc(x.occurred_at),usuario=x.username,modulo=x.module,accion=x.action,elemento=x.element,detalle=x.detail) for x in rows]
 
 
 @router.get("/cotizaciones", response_model=list[QuoteOut])

@@ -164,7 +164,14 @@ export function OrderModal({ isOpen, onClose, onCreate, inventario, categorias, 
       telefonoContacto: telefono,
       descripcionProductos: descripcionProductos.trim(),
       skus,
-      cantidadProductos: Math.max(1, skus.length),
+      // Al editar se conserva la cantidad histórica del pedido; el formulario
+      // solo calcula una unidad por SKU para pedidos nuevos.
+      cantidadProductos:
+        editingPedido &&
+        Number.isFinite(Number(editingPedido.cantidadProductos)) &&
+        Number(editingPedido.cantidadProductos) > 0
+          ? Number(editingPedido.cantidadProductos)
+          : Math.max(1, skus.length),
       unidadMedida: 'UND',
       motivoTraslado,
       observaciones: editingPedido?.observaciones ?? '',
@@ -293,7 +300,11 @@ export function OrderModal({ isOpen, onClose, onCreate, inventario, categorias, 
                 )}
               </div>
               <textarea rows={3} required value={descripcionProductos} onChange={(event) => setDescripcionProductos(event.target.value)} placeholder="Ej. SKU · Categoría · Descripción del equipo" className={FIELD_CLASS} />
-              <p className="text-[11px] text-slate-500">La cantidad se calcula automáticamente: una unidad por cada SKU distinto.</p>
+              <p className="text-[11px] text-slate-500">
+                {editingPedido
+                  ? `Se conserva la cantidad histórica del pedido (${editingPedido.cantidadProductos} unidades).`
+                  : 'La cantidad se calcula automáticamente: una unidad por cada SKU distinto.'}
+              </p>
             </div>
           </Field>
         </div>

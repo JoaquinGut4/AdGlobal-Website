@@ -193,6 +193,11 @@ export function TicketModal({ isOpen, onClose, onCreate, inventario, pedidos, ti
       return;
     }
 
+    // Se abre la pestaña antes del await: si se abre después, los navegadores
+    // suelen bloquearla como popup.
+    const whatsappWindow = window.open('', '_blank');
+    if (whatsappWindow) whatsappWindow.opener = null;
+
     setIsSubmitting(true);
     try {
       const ticket = await onCreate({
@@ -227,8 +232,15 @@ export function TicketModal({ isOpen, onClose, onCreate, inventario, pedidos, ti
           `Descripción: ${ticket.descripcion}`,
           `Responsable asignado: ${ticket.tecnico}`,
         ].join('\n');
-        window.open(`https://wa.me/${whatsapp}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
+        const url = `https://wa.me/${whatsapp}?text=${encodeURIComponent(message)}`;
+        try {
+          if (whatsappWindow) whatsappWindow.location.href = url;
+          else window.open(url, '_blank', 'noopener,noreferrer');
+        } catch {
+          window.open(url, '_blank', 'noopener,noreferrer');
+        }
       } else {
+        whatsappWindow?.close();
         window.alert(
           'El ticket fue creado, pero el responsable no tiene un número de WhatsApp registrado.',
         );
@@ -238,6 +250,7 @@ export function TicketModal({ isOpen, onClose, onCreate, inventario, pedidos, ti
       setSkuSearch('');
       setEquiposSeleccionados([]);
     } catch (error) {
+      whatsappWindow?.close();
       setSubmitError(error instanceof Error ? error.message : 'No se pudo aperturar el ticket.');
     } finally {
       setIsSubmitting(false);

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Boxes, CalendarDays, ClipboardList, Search, TicketCheck, X } from 'lucide-react';
-import { diaLocal, movimientosPorFecha } from '@/lib/movementDates';
+import { LocalDataNotice } from '@/components/ui/LocalDataNotice';
+import { diaLocal, hoyLocal, movimientosPorFecha } from '@/lib/movementDates';
 import type { MovimientoAuditoria, MovimientoModulo } from '@/types';
 
 interface MovimientosPageProps {
@@ -30,10 +31,12 @@ const MODULOS: Array<{ id: MovimientoModulo; icon: typeof ClipboardList; tone: s
 export function MovimientosPage({ movimientos }: MovimientosPageProps) {
   const [search, setSearch] = useState('');
   const [moduloActivo, setModuloActivo] = useState<ModuloFiltro>('Todos');
-  const [desde, setDesde] = useState('');
-  const [hasta, setHasta] = useState('');
+  const [desde, setDesde] = useState(hoyLocal);
+  const [hasta, setHasta] = useState(hoyLocal);
   const terminos = normalizar(search).trim().split(/\s+/).filter(Boolean);
   const rangoInvalido = Boolean(desde && hasta && desde > hasta);
+  const hoy = hoyLocal();
+  const mostrandoSoloHoy = hoy !== '' && desde === hoy && hasta === hoy;
   const movimientosEnRango = movimientosPorFecha(movimientos, desde, hasta);
 
   const visibles = movimientosEnRango.filter((movimiento) => {
@@ -51,9 +54,10 @@ export function MovimientosPage({ movimientos }: MovimientosPageProps) {
           <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-[#2B5C94]">
             {movimientos.length} movimientos registrados
           </span>
+          <LocalDataNotice />
         </div>
         <p className="mt-1 text-xs text-slate-500">
-          Auditoría de acciones realizadas por los usuarios en Pedidos, Inventario y Tickets, consultable por fecha.
+          Acciones registradas localmente en este navegador para Pedidos, Inventario y Tickets. No sustituye la auditoría del servidor.
         </p>
       </div>
 
@@ -145,7 +149,7 @@ export function MovimientosPage({ movimientos }: MovimientosPageProps) {
           <button
             type="button"
             onClick={() => {
-              const today = diaLocal(new Date().toISOString()) ?? '';
+              const today = hoyLocal();
               setDesde(today);
               setHasta(today);
             }}
@@ -173,7 +177,9 @@ export function MovimientosPage({ movimientos }: MovimientosPageProps) {
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
           <span className="text-xs font-bold text-slate-800">
             {moduloActivo === 'Todos' ? 'Todos los módulos' : moduloActivo}
-            {(desde || hasta) && <span className="ml-2 font-medium text-slate-500">· Período seleccionado</span>}
+            {(desde || hasta) && (
+              <span className="ml-2 font-medium text-slate-500">· {mostrandoSoloHoy ? 'Hoy' : 'Período seleccionado'}</span>
+            )}
           </span>
           <span className="text-[11px] text-slate-500">
             {visibles.length} {visibles.length === 1 ? 'movimiento visible' : 'movimientos visibles'}
@@ -203,7 +209,9 @@ export function MovimientosPage({ movimientos }: MovimientosPageProps) {
                     ? 'bg-rose-50 text-rose-700'
                     : movimiento.accion === 'Creó' || movimiento.accion === 'Agregó'
                       ? 'bg-emerald-50 text-emerald-700'
-                      : 'bg-amber-50 text-amber-700';
+                      : movimiento.accion === 'Guardó'
+                        ? 'bg-sky-50 text-sky-700'
+                        : 'bg-amber-50 text-amber-700';
                   return (
                     <tr key={movimiento.id} className="hover:bg-blue-50/30">
                       <td className="min-w-44 whitespace-nowrap px-4 py-3">

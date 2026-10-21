@@ -15,6 +15,13 @@ from backend.app.core.database import engine
 settings = get_settings()
 
 
+def documentation_urls(environment: str) -> dict[str, str | None]:
+    """Expose the interactive API documentation only for explicit local development."""
+    if environment == "development":
+        return {"openapi_url": "/openapi.json", "docs_url": "/docs", "redoc_url": "/redoc"}
+    return {"openapi_url": None, "docs_url": None, "redoc_url": None}
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     Path(settings.upload_directory).mkdir(parents=True, exist_ok=True)
@@ -24,9 +31,8 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title=settings.app_name,
     version="1.0.0",
-    docs_url="/docs" if settings.environment != "production" else None,
-    redoc_url="/redoc" if settings.environment != "production" else None,
     lifespan=lifespan,
+    **documentation_urls(settings.environment),
 )
 app.add_middleware(
     CORSMiddleware,

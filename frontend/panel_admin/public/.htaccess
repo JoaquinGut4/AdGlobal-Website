@@ -32,9 +32,13 @@
     Header set Cache-Control "public, max-age=0, must-revalidate"
   </FilesMatch>
   # Seguridad básica
-  Header set X-Content-Type-Options "nosniff"
-  Header set X-Frame-Options "SAMEORIGIN"
-  Header set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set X-Content-Type-Options "nosniff"
+  Header always set X-Frame-Options "SAMEORIGIN"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
+  Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+  Header always set Strict-Transport-Security "max-age=31536000"
+  # Si la API vive en otro origen, añade su URL a connect-src.
+  Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' data: blob: https:; connect-src 'self' https:; frame-src 'self' about:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'"
   # El panel administrativo no debe indexarse en buscadores
   Header set X-Robots-Tag "noindex, nofollow"
 </IfModule>
