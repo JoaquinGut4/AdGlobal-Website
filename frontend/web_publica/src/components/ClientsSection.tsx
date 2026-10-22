@@ -1,8 +1,10 @@
 import React from 'react';
 import { CLIENT_LOGOS } from '@/data/clientes';
-import { INDUSTRIAS } from '@/data/contenido';
+import { useSiteData } from '@/hooks/useSiteData';
 
 export const ClientsSection: React.FC = () => {
+  const { content } = useSiteData();
+  const industrias = content.industrias;
   const loop = [...CLIENT_LOGOS, ...CLIENT_LOGOS];
 
   return (
@@ -17,7 +19,7 @@ export const ClientsSection: React.FC = () => {
           style={{ '--i': 1 } as React.CSSProperties}
         >
           Más de 500 empresas en Perú y Colombia confían su operación a AD GLOBAL:{' '}
-          {INDUSTRIAS.join(', ').toLowerCase()} y más.
+          {industrias.join(', ').toLowerCase()} y más.
         </p>
       </div>
 

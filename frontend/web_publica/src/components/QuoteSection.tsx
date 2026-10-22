@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { AlertCircle, CheckCircle2, Mail, MapPin, Phone, Send } from 'lucide-react';
-import { SERVICIOS_DATA } from '@/data/servicios';
-import { CONTACTO_INFO } from '@/data/contenido';
 import { SITE, whatsappLink } from '@/config/site';
+import { useSiteData } from '@/hooks/useSiteData';
 import contactBg from '@/assets/servicios/pantallas-led/PantallasLED 1.jpeg';
 
 interface QuoteSectionProps {
@@ -33,9 +32,9 @@ const EMPTY_FORM: FormState = {
   mensaje: '',
 };
 
-const buildWhatsAppMessage = (data: FormState): string => {
+const buildWhatsAppMessage = (data: FormState, services: { id: string; title: string }[]): string => {
   const serviceTitle =
-    SERVICIOS_DATA.find((service) => service.id === data.servicioId)?.title ?? data.servicioId;
+    services.find((service) => service.id === data.servicioId)?.title ?? data.servicioId;
   const lines = [
     '*Solicitud de cotización · AD GLOBAL*',
     '',
@@ -51,14 +50,15 @@ const buildWhatsAppMessage = (data: FormState): string => {
   return lines.join('\n');
 };
 
-const SOCIAL = [
-  { label: 'Facebook', href: CONTACTO_INFO.social.facebook },
-  { label: 'Instagram', href: CONTACTO_INFO.social.instagram },
-  { label: 'LinkedIn', href: CONTACTO_INFO.social.linkedin },
-  { label: 'TikTok', href: CONTACTO_INFO.social.tiktok },
-];
-
 export const QuoteSection: React.FC<QuoteSectionProps> = ({ preselectedServiceId }) => {
+  const { services, content } = useSiteData();
+  const contacto = content.contacto;
+  const SOCIAL = [
+    { label: 'Facebook', href: contacto.social.facebook },
+    { label: 'Instagram', href: contacto.social.instagram },
+    { label: 'LinkedIn', href: contacto.social.linkedin },
+    { label: 'TikTok', href: contacto.social.tiktok },
+  ];
   const [formData, setFormData] = useState<FormState>(EMPTY_FORM);
   const [errors, setErrors] = useState<FormErrors>({});
   const [touched, setTouched] = useState<Partial<Record<keyof FormState, boolean>>>({});
@@ -109,7 +109,7 @@ export const QuoteSection: React.FC<QuoteSectionProps> = ({ preselectedServiceId
 
     if (Object.keys(validationErrors).length === 0) {
       window.open(
-        whatsappLink(buildWhatsAppMessage(formData)),
+        whatsappLink(buildWhatsAppMessage(formData, services)),
         '_blank',
         'noopener,noreferrer'
       );
@@ -125,7 +125,7 @@ export const QuoteSection: React.FC<QuoteSectionProps> = ({ preselectedServiceId
   };
 
   const submittedService = submitted
-    ? SERVICIOS_DATA.find((service) => service.id === submitted.servicioId)
+    ? services.find((service) => service.id === submitted.servicioId)
     : undefined;
 
   const fieldClass = (field: keyof FormState) =>
@@ -177,7 +177,7 @@ export const QuoteSection: React.FC<QuoteSectionProps> = ({ preselectedServiceId
                 </p>
                 <div className="flex flex-wrap gap-3">
                   <a
-                    href={whatsappLink(buildWhatsAppMessage(submitted))}
+                    href={whatsappLink(buildWhatsAppMessage(submitted, services))}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="btn btn--primary"
@@ -266,7 +266,7 @@ export const QuoteSection: React.FC<QuoteSectionProps> = ({ preselectedServiceId
                       onChange={(e) => handleChange('servicioId', e.target.value)}
                       className="w-full cursor-pointer rounded-[2px] border border-line bg-ground-2 px-4 py-3 text-body text-ink focus:outline-none focus:ring-2 focus:ring-accent"
                     >
-                      {SERVICIOS_DATA.map((service) => (
+                      {services.map((service) => (
                         <option key={service.id} value={service.id} className="bg-ground-2">
                           {service.title}
                         </option>
@@ -355,12 +355,12 @@ export const QuoteSection: React.FC<QuoteSectionProps> = ({ preselectedServiceId
 
                 <p className="flex items-start gap-3 text-paper-muted">
                   <MapPin className="mt-0.5 h-5 w-5 shrink-0" />
-                  <span>{CONTACTO_INFO.address.full}</span>
+                  <span>{contacto.address.full}</span>
                 </p>
 
                 <div className="text-paper-muted">
-                  <p>{CONTACTO_INFO.schedule.weekdays}</p>
-                  <p>{CONTACTO_INFO.schedule.saturdays}</p>
+                  <p>{contacto.schedule.weekdays}</p>
+                  <p>{contacto.schedule.saturdays}</p>
                 </div>
               </div>
 

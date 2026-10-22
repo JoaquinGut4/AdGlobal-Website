@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
@@ -44,6 +44,24 @@ def token_response(user: AdminUser) -> TokenResponse:
     )
 
 
+def set_auth_cookies(response: Response, tokens: TokenResponse) -> None:
+    settings = get_settings()
+    common = {
+        "httponly": True,
+        "secure": settings.environment == "production" or settings.force_https,
+        "samesite": "strict",
+        "domain": settings.auth_cookie_domain,
+        "path": settings.api_v1_prefix,
+    }
+    response.set_cookie("adglobal_access", tokens.accessToken, max_age=tokens.expiresIn, **common)
+    response.set_cookie(
+        "adglobal_refresh",
+        tokens.refreshToken,
+        max_age=settings.refresh_token_days * 86400,
+        **common,
+    )
+
+
 def enforce_login_rate_limit(account_key: str, ip_key: str | None) -> None:
     checks = [(account_login_limiter, account_key)]
     if ip_key:
@@ -59,7 +77,7 @@ def enforce_login_rate_limit(account_key: str, ip_key: str | None) -> None:
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)) -> TokenResponse:
+def login(payload: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)) -> TokenResponse:
     email = payload.email.lower()
     username = payload.usuario.lower()
     account_key = f"{email}|{username}"
@@ -94,23 +112,35 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
         user.password_hash = updated_hash
     user.last_login_at = utcnow()
     db.commit()
-    return token_response(user)
+    tokens = token_response(user)
+    set_auth_cookies(response, tokens)
+    return tokens
 
 
 @router.post("/refresh", response_model=TokenResponse)
-def refresh(payload: RefreshRequest, db: Session = Depends(get_db)) -> TokenResponse:
-    claims = decode_token(payload.refreshToken, "refresh")
+def refresh(
+    payload: RefreshRequest,
+    response: Response,
+    refresh_cookie: str | None = Cookie(default=None, alias="adglobal_refresh"),
+    db: Session = Depends(get_db),
+) -> TokenResponse:
+    token = payload.refreshToken or refresh_cookie
+    claims = decode_token(token, "refresh") if token else None
     user = db.get(AdminUser, claims[0]) if claims else None
     if user is None or not user.is_active or claims[1] != user.token_version:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token inválido")
-    return token_response(user)
+    tokens = token_response(user)
+    set_auth_cookies(response, tokens)
+    return tokens
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-def logout(user: AdminUser = Depends(current_user), db: Session = Depends(get_db)) -> None:
+def logout(response: Response, user: AdminUser = Depends(current_user), db: Session = Depends(get_db)) -> None:
     """Cierra todas las sesiones de la cuenta invalidando los tokens ya emitidos."""
     user.token_version += 1
     db.commit()
+    response.delete_cookie("adglobal_access", path=get_settings().api_v1_prefix)
+    response.delete_cookie("adglobal_refresh", path=get_settings().api_v1_prefix)
 
 
 @router.get("/me", response_model=SessionUser)

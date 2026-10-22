@@ -1,4 +1,4 @@
-export const ESTADOS_INMUTABLES = ['Alquiler', 'Taller', 'Venta'] as const;
+export const ESTADOS_INMUTABLES = ['Alquiler', 'Taller', 'Venta', 'Diagnóstico', 'Reparación', 'Reemplazo requerido', 'Reservado para reemplazo', 'Baja'] as const;
 
 export function normalizarEstadoInventario(estado: string): string {
   const value = estado.trim();

@@ -49,13 +49,11 @@ async function refreshAccessToken(): Promise<RefreshResult> {
 
   refreshPromise = (async (): Promise<RefreshResult> => {
     try {
-      const stored = readTokenWithStorage(REFRESH_TOKEN_STORAGE_KEY);
-      if (!stored) return { error: 'unauthenticated' };
-
       const response = await fetch(`${ADMIN_CONFIG.apiUrl}/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken: stored.token }),
+        credentials: 'include',
+        body: JSON.stringify({}),
       });
       if (!response.ok) {
         clearAuthTokens();
@@ -66,18 +64,11 @@ async function refreshAccessToken(): Promise<RefreshResult> {
         accessToken?: string;
         refreshToken?: string;
       };
-      if (!payload.accessToken || !payload.refreshToken) {
+      if (!payload.accessToken) {
         clearAuthTokens();
         return { error: 'unauthenticated' };
       }
 
-      const other = stored.storage === window.localStorage
-        ? window.sessionStorage
-        : window.localStorage;
-      stored.storage.setItem(AUTH_TOKEN_STORAGE_KEY, payload.accessToken);
-      stored.storage.setItem(REFRESH_TOKEN_STORAGE_KEY, payload.refreshToken);
-      other.removeItem(AUTH_TOKEN_STORAGE_KEY);
-      other.removeItem(REFRESH_TOKEN_STORAGE_KEY);
       return { token: payload.accessToken };
     } catch {
       // Error de red: no se cierra la sesión; la siguiente petición reintenta.
@@ -102,7 +93,7 @@ async function request<T>(path: string, init: RequestInit, canRefresh: boolean):
   if (token) headers.set('Authorization', `Bearer ${token}`);
   if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json');
 
-  const response = await fetch(`${ADMIN_CONFIG.apiUrl}${path}`, { ...init, headers });
+  const response = await fetch(`${ADMIN_CONFIG.apiUrl}${path}`, { ...init, headers, credentials: 'include' });
 
   if (response.status === 401) {
     if (canRefresh) {

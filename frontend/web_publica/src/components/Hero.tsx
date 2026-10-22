@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { HERO } from '@/data/contenido';
-import { SERVICIOS_DATA, type ServiceItem } from '@/data/servicios';
+import type { ServiceItem } from '@/data/servicios';
 import { useManagedWebImages } from '@/hooks/useManagedWebImages';
+import { useSiteData } from '@/hooks/useSiteData';
 
 /** Etiquetas cortas para el índice interactivo del banner. */
 const SHORT_LABEL: Record<string, string> = {
@@ -66,6 +66,8 @@ interface HeroExhibit {
 
 export const Hero: React.FC<HeroProps> = ({ onQuote }) => {
   const managedImages = useManagedWebImages();
+  const { services, content } = useSiteData();
+  const hero = content.hero;
   const exhibits = useMemo<HeroExhibit[]>(() => {
     const managedHero = managedImages.filter((image) => image.section === 'hero');
     if (managedHero.length > 0) {
@@ -77,7 +79,7 @@ export const Hero: React.FC<HeroProps> = ({ onQuote }) => {
       }));
     }
 
-    return HERO_ORDER.map((id) => SERVICIOS_DATA.find((service) => service.id === id))
+    return HERO_ORDER.map((id) => services.find((service) => service.id === id))
       .filter((service): service is ServiceItem => Boolean(service?.featuredImage))
       .map((service) => ({
         id: service.id,
@@ -85,7 +87,7 @@ export const Hero: React.FC<HeroProps> = ({ onQuote }) => {
         featuredImage: service.featuredImage as string,
         type: 'image' as const,
       }));
-  }, [managedImages]);
+  }, [managedImages, services]);
 
   const [active, setActive] = useState(0);
   const [auto, setAuto] = useState(true);
@@ -164,7 +166,7 @@ export const Hero: React.FC<HeroProps> = ({ onQuote }) => {
           style={{ '--i': 0 } as React.CSSProperties}
           className="heading text-ink"
         >
-          {renderHeadline(HERO.headline, HERO.highlights)}
+          {renderHeadline(hero.headline, hero.highlights)}
         </h1>
 
         <div className="grid12 mt-5 items-end gap-y-5">
@@ -173,7 +175,7 @@ export const Hero: React.FC<HeroProps> = ({ onQuote }) => {
             style={{ '--i': 1 } as React.CSSProperties}
             className="col-span-12 max-w-[48ch] text-body leading-relaxed text-muted lg:col-span-6"
           >
-            {HERO.supporting}
+            {hero.supporting}
           </p>
           <div
             data-rise
@@ -181,7 +183,7 @@ export const Hero: React.FC<HeroProps> = ({ onQuote }) => {
             className="col-span-12 lg:col-span-6 lg:justify-self-end"
           >
             <button onClick={onQuote} className="btn btn--quote">
-              {HERO.action}
+              {hero.action}
             </button>
           </div>
         </div>

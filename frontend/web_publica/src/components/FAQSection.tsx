@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Plus } from 'lucide-react';
-import { PREGUNTAS_FRECUENTES } from '@/data/contenido';
 import { whatsappLink } from '@/config/site';
 import { FaqCollage } from './FaqCollage';
+import { useSiteData } from '@/hooks/useSiteData';
 
 export const FAQSection: React.FC = () => {
-  const [openId, setOpenId] = useState<string | null>(PREGUNTAS_FRECUENTES[0].id);
+  const { faqs } = useSiteData();
+  const [openId, setOpenId] = useState<string | null>(faqs[0]?.id ?? null);
 
   return (
     <section id="preguntas" className="section">
@@ -16,7 +17,7 @@ export const FAQSection: React.FC = () => {
           </h2>
 
           <div className="mt-[clamp(2rem,4vw,3rem)]" data-reveal style={{ '--i': 1 } as React.CSSProperties}>
-            {PREGUNTAS_FRECUENTES.map((faq) => {
+            {faqs.map((faq) => {
               const open = openId === faq.id;
               return (
                 <div key={faq.id} className={`acc ${open ? 'is-open' : ''}`}>

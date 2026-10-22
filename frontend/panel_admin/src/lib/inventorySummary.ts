@@ -34,6 +34,8 @@ export function resumirFlota(registros: InventarioRegistro[]): FlotaResumen {
       resumen.oficina += 1;
     } else if (
       estado.includes('taller') ||
+      estado.includes('diagnostico') ||
+      estado.includes('reemplazo') ||
       estado.includes('reparacion') ||
       estado.includes('mantenimiento')
     ) {

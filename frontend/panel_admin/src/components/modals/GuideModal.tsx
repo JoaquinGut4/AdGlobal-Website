@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { FileText, Lock, Printer, Save } from 'lucide-react';
 import { AdGlobalLogo } from '@/components/AdGlobalLogo';
 import { Modal } from '@/components/ui/Modal';
+import { ADMIN_CONFIG } from '@/config/site';
+import { ApiError, apiRequest } from '@/lib/api';
 import logo from '@/assets/logo/adglobal-logo.png';
 import type { PedidoRegistro } from '@/types';
 
@@ -9,7 +11,6 @@ interface GuideModalProps {
   isOpen: boolean;
   pedido: PedidoRegistro | null;
   onClose: () => void;
-  onSaveDraft?: (pedido: PedidoRegistro, numeroGuia: string) => void;
 }
 
 const FIELD_CLASS =
@@ -51,6 +52,14 @@ interface BienTrasladado {
   peso: string;
 }
 
+interface GuideRecord {
+  id: string; pedidoId: string; numeroGuia: string; fechaTraslado: string;
+  destinatarioRuc: string; destinatarioDocumento: string; vehiculo: string; certificado: string;
+  licencia: string; conductorDocumento: string; transportista: string; transportistaRuc: string;
+  costoTraslado: number; comprobanteTipo: string; comprobanteNumero: string; motivos: string[];
+  estado: 'Borrador' | 'Emitida'; bienes: Array<{ descripcion: string; cantidad: number; unidad: string; observaciones: string; peso: number }>;
+}
+
 /** Crea una fila por producto. La cantidad total del pedido se reparte entre las líneas. */
 function crearBienes(pedido: PedidoRegistro): BienTrasladado[] {
   const lineas = pedido.descripcionProductos
@@ -73,7 +82,7 @@ function crearBienes(pedido: PedidoRegistro): BienTrasladado[] {
   }));
 }
 
-export function GuideModal({ isOpen, pedido, onClose, onSaveDraft }: GuideModalProps) {
+export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const [numeroGuia, setNumeroGuia] = useState('');
   const [fechaTraslado, setFechaTraslado] = useState('');
@@ -89,6 +98,18 @@ export function GuideModal({ isOpen, pedido, onClose, onSaveDraft }: GuideModalP
     setFechaTraslado(pedido.fechaEmision);
     setStatus('');
     setBienes(crearBienes(pedido));
+    void apiRequest<GuideRecord>(`/pedidos/${pedido.id}/guia`).then((guide) => {
+      setNumeroGuia(guide.numeroGuia);
+      setFechaTraslado(guide.fechaTraslado);
+      setBienes(guide.bienes.map((item, index) => ({ id: `bien-${index}`, descripcion: item.descripcion, cantidad: String(item.cantidad), unidad: item.unidad, observaciones: item.observaciones, peso: String(item.peso) })));
+      window.setTimeout(() => {
+        if (!formRef.current) return;
+        const values: Record<string, string> = { destinatario_ruc: guide.destinatarioRuc, destinatario_dni: guide.destinatarioDocumento, vehiculo: guide.vehiculo, certificado: guide.certificado, licencia: guide.licencia, conductor_dni: guide.conductorDocumento, transportista: guide.transportista, transportista_ruc: guide.transportistaRuc, costo_traslado: String(guide.costoTraslado), comprobante_tipo: guide.comprobanteTipo, comprobante_numero: guide.comprobanteNumero };
+        for (const [name, value] of Object.entries(values)) { const field = formRef.current.elements.namedItem(name) as HTMLInputElement | null; if (field) field.value = value; }
+        formRef.current.querySelectorAll<HTMLInputElement>('input[name="motivo"]').forEach(input => { input.checked = guide.motivos.includes(input.value); });
+      });
+      setStatus(`Guía cargada · ${guide.estado}`);
+    }).catch((error) => { if (!(error instanceof ApiError && error.status === 404)) setStatus(error instanceof Error ? error.message : 'No se pudo cargar la guía.'); });
   }, [isOpen, pedido]);
 
   if (!pedido) return null;
@@ -114,16 +135,75 @@ export function GuideModal({ isOpen, pedido, onClose, onSaveDraft }: GuideModalP
   const datoLlegada = (label: string) =>
     segmentosLlegada.find((segmento) => segmento.startsWith(`${label}:`))?.replace(`${label}:`, '').trim() ?? '';
 
-  const guardarBorrador = () => {
-    if (soloLectura) return;
-    onSaveDraft?.(pedido, numeroGuia);
-    setStatus('Borrador registrado en los movimientos del pedido.');
+  const payloadGuia = (estado: 'Borrador' | 'Emitida') => {
+    const data = new FormData(formRef.current ?? undefined);
+    const text = (name: string) => String(data.get(name) ?? '');
+    return {
+      numeroGuia,
+      fechaTraslado,
+      destinatarioRuc: text('destinatario_ruc'),
+      destinatarioDocumento: text('destinatario_dni'),
+      vehiculo: text('vehiculo'),
+      certificado: text('certificado'),
+      licencia: text('licencia'),
+      conductorDocumento: text('conductor_dni'),
+      transportista: text('transportista'),
+      transportistaRuc: text('transportista_ruc'),
+      costoTraslado: Number(text('costo_traslado')) || 0,
+      comprobanteTipo: text('comprobante_tipo'),
+      comprobanteNumero: text('comprobante_numero'),
+      motivos: Array.from(formRef.current?.querySelectorAll<HTMLInputElement>('input[name="motivo"]:checked') ?? []).map((input) => input.value),
+      estado,
+      bienes: bienes.map((item) => ({ descripcion: item.descripcion, cantidad: Number(item.cantidad) || 0, unidad: item.unidad, observaciones: item.observaciones, peso: Number(item.peso) || 0 })),
+    };
   };
 
-  const imprimirGuia = () => {
+  const guardar = async (estado: 'Borrador' | 'Emitida') => {
+    try {
+      await apiRequest(`/pedidos/${pedido.id}/guia`, { method: 'PUT', body: JSON.stringify(payloadGuia(estado)) });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        await apiRequest(`/pedidos/${pedido.id}/guia`, { method: 'POST', body: JSON.stringify(payloadGuia(estado)) });
+      } else {
+        throw error;
+      }
+    }
+  };
+
+  const guardarBorrador = async () => {
+    if (soloLectura) return;
+    try {
+      await guardar('Borrador');
+      setStatus('Borrador guardado en la base de datos.');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'No se pudo guardar el borrador.');
+    }
+  };
+
+  const descargarPdf = async () => {
+    const response = await fetch(`${ADMIN_CONFIG.apiUrl}/pedidos/${pedido.id}/guia/pdf`, { credentials: 'include' });
+    if (!response.ok) {
+      setStatus('No se pudo descargar el PDF.');
+      return;
+    }
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `guia-${numeroGuia}.pdf`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const imprimirGuia = async () => {
     if (!formRef.current) return;
     if (!formRef.current.reportValidity()) {
       setStatus('Completa los campos obligatorios antes de imprimir.');
+      return;
+    }
+    try {
+      await guardar('Emitida');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'No se pudo guardar la guía.');
       return;
     }
 
@@ -217,12 +297,12 @@ export function GuideModal({ isOpen, pedido, onClose, onSaveDraft }: GuideModalP
               Guía bloqueada · pedido finalizado
             </span>
           ) : (
-            <button type="button" onClick={guardarBorrador} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[#2B5C94] px-3 py-2 text-xs font-bold text-white hover:bg-[#1F4778]">
+            <button type="button" onClick={() => void guardarBorrador()} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[#2B5C94] px-3 py-2 text-xs font-bold text-white hover:bg-[#1F4778]">
               <Save className="h-3.5 w-3.5" />
               Guardar borrador
             </button>
           )}
-          <button type="button" onClick={imprimirGuia} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
+          <button type="button" onClick={() => void imprimirGuia()} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
             <Printer className="h-3.5 w-3.5" />
             Imprimir / PDF
           </button>
@@ -480,6 +560,14 @@ export function GuideModal({ isOpen, pedido, onClose, onSaveDraft }: GuideModalP
               >
                 <Printer className="h-3.5 w-3.5" />
                 Imprimir / Guardar PDF
+              </button>
+              <button
+                type="button"
+                onClick={() => void descargarPdf()}
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-bold text-[#2B5C94] hover:bg-blue-50"
+              >
+                <FileText className="h-3.5 w-3.5" />
+                Descargar PDF
               </button>
               <button
                 type="button"

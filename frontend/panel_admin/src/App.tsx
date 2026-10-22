@@ -1,22 +1,22 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AdminLayout } from '@/components/layout/AdminLayout';
 import { LoginScreen } from '@/components/login/LoginScreen';
 import { OrderModal } from '@/components/modals/OrderModal';
 import { TicketModal } from '@/components/modals/TicketModal';
+import { TicketWorkflowModal } from '@/components/modals/TicketWorkflowModal';
 import { useToast } from '@/context/ToastContext';
-import { STORAGE_KEYS } from '@/config/site';
-import { CATEGORIAS_BASE_TOTAL, ESTADOS_INVENTARIO_BASE, INVENTARIO_REGISTROS } from '@/data/inventario';
-import { MOVIMIENTOS_SEED } from '@/data/movimientos';
-import { PEDIDOS_SEED } from '@/data/pedidos';
-import { siguienteEstadoTicket } from '@/data/tickets';
+import { CATEGORIAS_BASE_TOTAL } from '@/data/inventario';
 import { useAuth } from '@/hooks/useAuth';
-import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { ApiError, apiRequest } from '@/lib/api';
-import { mergeServerTickets, toSupportTicket } from '@/lib/tickets';
+import { toSupportTicket } from '@/lib/tickets';
 import type { TicketApiResponse } from '@/lib/tickets';
-import { restoreInventoryForOrder, syncInventoryForOrder } from '@/lib/inventorySync';
-import { asegurarEstadosInventario, normalizarEstadoInventario, normalizarEstadosAnteriores } from '@/lib/inventoryStates';
-import { occupiedByTicket, rebaseTicketsAfterOrderRelease, restoreAssetsFromTicket, sendAssetsToWorkshop } from '@/lib/ticketWorkflow';
+import {
+  categoryPayload,
+  inventoryFromApi,
+  inventoryPayload,
+  orderPayload,
+} from '@/lib/operationsApi';
+import type { InventoryStateApi, OrderFinishApi, PaginatedApi } from '@/lib/operationsApi';
 import { ClientesPage } from '@/pages/ClientesPage';
 import { ConfiguracionPage } from '@/pages/ConfiguracionPage';
 import { DashboardPage } from '@/pages/DashboardPage';
@@ -29,194 +29,100 @@ import type { NuevoTicketInput } from '@/components/modals/TicketModal';
 import type { NuevoPedidoInput } from '@/components/modals/OrderModal';
 import type {
   AdminSection,
+  ClienteDerivado,
+  DashboardResumen,
   InventarioCategoria,
   InventarioFiltro,
   InventarioRegistro,
-  MovimientoAccion,
-  MovimientoAuditoria,
-  MovimientoModulo,
   PedidoRegistro,
   SupportTicket,
 } from '@/types';
-
-const reservesInventory = (pedido: PedidoRegistro) =>
-  pedido.estadoPedido !== 'Finalizado' || pedido.motivoTraslado.startsWith('Venta');
 
 export default function App() {
   const { isAuthenticated, session, authenticate, logout } = useAuth();
   const { notify } = useToast();
 
-  useEffect(() => {
-    const onStorageError = () => {
-      notify('No se pudieron guardar los cambios: el almacenamiento del navegador está lleno.');
-    };
-    window.addEventListener('adglobal:storage-error', onStorageError);
-    return () => window.removeEventListener('adglobal:storage-error', onStorageError);
-  }, [notify]);
-
   const [activeNav, setActiveNav] = useState<AdminSection>('dashboard');
   const [inventarioFiltro, setInventarioFiltro] = useState<InventarioFiltro>('all');
-
-  // Modo local explícito: inventario, pedidos, clientes y movimientos viven en
-  // este navegador. Los tickets, usuarios y la gestión web sí usan la API.
-  const [tickets, setTickets] = useLocalStorage<SupportTicket[]>(STORAGE_KEYS.tickets, [], isAuthenticated);
-  const [pedidos, setPedidos] = useLocalStorage<PedidoRegistro[]>(STORAGE_KEYS.pedidos, PEDIDOS_SEED, isAuthenticated);
-  const [inventario, setInventario] = useLocalStorage<InventarioRegistro[]>(
-    STORAGE_KEYS.inventario,
-    INVENTARIO_REGISTROS,
-    isAuthenticated,
-  );
-  const [estadosInventario, setEstadosInventario] = useLocalStorage<string[]>(
-    STORAGE_KEYS.inventarioEstadosV2,
-    ESTADOS_INVENTARIO_BASE,
-    isAuthenticated,
-  );
-  const [inventarioCategorias, setInventarioCategorias] = useLocalStorage<InventarioCategoria[]>(
-    STORAGE_KEYS.inventarioCategorias,
-    [],
-    isAuthenticated,
-  );
-  const [movimientos, setMovimientos] = useLocalStorage<MovimientoAuditoria[]>(
-    STORAGE_KEYS.movimientos,
-    MOVIMIENTOS_SEED,
-    isAuthenticated,
-  );
-
-  const ticketsSnapshot = useRef(tickets);
-  useEffect(() => {
-    ticketsSnapshot.current = tickets;
-  }, [tickets]);
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [pedidos, setPedidos] = useState<PedidoRegistro[]>([]);
+  const [inventario, setInventario] = useState<InventarioRegistro[]>([]);
+  const [estadosInventario, setEstadosInventario] = useState<string[]>([]);
+  const [inventarioCategorias, setInventarioCategorias] = useState<InventarioCategoria[]>([]);
+  const [clientes, setClientes] = useState<ClienteDerivado[]>([]);
+  const [dashboard, setDashboard] = useState<DashboardResumen | null>(null);
+  const [inventoryCatalog, setInventoryCatalog] = useState<InventarioRegistro[]>([]);
+  const [inventoryPage, setInventoryPage] = useState(1);
+  const [inventoryPages, setInventoryPages] = useState(1);
+  const [inventoryTotal, setInventoryTotal] = useState(0);
 
   const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
+  const [workflowTicket, setWorkflowTicket] = useState<SupportTicket | null>(null);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [editingPedido, setEditingPedido] = useState<PedidoRegistro | null>(null);
 
-  // La clave anterior contenía tickets de demostración; se elimina una sola vez.
-  useEffect(() => {
-    try {
-      window.localStorage.removeItem('adglobal_tickets');
-      window.localStorage.removeItem('adglobal_inventory');
-    } catch {
-      /* Almacenamiento no disponible */
-    }
+  const refreshInventory = useCallback(async (page = inventoryPage) => {
+    const [assets, categories, states] = await Promise.all([
+      apiRequest<PaginatedApi<InventarioRegistro>>(`/inventario?page=${page}&page_size=50`),
+      apiRequest<InventarioCategoria[]>('/inventario/categorias'),
+      apiRequest<InventoryStateApi[]>('/inventario/estados'),
+    ]);
+    setInventario(assets.items.map(inventoryFromApi));
+    setInventoryPage(assets.page); setInventoryPages(assets.pages); setInventoryTotal(assets.total);
+    setInventarioCategorias(categories.filter((category) => category.id.startsWith('custom-')));
+    setEstadosInventario(states.map((state) => state.nombre));
+  }, [inventoryPage]);
+
+  const loadInventoryCatalog = useCallback(async () => {
+    const response = await apiRequest<PaginatedApi<InventarioRegistro>>('/inventario?page=1&page_size=1000');
+    const rows = response.items.map(inventoryFromApi); setInventoryCatalog(rows); return rows;
   }, []);
 
-  // Los tickets viven en el backend. Al iniciar sesión se refresca la lista
-  // para que los creados en otro equipo también aparezcan aquí.
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    // Se captura la lista conocida al iniciar la petición para no descartar un
-    // ticket creado mientras la respuesta estaba en vuelo.
-    const knownAtRequest = new Set(ticketsSnapshot.current.map((ticket) => ticket.id));
-    let active = true;
-    apiRequest<TicketApiResponse[]>('/tickets')
-      .then((rows) => {
-        if (active) setTickets((current) => mergeServerTickets(rows, current, knownAtRequest));
-      })
-      .catch(() => {
-        /* Sin conexión: se conserva la copia local. */
-      });
-    return () => {
-      active = false;
-    };
-  }, [isAuthenticated, setTickets]);
+  const refreshDashboard = useCallback(async () => {
+    setDashboard(await apiRequest<DashboardResumen>('/dashboard'));
+  }, []);
+
+  const refreshOrdersAndCustomers = useCallback(async () => {
+    const [orders, customers] = await Promise.all([
+      apiRequest<PedidoRegistro[]>('/pedidos'),
+      apiRequest<ClienteDerivado[]>('/clientes/derivados'),
+    ]);
+    setPedidos(orders);
+    setClientes(customers);
+  }, []);
+
+  const refreshMovements = useCallback(async () => {
+    return;
+  }, []);
+
+  const refreshTickets = useCallback(async () => {
+    if (!session.modulos.includes('tickets')) return;
+    const rows = await apiRequest<TicketApiResponse[]>('/tickets');
+    setTickets(rows.map((row) => toSupportTicket(row, {
+      equiposIds: row.equiposIds,
+      estadosAnteriores: row.estadosAnteriores,
+    })));
+  }, [session.modulos]);
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEYS.inventarioEstados);
-      if (!raw) return;
-      const legacy: unknown = JSON.parse(raw);
-      if (Array.isArray(legacy)) {
-        setEstadosInventario((current) => {
-          const next = [...current];
-          for (const value of legacy) {
-            if (typeof value !== 'string') continue;
-            const estado = value.trim();
-            if (estado && !next.some((item) => item.toLowerCase() === estado.toLowerCase())) next.push(estado);
-          }
-          return next;
-        });
+    if (!isAuthenticated || session.modulos.length === 0) return;
+    const tasks: Promise<unknown>[] = [];
+    if (activeNav === 'dashboard') tasks.push(refreshDashboard());
+    if (activeNav === 'inventario') tasks.push(refreshInventory());
+    if (['pedidos', 'clientes', 'tickets'].includes(activeNav)) tasks.push(refreshOrdersAndCustomers());
+    if (activeNav === 'movimientos') tasks.push(refreshMovements());
+    if (activeNav === 'tickets') tasks.push(refreshTickets(), loadInventoryCatalog());
+    void Promise.allSettled(tasks).then((results) => {
+      const failed = results.find((result) => result.status === 'rejected');
+      if (failed?.status === 'rejected') {
+        notify(failed.reason instanceof Error ? failed.reason.message : 'No se pudieron cargar los datos operativos.');
       }
-      window.localStorage.removeItem(STORAGE_KEYS.inventarioEstados);
-    } catch {
-      /* Almacenamiento anterior no disponible. */
-    }
-  }, [setEstadosInventario]);
-
-  useEffect(() => {
-    setEstadosInventario((current) => {
-      const next = asegurarEstadosInventario(current);
-      return next.length === current.length && next.every((state, index) => state === current[index])
-        ? current : next;
     });
-    setInventario((current) => {
-      const next = current.map((asset) => ({ ...asset, estado: normalizarEstadoInventario(asset.estado) }));
-      return next.every((asset, index) => asset.estado === current[index].estado) ? current : next;
-    });
-    setPedidos((current) => {
-      const next = current.map((order) => ({
-        ...order,
-        estadosAnteriores: normalizarEstadosAnteriores(order.estadosAnteriores),
-      }));
-      return next.every((order, index) =>
-        JSON.stringify(order.estadosAnteriores) === JSON.stringify(current[index].estadosAnteriores),
-      ) ? current : next;
-    });
-    setTickets((current) => {
-      const next = current.map((ticket) => ({
-        ...ticket,
-        estadosAnteriores: normalizarEstadosAnteriores(ticket.estadosAnteriores),
-        estadoEquipo: ticket.estadoEquipo ? normalizarEstadoInventario(ticket.estadoEquipo) : ticket.estadoEquipo,
-        numeroPedidoEstado: ticket.tipoTicket === 'general' && ticket.numeroPedidoEstado
-          ? normalizarEstadoInventario(ticket.numeroPedidoEstado) : ticket.numeroPedidoEstado,
-      }));
-      return next.every((ticket, index) =>
-        JSON.stringify(ticket.estadosAnteriores) === JSON.stringify(current[index].estadosAnteriores) &&
-        ticket.estadoEquipo === current[index].estadoEquipo &&
-        ticket.numeroPedidoEstado === current[index].numeroPedidoEstado,
-      ) ? current : next;
-    });
-  }, [setEstadosInventario, setInventario, setPedidos, setTickets]);
+  }, [activeNav, isAuthenticated, loadInventoryCatalog, notify, refreshDashboard, refreshInventory, refreshMovements, refreshOrdersAndCustomers, refreshTickets, session.modulos]);
 
-  useEffect(() => {
-    const onStorage = (event: StorageEvent) => {
-      try {
-        if (event.key === STORAGE_KEYS.inventario) {
-          const next: InventarioRegistro[] = event.newValue ? JSON.parse(event.newValue) as InventarioRegistro[] : [];
-          const normalized = next.map((asset) => ({ ...asset, estado: normalizarEstadoInventario(asset.estado) }));
-          setInventario((current) => JSON.stringify(current) === JSON.stringify(normalized) ? current : normalized);
-        }
-        if (event.key === STORAGE_KEYS.inventarioEstadosV2 && event.newValue) {
-          const next = asegurarEstadosInventario(JSON.parse(event.newValue) as string[]);
-          setEstadosInventario((current) => JSON.stringify(current) === JSON.stringify(next) ? current : next);
-        }
-      } catch {
-        /* Ignorar cambios de otra pestaña que no sean JSON válido. */
-      }
-    };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, [setInventario, setEstadosInventario]);
-
-  const ticketsActivos = tickets.filter((t) => t.estado !== 'Resuelto').length;
-
-  const registrarMovimiento = (
-    modulo: MovimientoModulo,
-    accion: MovimientoAccion,
-    elemento: string,
-    detalle: string,
-  ) => {
-    const movimiento: MovimientoAuditoria = {
-      id: `mov-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-      fecha: new Date().toISOString(),
-      usuario: session.usuario,
-      modulo,
-      accion,
-      elemento,
-      detalle,
-    };
-    setMovimientos((current) => [movimiento, ...current]);
-  };
+  const ticketsActivos = dashboard
+    ? Object.entries(dashboard.ticketsPorEstado).filter(([state]) => state !== 'Resuelto').reduce((sum, [, value]) => sum + value, 0)
+    : tickets.filter((t) => t.estado !== 'Resuelto').length;
 
   const navegar = (section: AdminSection) => {
     if (session.modulos.includes(section)) setActiveNav(section);
@@ -230,42 +136,6 @@ export default function App() {
   const handleLogout = () => {
     logout();
     setActiveNav('dashboard');
-  };
-
-  const actualizarEstadoTicket = async (ticket: SupportTicket, estado: SupportTicket['estado']): Promise<boolean> => {
-    try {
-      await apiRequest(`/tickets/${ticket.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ estado }),
-      });
-    } catch (requestError) {
-      if (!(requestError instanceof ApiError && requestError.status === 404)) {
-        notify(requestError instanceof Error ? requestError.message : 'No se pudo actualizar el ticket.');
-        return false;
-      }
-    }
-    if (estado === 'Resuelto' && ticket.estado !== 'Resuelto') {
-      const result = restoreAssetsFromTicket(ticket, inventario);
-      if (result.restored) {
-        setInventario(result.inventory);
-        registrarMovimiento('Inventario', 'Modificó', ticket.codigo,
-          `Devolvió ${result.restored} equipo(s) a su estado anterior al completar ${ticket.codigo}.`);
-      }
-    }
-    setTickets((prev) => prev.map((item) => (item.id === ticket.id ? { ...item, estado } : item)));
-    return true;
-  };
-
-  const avanzarTicket = async (id: string) => {
-    const ticket = tickets.find((item) => item.id === id);
-    if (!ticket || ticket.estado === 'Resuelto') return;
-    await actualizarEstadoTicket(ticket, siguienteEstadoTicket(ticket.estado));
-  };
-
-  const completarTicket = async (ticket: SupportTicket) => {
-    if (ticket.estado === 'Resuelto') return;
-    const updated = await actualizarEstadoTicket(ticket, 'Resuelto');
-    if (updated) notify(`Ticket ${ticket.codigo} marcado como resuelto.`);
   };
 
   const eliminarTicket = async (ticket: SupportTicket) => {
@@ -282,24 +152,11 @@ export default function App() {
         return;
       }
     }
-    const result = restoreAssetsFromTicket(ticket, inventario);
-    if (result.restored) {
-      setInventario(result.inventory);
-      registrarMovimiento('Inventario', 'Modificó', ticket.codigo,
-        `Devolvió ${result.restored} equipo(s) al eliminar ${ticket.codigo}.`);
-    }
-    setTickets((prev) => prev.filter((item) => item.id !== ticket.id));
+    await Promise.all([refreshTickets(), refreshInventory(), refreshMovements()]);
     notify(`Ticket ${ticket.codigo} eliminado.`);
   };
 
   const crearTicket = async (input: NuevoTicketInput): Promise<SupportTicket> => {
-    if (input.equiposIds.length === 0 ||
-        inventario.filter((asset) => input.equiposIds.includes(asset.id)).length !== input.equiposIds.length) {
-      throw new Error('Selecciona equipos existentes en Inventario antes de crear el ticket.');
-    }
-    const occupying = occupiedByTicket(input.equiposIds, tickets);
-    if (occupying) throw new Error(`Un equipo ya está asignado al ticket activo ${occupying.codigo}.`);
-    const workshop = sendAssetsToWorkshop(input.equiposIds, inventario);
     const response = await apiRequest<TicketApiResponse>('/tickets', {
       method: 'POST',
       body: JSON.stringify({
@@ -316,47 +173,30 @@ export default function App() {
         tecnicoId: input.tecnicoId,
         tecnico: input.tecnico,
         tecnicoTelefono: input.tecnicoTelefono,
+        equiposIds: input.equiposIds,
       }),
     });
 
-    const nuevo = toSupportTicket(response, {
-      equiposIds: input.equiposIds,
-      estadosAnteriores: workshop.previousStates,
-    });
-
-    setInventario(workshop.inventory);
-    setEstadosInventario((current) => current.some((state) => state.toLowerCase() === 'taller')
-      ? current : [...current, 'Taller']);
+    const nuevo = toSupportTicket(response);
     setTickets((prev) => [nuevo, ...prev]);
-    if (workshop.changed) {
-      registrarMovimiento('Inventario', 'Modificó', nuevo.codigo,
-        `Envió ${workshop.changed} equipo(s) a Taller por el ticket ${nuevo.codigo}.`);
-    }
-    registrarMovimiento(
-      'Tickets',
-      'Creó',
-      nuevo.codigo,
-      `Creó un ticket de soporte para ${nuevo.cliente} · ${nuevo.equipo}.`,
-    );
+    await Promise.all([refreshInventory(), refreshMovements()]);
     setIsTicketModalOpen(false);
     notify(`Ticket ${nuevo.codigo} aperturado con éxito para ${nuevo.cliente}.`);
     return nuevo;
   };
 
-  const siguienteNumeroPedido = () => {
-    const year = new Date().getFullYear();
-    const maxSequence = pedidos.reduce((max, pedido) => {
-      const match = pedido.numeroPedido.match(/(\d+)$/);
-      return Math.max(max, match ? Number(match[1]) : 0);
-    }, 0);
-    return `PED-${year}-${String(maxSequence + 1).padStart(3, '0')}`;
-  };
-
-  const abrirPedido = () => {
+  const abrirPedido = async () => {
     if (!session.modulos.includes('pedidos')) return;
+    await Promise.all([loadInventoryCatalog(), refreshOrdersAndCustomers()]);
     setEditingPedido(null);
     setActiveNav('pedidos');
     setIsOrderModalOpen(true);
+  };
+
+  const abrirTicket = async () => {
+    if (!session.modulos.includes('tickets')) return;
+    await Promise.all([loadInventoryCatalog(), refreshOrdersAndCustomers(), refreshTickets()]);
+    setIsTicketModalOpen(true);
   };
 
   const editarPedido = (pedido: PedidoRegistro) => {
@@ -371,165 +211,168 @@ export default function App() {
     setEditingPedido(null);
   };
 
-  const actualizarPedido = (pedido: PedidoRegistro): boolean => {
-    const anterior = pedidos.find((item) => item.id === pedido.id);
-    if (!anterior || anterior.estadoPedido === 'Finalizado') return false;
-    if (occupiedByTicket(Object.keys(anterior.estadosAnteriores ?? {}), tickets)) {
-      notify('No se puede editar un pedido mientras uno de sus equipos tiene un ticket activo.');
+  const actualizarPedido = async (pedido: PedidoRegistro): Promise<boolean> => {
+    try {
+      await apiRequest<PedidoRegistro>(`/pedidos/${pedido.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(orderPayload(pedido)),
+      });
+      await Promise.all([refreshOrdersAndCustomers(), refreshInventory(), refreshMovements()]);
+      cerrarOrderModal();
+      notify(`Pedido ${pedido.numeroPedido} actualizado correctamente.`);
+      return true;
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo actualizar el pedido.');
       return false;
     }
-    const reverted = restoreInventoryForOrder(anterior, inventario, 'delete');
-    const sync = syncInventoryForOrder(pedido, reverted.inventory);
-    if (occupiedByTicket(Object.keys(sync.previousStates), tickets)) {
-      notify('No se puede asignar un equipo con un ticket de soporte activo.');
-      return false;
-    }
-    if (sync.targetState && sync.matched === 0) {
-      notify('No se actualizó el pedido: ningún SKU coincide con el inventario.');
-      return false;
-    }
-    const occupied = pedidos.some((item) =>
-      item.id !== pedido.id && reservesInventory(item) &&
-      Object.keys(sync.previousStates).some((id) => item.estadosAnteriores?.[id] !== undefined),
-    );
-    if (occupied) {
-      notify('No se actualizó el pedido: hay equipos asignados a otro pedido activo.');
-      return false;
-    }
-    const actualizado = { ...pedido, estadosAnteriores: sync.previousStates };
-    setInventario(sync.inventory);
-    if (sync.targetState) {
-      const targetState = sync.targetState;
-      setEstadosInventario((current) => current.some(
-        (estado) => estado.toLowerCase() === targetState.toLowerCase(),
-      ) ? current : [...current, targetState]);
-    }
-    setPedidos((current) => current.map((item) => (item.id === pedido.id ? actualizado : item)));
-    registrarMovimiento(
-      'Pedidos',
-      'Editó',
-      pedido.numeroPedido,
-      `Editó el pedido ${pedido.numeroPedido}.`,
-    );
-    if (reverted.restored || sync.updated) {
-      registrarMovimiento('Inventario', 'Modificó', pedido.numeroPedido,
-        `Reasignó los equipos del pedido ${pedido.numeroPedido}.`);
-    }
-    cerrarOrderModal();
-    notify(`Pedido ${pedido.numeroPedido} actualizado correctamente.`);
-    return true;
   };
 
-  const finalizarPedido = (pedido: PedidoRegistro) => {
+  const finalizarPedido = async (pedido: PedidoRegistro) => {
     if (pedido.estadoPedido === 'Finalizado') return;
     if (!window.confirm(`¿Finalizar el pedido ${pedido.numeroPedido}?`)) return;
-    const result = restoreInventoryForOrder(pedido, inventario, 'finish');
-    if (pedido.motivoTraslado === 'Alquiler') {
-      setTickets((current) => rebaseTicketsAfterOrderRelease(pedido, current));
+    try {
+      const result = await apiRequest<OrderFinishApi>(`/pedidos/${pedido.id}/finalizar`, { method: 'PATCH' });
+      await Promise.all([refreshOrdersAndCustomers(), refreshInventory(), refreshTickets(), refreshMovements()]);
+      notify(`Pedido ${pedido.numeroPedido} finalizado. ${result.inventarioActualizado} equipo(s) restaurados.`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo finalizar el pedido.');
     }
-    if (result.restored) {
-      setInventario(result.inventory);
-      registrarMovimiento('Inventario', 'Modificó', pedido.numeroPedido,
-        `Restauró ${result.restored} equipo(s) al finalizar el alquiler ${pedido.numeroPedido}.`);
-    }
-    setPedidos((current) => current.map((item) => item.id === pedido.id
-      ? { ...item, estadoPedido: 'Finalizado', fechaFinalizacion: new Date().toISOString() }
-      : item));
-    registrarMovimiento('Pedidos', 'Modificó', pedido.numeroPedido, `Finalizó el pedido ${pedido.numeroPedido}.`);
-    const detail = pedido.motivoTraslado === 'Alquiler'
-      ? ` ${result.restored} equipo(s) restaurados${result.skipped ? `, ${result.skipped} omitidos por cambios posteriores` : ''}.`
-      : '';
-    notify(`Pedido ${pedido.numeroPedido} finalizado.${detail}`);
   };
 
-  const eliminarPedido = (pedido: PedidoRegistro) => {
+  const eliminarPedido = async (pedido: PedidoRegistro) => {
     const confirmed = window.confirm(
       `¿Eliminar el pedido ${pedido.numeroPedido}? Esta acción no se puede deshacer.`,
     );
     if (!confirmed) return;
-    const result = restoreInventoryForOrder(pedido, inventario, 'delete');
-    if (!(pedido.estadoPedido === 'Finalizado' && pedido.motivoTraslado === 'Alquiler')) {
-      setTickets((current) => rebaseTicketsAfterOrderRelease(pedido, current));
+    try {
+      await apiRequest<void>(`/pedidos/${pedido.id}`, { method: 'DELETE' });
+      await Promise.all([refreshOrdersAndCustomers(), refreshInventory(), refreshTickets(), refreshMovements()]);
+      notify(`Pedido ${pedido.numeroPedido} eliminado.`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo eliminar el pedido.');
     }
-    if (result.restored) {
-      setInventario(result.inventory);
-      registrarMovimiento('Inventario', 'Modificó', pedido.numeroPedido,
-        `Restauró ${result.restored} equipo(s) al eliminar el pedido ${pedido.numeroPedido}.`);
-    }
-    setPedidos((current) => current.filter((item) => item.id !== pedido.id));
-    registrarMovimiento(
-      'Pedidos',
-      'Eliminó',
-      pedido.numeroPedido,
-      `Eliminó el pedido ${pedido.numeroPedido}.`,
-    );
-    notify(`Pedido ${pedido.numeroPedido} eliminado. ${result.restored} equipo(s) restaurados${result.skipped ? `, ${result.skipped} omitidos por cambios posteriores` : ''}.`);
   };
 
-  const crearPedido = (input: NuevoPedidoInput): boolean => {
-    const nuevo: PedidoRegistro = {
-      id: `ped-${Date.now()}`,
-      numeroPedido: siguienteNumeroPedido(),
-      ...input,
-    };
-
-    const inventorySync = syncInventoryForOrder(nuevo, inventario);
-    if (inventorySync.targetState && inventorySync.matched === 0) {
-      notify('No se creó el pedido: ningún SKU indicado coincide con el inventario.');
+  const crearPedido = async (input: NuevoPedidoInput): Promise<boolean> => {
+    try {
+      const nuevo = await apiRequest<PedidoRegistro>('/pedidos', {
+        method: 'POST',
+        body: JSON.stringify(orderPayload(input)),
+      });
+      await Promise.all([refreshOrdersAndCustomers(), refreshInventory(), refreshMovements()]);
+      setIsOrderModalOpen(false);
+      setActiveNav('pedidos');
+      notify(`Pedido ${nuevo.numeroPedido} aperturado correctamente.`);
+      return true;
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo crear el pedido.');
       return false;
     }
-    if (occupiedByTicket(Object.keys(inventorySync.previousStates), tickets)) {
-      notify('No se creó el pedido: un equipo tiene un ticket de soporte activo.');
-      return false;
-    }
-    const occupied = pedidos.some((item) =>
-      reservesInventory(item) &&
-      Object.keys(inventorySync.previousStates).some((id) => item.estadosAnteriores?.[id] !== undefined),
-    );
-    if (occupied) {
-      notify('No se creó el pedido: hay equipos asignados a otro pedido activo.');
-      return false;
-    }
-    setInventario(inventorySync.inventory);
-    if (inventorySync.targetState) {
-      const targetState = inventorySync.targetState;
-      setEstadosInventario((current) =>
-        current.some((estado) => estado.toLowerCase() === targetState.toLowerCase())
-          ? current
-          : [...current, targetState],
-      );
-    }
-    setPedidos((current) => [{ ...nuevo, estadoPedido: 'Activo', estadosAnteriores: inventorySync.previousStates }, ...current]);
-    registrarMovimiento(
-      'Pedidos',
-      'Creó',
-      nuevo.numeroPedido,
-      `Creó el pedido ${nuevo.numeroPedido} por ${nuevo.motivoTraslado}.`,
-    );
-    if (inventorySync.updated > 0 && inventorySync.targetState) {
-      registrarMovimiento(
-        'Inventario',
-        'Modificó',
-        'Estados de inventario',
-        `Actualizó ${inventorySync.updated} equipo(s) a ${inventorySync.targetState} por el pedido ${nuevo.numeroPedido}.`,
-      );
-    }
-    setIsOrderModalOpen(false);
-    setActiveNav('pedidos');
-    const inventoryDetail =
-      inventorySync.targetState && inventorySync.updated > 0
-        ? ` Inventario actualizado: ${inventorySync.updated} equipo(s) marcados como ${inventorySync.targetState}.`
-        : inventorySync.targetState
-          ? ` Los equipos ya estaban en estado ${inventorySync.targetState}.`
-          : '';
-    notify(`Pedido ${nuevo.numeroPedido} aperturado correctamente.${inventoryDetail}`);
-    return true;
   };
 
-  const irAInventarioConFiltro = (filtro: InventarioFiltro) => {
-    if (!session.modulos.includes('inventario')) return;
-    setInventarioFiltro(filtro);
-    setActiveNav('inventario');
+  const persistInventoryPhoto = async (registro: InventarioRegistro): Promise<InventarioRegistro> => {
+    if (!registro.foto?.startsWith('data:')) return registro;
+    const blob = await (await fetch(registro.foto)).blob();
+    const form = new FormData(); form.append('file', new File([blob], `${registro.sku}.webp`, { type: blob.type || 'image/webp' }));
+    const uploaded = await apiRequest<{ url: string }>('/inventario/fotos', { method: 'POST', body: form });
+    return { ...registro, foto: uploaded.url };
+  };
+
+  const agregarRegistroInventario = async (registro: InventarioRegistro) => {
+    try {
+      registro = await persistInventoryPhoto(registro);
+      const saved = await apiRequest<InventarioRegistro>('/inventario', {
+        method: 'POST',
+        body: JSON.stringify(inventoryPayload(registro)),
+      });
+      setInventario((current) => [inventoryFromApi(saved), ...current]);
+      await refreshMovements();
+      notify(`Producto ${saved.sku} agregado al inventario.`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo agregar el producto.');
+      await refreshInventory().catch(() => undefined);
+    }
+  };
+
+  const actualizarRegistroInventario = async (registro: InventarioRegistro) => {
+    try {
+      registro = await persistInventoryPhoto(registro);
+      const saved = await apiRequest<InventarioRegistro>(`/inventario/${registro.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(inventoryPayload(registro)),
+      });
+      setInventario((current) => current.map((item) => item.id === saved.id ? inventoryFromApi(saved) : item));
+      await refreshMovements();
+      notify(`Producto ${saved.sku} actualizado.`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo actualizar el producto.');
+      await refreshInventory().catch(() => undefined);
+    }
+  };
+
+  const eliminarRegistroInventario = async (registro: InventarioRegistro) => {
+    try {
+      await apiRequest<void>(`/inventario/${registro.id}`, { method: 'DELETE' });
+      setInventario((current) => current.filter((item) => item.id !== registro.id));
+      await refreshMovements();
+      notify(`Producto ${registro.sku} eliminado.`);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo eliminar el producto.');
+    }
+  };
+
+  const agregarCategoriaInventario = async (categoria: InventarioCategoria) => {
+    try {
+      const saved = await apiRequest<InventarioCategoria>('/inventario/categorias', {
+        method: 'POST',
+        body: JSON.stringify(categoryPayload(categoria)),
+      });
+      setInventarioCategorias((current) => [...current, saved]);
+      await refreshMovements();
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo crear la categoría.');
+      await refreshInventory().catch(() => undefined);
+    }
+  };
+
+  const eliminarCategoriaInventario = async (categoriaId: InventarioCategoria['id']) => {
+    try {
+      await apiRequest<void>(`/inventario/categorias/${encodeURIComponent(categoriaId)}`, { method: 'DELETE' });
+      setInventarioCategorias((current) => current.filter((item) => item.id !== categoriaId));
+      await refreshMovements();
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo eliminar la categoría.');
+    }
+  };
+
+  const agregarEstadoInventario = async (estado: string) => {
+    try {
+      await apiRequest('/inventario/estados', { method: 'POST', body: JSON.stringify({ nombre: estado }) });
+      await Promise.all([refreshInventory(), refreshMovements()]);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo crear el estado.');
+    }
+  };
+
+  const renombrarEstadoInventario = async (anterior: string, nuevo: string) => {
+    try {
+      await apiRequest(`/inventario/estados/${encodeURIComponent(anterior)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ nombre: nuevo }),
+      });
+      await Promise.all([refreshInventory(), refreshMovements()]);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo renombrar el estado.');
+    }
+  };
+
+  const eliminarEstadoInventario = async (estado: string) => {
+    try {
+      await apiRequest<void>(`/inventario/estados/${encodeURIComponent(estado)}`, { method: 'DELETE' });
+      await Promise.all([refreshInventory(), refreshMovements()]);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'No se pudo eliminar el estado.');
+    }
   };
 
   if (!isAuthenticated) {
@@ -540,13 +383,7 @@ export default function App() {
     switch (activeNav) {
       case 'dashboard':
         return (
-          <DashboardPage
-            pedidos={pedidos}
-            registrosInventario={inventario}
-            onVerFiltro={irAInventarioConFiltro}
-            onVerInventario={() => navegar('inventario')}
-            onVerClientes={session.modulos.includes('clientes') ? () => navegar('clientes') : undefined}
-          />
+            <DashboardPage resumen={dashboard} />
         );
       case 'inventario':
         return (
@@ -554,60 +391,46 @@ export default function App() {
             filtro={inventarioFiltro}
             onFiltroChange={setInventarioFiltro}
             registrosInventario={inventario}
-            setRegistrosInventario={setInventario}
+            pagina={inventoryPage}
+            paginas={inventoryPages}
+            totalRegistros={inventoryTotal}
+            onPaginaChange={(page) => void refreshInventory(page)}
+            onRefresh={() => void refreshInventory(inventoryPage)}
             estadosInventario={estadosInventario}
-            setEstadosInventario={setEstadosInventario}
             categoriasPersonalizadas={inventarioCategorias}
-            onAgregarCategoria={(categoria) =>
-              setInventarioCategorias((current) => [...current, categoria])
-            }
-            onEliminarCategoria={(categoriaId) =>
-              setInventarioCategorias((current) =>
-                current.filter((categoria) => categoria.id !== categoriaId),
-              )
-            }
-            onRegistrarMovimiento={(accion, registro) =>
-              registrarMovimiento(
-                'Inventario',
-                accion,
-                registro.sku,
-                `${accion} el producto ${registro.sku} · ${registro.descripcion}.`,
-              )
-            }
+            onAgregarCategoria={(categoria) => void agregarCategoriaInventario(categoria)}
+            onEliminarCategoria={(categoriaId) => void eliminarCategoriaInventario(categoriaId)}
+            onAgregarEstado={(estado) => void agregarEstadoInventario(estado)}
+            onRenombrarEstado={(anterior, nuevo) => void renombrarEstadoInventario(anterior, nuevo)}
+            onEliminarEstado={(estado) => void eliminarEstadoInventario(estado)}
+            onAgregarRegistro={(registro) => void agregarRegistroInventario(registro)}
+            onActualizarRegistro={(registro) => void actualizarRegistroInventario(registro)}
+            onEliminarRegistro={(registro) => void eliminarRegistroInventario(registro)}
           />
         );
       case 'pedidos':
         return (
           <PedidosPage
             pedidos={pedidos}
-            onOpenOrder={abrirPedido}
+            onOpenOrder={() => void abrirPedido()}
             onEdit={editarPedido}
             onFinish={finalizarPedido}
             onDelete={eliminarPedido}
-            onGuardarBorradorGuia={(pedido, numeroGuia) =>
-              registrarMovimiento(
-                'Pedidos',
-                'Guardó',
-                `Guía ${numeroGuia}`,
-                `Guardó el borrador de la guía de remisión N.° ${numeroGuia} del pedido ${pedido.numeroPedido}.`,
-              )
-            }
           />
         );
       case 'movimientos':
-        return <MovimientosPage movimientos={movimientos} />;
+        return <MovimientosPage />;
       case 'tickets':
         return (
           <TicketsPage
             tickets={tickets}
-            onAvanzarEstado={avanzarTicket}
-            onCompletar={completarTicket}
+            onOpenWorkflow={(ticket) => setWorkflowTicket(ticket)}
             onEliminar={eliminarTicket}
-            onOpenTicket={() => setIsTicketModalOpen(true)}
+              onOpenTicket={() => void abrirTicket()}
           />
         );
       case 'clientes':
-        return <ClientesPage pedidos={pedidos} />;
+        return <ClientesPage clientes={clientes} />;
       case 'gestion-web':
         return <GestionWebPage />;
       case 'configuracion':
@@ -621,11 +444,11 @@ export default function App() {
         activeNav={activeNav}
         onNavigate={navegar}
         onLogout={handleLogout}
-        onOpenTicket={() => setIsTicketModalOpen(true)}
-        onOpenOrders={abrirPedido}
+        onOpenTicket={() => void abrirTicket()}
+        onOpenOrders={() => void abrirPedido()}
         session={session}
         ticketsActivos={ticketsActivos}
-        pendingOrders={pedidos.filter((pedido) => pedido.estadoPedido !== 'Finalizado').length}
+        pendingOrders={dashboard?.pedidosActivos ?? pedidos.filter((pedido) => pedido.estadoPedido !== 'Finalizado').length}
         inventarioCategorias={CATEGORIAS_BASE_TOTAL + inventarioCategorias.length}
       >
         {renderPage()}
@@ -635,16 +458,26 @@ export default function App() {
         isOpen={isTicketModalOpen}
         onClose={() => setIsTicketModalOpen(false)}
         onCreate={crearTicket}
-        inventario={inventario}
+        inventario={inventoryCatalog}
         pedidos={pedidos}
-        tickets={tickets}
+      />
+
+      <TicketWorkflowModal
+        ticket={workflowTicket}
+        inventario={inventoryCatalog}
+        pedidos={pedidos}
+        onClose={() => setWorkflowTicket(null)}
+        onUpdated={async (updated) => {
+          setWorkflowTicket(updated.estado === 'Resuelto' ? null : updated);
+          await Promise.all([refreshTickets(), loadInventoryCatalog(), refreshDashboard()]);
+        }}
       />
 
       <OrderModal
         isOpen={isOrderModalOpen}
         onClose={cerrarOrderModal}
         onCreate={crearPedido}
-        inventario={inventario}
+        inventario={inventoryCatalog}
         categorias={inventarioCategorias}
         editingPedido={editingPedido}
         onUpdate={actualizarPedido}

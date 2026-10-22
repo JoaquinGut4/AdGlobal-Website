@@ -14,7 +14,7 @@ from backend.app.core.database import Base, SessionLocal, engine
 from backend.app.core.rate_limit import account_login_limiter, ip_login_limiter
 from backend.app.core.security import hash_password
 from backend.app.main import app
-from backend.app.models import AdminUser, InventoryCategory, Service
+from backend.app.models import AdminUser, InventoryCategory, InventoryState, Service
 from backend.app.schemas import ADMIN_MODULES
 
 
@@ -36,6 +36,9 @@ def database():
             )
         )
         db.add(InventoryCategory(id="laptops", label="Laptops", code=1, icon_name="laptop"))
+        states = ("Almacén 1", "Oficina", "Alquiler", "Taller", "Venta", "Diagnóstico", "Reparación", "Reemplazo requerido", "Reservado para reemplazo", "Baja")
+        for order, state in enumerate(states):
+            db.add(InventoryState(name=state, is_immutable=state in {"Alquiler", "Taller", "Venta", "Diagnóstico", "Reparación", "Reemplazo requerido", "Reservado para reemplazo", "Baja"}, sort_order=order))
         db.add(Service(id="laptops-computadores", title="Laptops y computadoras", category="Cómputo", description="Servicio de prueba"))
         db.commit()
     yield

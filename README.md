@@ -109,9 +109,8 @@ de rutas son:
 Todas las rutas administrativas requieren `Authorization: Bearer <token>` y validan los
 módulos habilitados para la cuenta.
 
-> El panel consume actualmente `auth`, `usuarios`, `web-assets` y `tickets`. Los CRUD de
-> inventario, pedidos, clientes, movimientos, técnicos y cotizaciones están disponibles en
-> la API y cubiertos por tests, pero el panel aún opera esos módulos en local.
+> El panel consume actualmente `auth`, `usuarios`, `web-assets`, `inventario`, `pedidos`,
+> `clientes/derivados`, `movimientos` y `tickets`. Estas operaciones se persisten en MySQL.
 
 ### Notificación de tickets por WhatsApp
 
@@ -279,15 +278,13 @@ Incluye:
 | Módulo | Persistencia |
 | --- | --- |
 | Login, usuarios, gestión web y tickets | API/MySQL |
-| Inventario, pedidos, clientes y movimientos | `localStorage` del navegador |
+| Inventario, pedidos, clientes y movimientos | API/MySQL |
 | Cotizaciones web | API disponible; pantalla del panel pendiente |
 | Presupuestos | No implementado |
 
-Los módulos locales muestran la etiqueta **“Solo este navegador”**. Los tickets se leen
-desde `GET /api/v1/tickets` al iniciar sesión, de modo que los creados en otro equipo
-también aparecen; el vínculo de cada ticket con los equipos del inventario sigue siendo
-local. Al guardarse por navegador y no por cuenta, dos usuarios del mismo equipo comparten
-esos datos operativos.
+Inventario, pedidos, clientes derivados, movimientos y tickets se cargan desde la API al
+iniciar sesión. Los cambios de estado que producen pedidos y tickets se ejecutan en la misma
+transacción de base de datos y quedan registrados en la auditoría del servidor.
 
 Desarrollo local:
 
@@ -298,10 +295,8 @@ cp .env.example .env     # ajusta nombre, URL de la web pública y API
 npm run dev              # http://localhost:3001
 ```
 
-> La autenticación, los usuarios, la gestión web y los tickets consumen la API. Inventario,
-> pedidos, clientes y movimientos mantienen sus datos en el navegador hasta completar su
-> cableado con los endpoints del backend; las pantallas lo indican con la etiqueta
-> **“Solo este navegador”**.
+> La autenticación, usuarios, gestión web, inventario, pedidos, clientes, movimientos y
+> tickets consumen la API y utilizan MySQL como fuente de verdad.
 
 ## Roadmap
 
@@ -309,6 +304,5 @@ npm run dev              # http://localhost:3001
 - **Fase 2 — Backend (Python):** ✅ API pública y administrativa, SQLAlchemy, Alembic,
   autenticación JWT y MySQL.
 - **Fase 3 — Panel admin:** 🚧 frontend en `frontend/panel_admin`. Conectados a la API:
-  login/refresh, usuarios, gestión web y tickets. Pendiente: llevar inventario, pedidos,
-  clientes y movimientos de `localStorage` a los endpoints del backend, y construir las
-  pantallas de cotizaciones y presupuestos.
+  login/refresh, usuarios, gestión web, inventario, pedidos, clientes, movimientos y tickets.
+  Pendiente: construir las pantallas de cotizaciones y presupuestos.

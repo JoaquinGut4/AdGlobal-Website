@@ -2,9 +2,14 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Film, Globe, ImagePlus, Images, Pencil, Trash2 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
+import { ServiciosEditor } from '@/components/gestion/ServiciosEditor';
+import { ContenidoEditor } from '@/components/gestion/ContenidoEditor';
+import { PreguntasEditor } from '@/components/gestion/PreguntasEditor';
 import { ADMIN_CONFIG } from '@/config/site';
 import { apiRequest } from '@/lib/api';
 import type { WebAsset, WebImageSection } from '@/types';
+
+type GestionTab = 'medios' | 'servicios' | 'contenido' | 'preguntas';
 
 const SERVICES = [
   { id: 'laptops-computadores', label: 'Laptops y computadoras' },
@@ -47,6 +52,7 @@ function serviceLabel(serviceId?: string | null): string {
 export function GestionWebPage() {
   const [assets, setAssets] = useState<WebAsset[]>([]);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<GestionTab>('medios');
   const [section, setSection] = useState<WebImageSection>('hero');
   const [serviceId, setServiceId] = useState(SERVICES[0].id);
   const [processing, setProcessing] = useState(false);
@@ -197,10 +203,21 @@ export function GestionWebPage() {
           </span>
         </div>
         <p className="mt-1 text-xs text-slate-500">
-          Las imágenes y videos se publican directamente en web_publica.
+          Multimedia, catálogo de servicios, contenido institucional y preguntas frecuentes.
         </p>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        {([['medios', 'Multimedia'], ['servicios', 'Servicios'], ['contenido', 'Contenido'], ['preguntas', 'Preguntas']] as Array<[GestionTab, string]>).map(([id, label]) => (
+          <button key={id} type="button" onClick={() => setTab(id)} className={`rounded-lg px-3 py-2 text-xs font-bold ${tab === id ? 'bg-[#2B5C94] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{label}</button>
+        ))}
+      </div>
+
+      {tab === 'servicios' && <ServiciosEditor />}
+      {tab === 'contenido' && <ContenidoEditor />}
+      {tab === 'preguntas' && <PreguntasEditor />}
+
+      {tab === 'medios' && (<>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         {SECTIONS.map((item) => {
           const total = assets.filter((asset) => asset.section === item.id).length;
@@ -354,6 +371,7 @@ export function GestionWebPage() {
           )}
         </div>
       </section>
+      </>)}
 
       <Modal
         isOpen={editingAsset !== null}

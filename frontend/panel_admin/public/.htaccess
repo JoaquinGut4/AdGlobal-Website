@@ -46,7 +46,7 @@
 # ---------- Fallback SPA ----------
 <IfModule mod_rewrite.c>
   RewriteEngine On
-  RewriteBase /
+  RewriteBase /panel_admin/
 
   # No reescribir archivos o directorios existentes
   RewriteCond %{REQUEST_FILENAME} -f [OR]
@@ -54,8 +54,8 @@
   RewriteRule ^ - [L]
 
   # Todo lo demás se sirve desde index.html
-  RewriteRule ^ index.html [L]
+  RewriteRule ^ /panel_admin/index.html [L]
 </IfModule>
 
 # ---------- Página de error ----------
-ErrorDocument 404 /index.html
+ErrorDocument 404 /panel_admin/index.html

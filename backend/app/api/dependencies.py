@@ -1,6 +1,6 @@
 from collections.abc import Callable
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Cookie, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -14,11 +14,13 @@ bearer = HTTPBearer(auto_error=False)
 
 def current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
+    access_cookie: str | None = Cookie(default=None, alias="adglobal_access"),
     db: Session = Depends(get_db),
 ) -> AdminUser:
-    if credentials is None:
+    token = credentials.credentials if credentials else access_cookie
+    if token is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Autenticación requerida")
-    claims = decode_token(credentials.credentials, "access")
+    claims = decode_token(token, "access")
     user = db.get(AdminUser, claims[0]) if claims else None
     if user is None or not user.is_active or claims[1] != user.token_version:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sesión inválida o vencida")

@@ -24,6 +24,14 @@ export interface TicketApiResponse {
   estadoEquipo: string;
   tecnico: string;
   tecnicoTelefono?: string;
+  equiposIds: string[];
+  estadosAnteriores: Record<string, string>;
+  reparable?: boolean | null;
+  flujo?: 'Pendiente' | 'Reparación' | 'Reemplazo' | 'General';
+  equiposReemplazoIds?: string[];
+  evidencias?: string[];
+  descripcionSolucion?: string;
+  fechaResolucion?: string;
   fecha: string;
 }
 
@@ -49,7 +57,7 @@ function formatFecha(fecha: string): string {
  */
 export function toSupportTicket(
   row: TicketApiResponse,
-  local: LocalTicketLink = {},
+  local: LocalTicketLink = row,
 ): SupportTicket {
   return {
     id: row.id,
@@ -68,6 +76,12 @@ export function toSupportTicket(
     estadoEquipo: row.estadoEquipo,
     equiposIds: local.equiposIds,
     estadosAnteriores: local.estadosAnteriores,
+    reparable: row.reparable,
+    flujo: row.flujo,
+    equiposReemplazoIds: row.equiposReemplazoIds ?? [],
+    evidencias: row.evidencias ?? [],
+    descripcionSolucion: row.descripcionSolucion ?? '',
+    fechaResolucion: row.fechaResolucion,
     tecnico: row.tecnico,
     tecnicoTelefono: row.tecnicoTelefono,
     fecha: formatFecha(row.fecha),

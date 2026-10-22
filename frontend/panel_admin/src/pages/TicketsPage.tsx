@@ -1,10 +1,9 @@
-import { CheckCircle2, Clock, Laptop, Plus, Trash2, User, Wrench } from 'lucide-react';
+import { Clock, Laptop, Plus, Trash2, User, Wrench } from 'lucide-react';
 import type { SupportTicket } from '@/types';
 
 interface TicketsPageProps {
   tickets: SupportTicket[];
-  onAvanzarEstado: (id: string) => void | Promise<void>;
-  onCompletar: (ticket: SupportTicket) => void | Promise<void>;
+  onOpenWorkflow: (ticket: SupportTicket) => void;
   onEliminar: (ticket: SupportTicket) => void | Promise<void>;
   onOpenTicket: () => void;
 }
@@ -19,11 +18,12 @@ const PRIORIDAD_CLASSES: Record<SupportTicket['prioridad'], string> = {
 const ESTADO_CLASSES: Record<SupportTicket['estado'], string> = {
   Resuelto: 'bg-emerald-100 text-emerald-800',
   'En Reparación': 'bg-amber-100 text-amber-800',
+  'En Reemplazo': 'bg-orange-100 text-orange-800',
   'En Diagnóstico': 'bg-blue-100 text-[#2B5C94]',
   Abierto: 'bg-purple-100 text-purple-800',
 };
 
-export function TicketsPage({ tickets, onAvanzarEstado, onCompletar, onEliminar, onOpenTicket }: TicketsPageProps) {
+export function TicketsPage({ tickets, onOpenWorkflow, onEliminar, onOpenTicket }: TicketsPageProps) {
   const enTaller = tickets.filter((ticket) => ticket.estado !== 'Resuelto').length;
   const abiertos = tickets.filter((t) => t.estado === 'Abierto').length;
   const urgentes = tickets.filter((t) => t.prioridad === 'Urgente' && t.estado !== 'Resuelto').length;
@@ -130,22 +130,12 @@ export function TicketsPage({ tickets, onAvanzarEstado, onCompletar, onEliminar,
                 {ticket.estado !== 'Resuelto' && (
                   <button
                     type="button"
-                    onClick={() => void onAvanzarEstado(ticket.id)}
-                    title="Avanzar etapa del ticket"
-                    className="text-[11px] font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                    onClick={() => onOpenWorkflow(ticket)}
+                    title={`Gestionar flujo de ${ticket.codigo}`}
+                    className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-bold text-[#2B5C94] transition-colors hover:bg-blue-100"
                   >
-                    Avanzar etapa
-                  </button>
-                )}
-                {ticket.estado !== 'Resuelto' && (
-                  <button
-                    type="button"
-                    onClick={() => void onCompletar(ticket)}
-                    title={`Marcar ${ticket.codigo} como resuelto`}
-                    className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700 transition-colors hover:bg-emerald-100"
-                  >
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                    Completar
+                    <Wrench className="h-3.5 w-3.5" />
+                    Gestionar flujo
                   </button>
                 )}
                 <button
@@ -184,6 +174,9 @@ export function TicketsPage({ tickets, onAvanzarEstado, onCompletar, onEliminar,
                   <span className="font-bold">Dirección de llegada: </span>{ticket.direccionPedido}
                 </p>
               )}
+              {ticket.flujo && ticket.flujo !== 'Pendiente' && <p className="text-xs text-slate-600"><span className="font-bold">Flujo: </span>{ticket.flujo}</p>}
+              {ticket.descripcionSolucion && <p className="rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-xs text-emerald-800"><span className="font-bold">Solución: </span>{ticket.descripcionSolucion}</p>}
+              {(ticket.evidencias?.length ?? 0) > 0 && <p className="text-xs text-slate-600"><span className="font-bold">Evidencias: </span>{ticket.evidencias?.length} archivo(s)</p>}
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400 pt-1">

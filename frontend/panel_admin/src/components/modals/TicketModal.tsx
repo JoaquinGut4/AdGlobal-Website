@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { PackageCheck, Search, Wrench, X } from 'lucide-react';
+import { Search, Wrench } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { apiRequest } from '@/lib/api';
-import { assetsForOrder } from '@/lib/inventorySync';
-import { occupiedByTicket } from '@/lib/ticketWorkflow';
 import { formatDireccionLlegada, parseDireccionLlegada } from '@/lib/utils';
 import type { InventarioRegistro, PedidoRegistro, SupportTicket, TicketPrioridad, TicketTipo } from '@/types';
 
@@ -31,7 +29,6 @@ interface TicketModalProps {
   onCreate: (input: NuevoTicketInput) => Promise<SupportTicket>;
   inventario: InventarioRegistro[];
   pedidos: PedidoRegistro[];
-  tickets: SupportTicket[];
 }
 
 interface TecnicoSoporte {
@@ -55,7 +52,7 @@ function normalizarTelefonoWhatsApp(telefono: string) {
   return digits.length === 9 ? `51${digits}` : digits;
 }
 
-export function TicketModal({ isOpen, onClose, onCreate, inventario, pedidos, tickets }: TicketModalProps) {
+export function TicketModal({ isOpen, onClose, onCreate, inventario, pedidos }: TicketModalProps) {
   const [tipoTicket, setTipoTicket] = useState<TicketTipo>('pedido');
   const [pedidoSearch, setPedidoSearch] = useState('');
   const [pedidoId, setPedidoId] = useState('');
@@ -67,8 +64,6 @@ export function TicketModal({ isOpen, onClose, onCreate, inventario, pedidos, ti
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [descripcion, setDescripcion] = useState('');
-  const [skuSearch, setSkuSearch] = useState('');
-  const [equiposSeleccionados, setEquiposSeleccionados] = useState<InventarioRegistro[]>([]);
 
   useEffect(() => {
     if (isOpen) {
@@ -78,8 +73,6 @@ export function TicketModal({ isOpen, onClose, onCreate, inventario, pedidos, ti
       setEstadoEquipo('');
       setPrioridad('Alta');
       setDescripcion('');
-      setSkuSearch('');
-      setEquiposSeleccionados([]);
       setSubmitError('');
     }
   }, [isOpen]);
@@ -130,33 +123,13 @@ export function TicketModal({ isOpen, onClose, onCreate, inventario, pedidos, ti
   const telefonoContacto = selectedOrder?.telefonoContacto?.trim() ?? '';
   const direccionPedido = selectedOrder ? formatDireccionLlegada(selectedOrder.direccionLlegada) : '';
   const estadosDisponibles = Array.from(new Set(inventario.map((item) => item.estado.trim()).filter(Boolean)));
-  const availableAssets = tipoTicket === 'pedido'
-    ? selectedOrder ? assetsForOrder(selectedOrder, inventario) : []
-    : inventario.filter((asset) => asset.estado === estadoEquipo);
   const pedidoQuery = pedidoSearch.trim().toLowerCase();
   const orderResults = pedidoQuery && !selectedOrder
-    ? pedidos.filter((order) =>
+    ? pedidos.filter((order) => order.estadoPedido !== 'Finalizado' &&
         [order.numeroPedido, order.direccionLlegada, order.descripcionProductos]
           .join(' ').toLowerCase().includes(pedidoQuery),
       ).slice(0, 8)
     : [];
-  const query = skuSearch.trim().toLowerCase();
-  const resultados = query
-    ? availableAssets
-        .filter((registro) =>
-          [registro.sku, registro.qr, registro.descripcion, registro.numeroSerial]
-            .join(' ')
-            .toLowerCase()
-            .includes(query),
-        )
-        .filter((registro) => !equiposSeleccionados.some((item) => item.id === registro.id))
-        .filter((registro) => !occupiedByTicket([registro.id], tickets))
-        .slice(0, 8)
-    : [];
-
-  const equiposActuales = equiposSeleccionados.map((item) =>
-    inventario.find((registro) => registro.id === item.id),
-  );
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -169,21 +142,8 @@ export function TicketModal({ isOpen, onClose, onCreate, inventario, pedidos, ti
       setSubmitError('Selecciona el estado de los equipos en Inventario.');
       return;
     }
-    if (equiposSeleccionados.length === 0 || !descripcion.trim()) {
-      setSubmitError('Selecciona al menos un equipo y describe el problema.');
-      return;
-    }
-    const currentAssets = equiposActuales.filter((item): item is InventarioRegistro => item !== undefined);
-    if (currentAssets.length !== equiposSeleccionados.length) {
-      setSubmitError('Uno de los equipos seleccionados ya no existe en Inventario. Vuelve a seleccionarlo.');
-      return;
-    }
-    if (currentAssets.some((asset) => !availableAssets.some((available) => available.id === asset.id))) {
-      setSubmitError('Los equipos seleccionados ya no pertenecen al pedido o estado elegido. Vuelve a seleccionarlos.');
-      return;
-    }
-    if (occupiedByTicket(currentAssets.map((asset) => asset.id), tickets)) {
-      setSubmitError('Uno de los equipos ya tiene un ticket de soporte activo.');
+    if (!descripcion.trim()) {
+      setSubmitError('Describe el problema o solicitud técnica.');
       return;
     }
 
@@ -203,16 +163,14 @@ export function TicketModal({ isOpen, onClose, onCreate, inventario, pedidos, ti
       const ticket = await onCreate({
         cliente: tipoTicket === 'pedido' ? cliente : 'Inventario interno',
         prioridad,
-        equipo: currentAssets
-          .map((registro) => `${registro.sku} — ${registro.descripcion}`)
-          .join('; '),
+        equipo: 'Pendiente de selección',
         numeroPedidoEstado: tipoTicket === 'pedido' ? selectedOrder!.numeroPedido : estadoEquipo,
         tipoTicket,
         numeroPedido: tipoTicket === 'pedido' ? selectedOrder!.numeroPedido : '',
         telefonoContacto: tipoTicket === 'pedido' ? telefonoContacto : '',
         direccionPedido: tipoTicket === 'pedido' ? direccionPedido : '',
         estadoEquipo: tipoTicket === 'general' ? estadoEquipo : '',
-        equiposIds: currentAssets.map((asset) => asset.id),
+        equiposIds: [],
         tecnicoId: tecnico.id,
         tecnico: tecnico.nombre,
         tecnicoTelefono: tecnico.telefono,
@@ -247,8 +205,6 @@ export function TicketModal({ isOpen, onClose, onCreate, inventario, pedidos, ti
       }
 
       setDescripcion('');
-      setSkuSearch('');
-      setEquiposSeleccionados([]);
     } catch (error) {
       whatsappWindow?.close();
       setSubmitError(error instanceof Error ? error.message : 'No se pudo aperturar el ticket.');
@@ -281,8 +237,6 @@ export function TicketModal({ isOpen, onClose, onCreate, inventario, pedidos, ti
               aria-selected={tipoTicket === tab.id}
               onClick={() => {
                 setTipoTicket(tab.id);
-                setEquiposSeleccionados([]);
-                setSkuSearch('');
                 setSubmitError('');
               }}
               className={`rounded-lg px-3 py-2 text-xs font-bold transition-colors ${tipoTicket === tab.id
@@ -309,8 +263,6 @@ export function TicketModal({ isOpen, onClose, onCreate, inventario, pedidos, ti
                   onChange={(event) => {
                     setPedidoSearch(event.target.value);
                     setPedidoId('');
-                    setEquiposSeleccionados([]);
-                    setSkuSearch('');
                   }}
                   placeholder="Busca por número, cliente o producto"
                   className={`${FIELD_CLASS} pl-9`}
@@ -326,8 +278,6 @@ export function TicketModal({ isOpen, onClose, onCreate, inventario, pedidos, ti
                         onClick={() => {
                           setPedidoId(order.id);
                           setPedidoSearch(order.numeroPedido);
-                          setSkuSearch('');
-                          setEquiposSeleccionados([]);
                         }}
                         className="block w-full rounded-md px-3 py-2 text-left text-xs hover:bg-blue-50"
                       >
@@ -379,8 +329,6 @@ export function TicketModal({ isOpen, onClose, onCreate, inventario, pedidos, ti
               value={estadoEquipo}
               onChange={(event) => {
                 setEstadoEquipo(event.target.value);
-                setEquiposSeleccionados([]);
-                setSkuSearch('');
               }}
               className={FIELD_CLASS}
             >
@@ -397,72 +345,9 @@ export function TicketModal({ isOpen, onClose, onCreate, inventario, pedidos, ti
           </select>
         </div>
 
-        <div>
-          <label className="mb-1 block text-xs font-bold uppercase text-slate-600">
-            Equipo afectado <span className="text-rose-500">*</span>
-          </label>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              type="search"
-              value={skuSearch}
-              disabled={tipoTicket === 'pedido' ? !selectedOrder : !estadoEquipo}
-              onChange={(event) => setSkuSearch(event.target.value)}
-              placeholder={tipoTicket === 'pedido' ? 'Busca productos de este pedido...' : 'Busca productos con el estado elegido...'}
-              className={`${FIELD_CLASS} pl-9 disabled:cursor-not-allowed disabled:bg-slate-100`}
-            />
-          </div>
-
-          {query && (
-            <div className="mt-2 max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm">
-              {resultados.length === 0 ? (
-                <p className="px-3 py-4 text-center text-xs text-slate-500">No se encontraron productos disponibles.</p>
-              ) : resultados.map((registro) => (
-                <button
-                  key={registro.id}
-                  type="button"
-                  onClick={() => {
-                    setEquiposSeleccionados((current) => [...current, registro]);
-                    setSkuSearch('');
-                  }}
-                  className="flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-blue-50"
-                >
-                  <PackageCheck className="h-4 w-4 shrink-0 text-[#2B5C94]" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block font-mono text-xs font-bold text-[#2B5C94]">{registro.sku}</span>
-                    <span className="block truncate text-[11px] text-slate-600">{registro.descripcion}</span>
-                  </span>
-                  <span className="text-[10px] font-semibold text-slate-400">{registro.estado}</span>
-                </button>
-              ))}
-            </div>
-          )}
-          {tipoTicket === 'pedido' && selectedOrder && availableAssets.length === 0 && (
-            <p className="mt-1.5 text-[11px] font-semibold text-amber-700">
-              Ningún SKU de este pedido está registrado en Inventario.
-            </p>
-          )}
-
-          {equiposSeleccionados.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-2">
-              {equiposSeleccionados.map((registro) => (
-                <span key={registro.id} className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[11px] font-bold text-[#2B5C94]">
-                  {registro.sku} · {registro.descripcion}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEquiposSeleccionados((current) => current.filter((item) => item.id !== registro.id));
-                    }}
-                    aria-label={`Quitar ${registro.sku}`}
-                    className="cursor-pointer text-blue-400 hover:text-rose-600"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
+        <p className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] font-semibold text-[#2B5C94]">
+          Los equipos afectados se seleccionarán después desde “Gestionar flujo”.
+        </p>
 
         <div>
           <label className="mb-1 block text-xs font-bold uppercase text-slate-600">Usuario de soporte asignado</label>

@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     login_ip_max_attempts: int = 30
     login_attempt_window_seconds: int = 300
     trust_forwarded_for: bool = False
+    force_https: bool = False
+    audit_retention_days: int = 730
+    auth_cookie_domain: str | None = None
 
     initial_samuel_password: str | None = None
     initial_joaquin_password: str | None = None

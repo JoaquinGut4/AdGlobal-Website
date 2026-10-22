@@ -15,6 +15,7 @@ Revises:
 """
 
 import sqlalchemy as sa
+from sqlalchemy.dialects import mysql
 from alembic import op
 
 
@@ -59,7 +60,7 @@ def upgrade() -> None:
         sa.Column("category_id", sa.String(length=80), nullable=False),
         sa.Column("sku", sa.String(length=80), nullable=False),
         sa.Column("qr", sa.String(length=160), nullable=False),
-        sa.Column("photo_url", sa.String(length=500), nullable=False),
+        sa.Column("photo_url", sa.Text().with_variant(mysql.LONGTEXT(), "mysql"), nullable=False),
         sa.Column("item", sa.String(length=120), nullable=True),
         sa.Column("brand", sa.String(length=100), nullable=False),
         sa.Column("description", sa.String(length=300), nullable=False),

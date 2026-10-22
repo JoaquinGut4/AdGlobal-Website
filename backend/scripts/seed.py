@@ -5,7 +5,7 @@ from sqlalchemy import select
 from backend.app.core.config import get_settings
 from backend.app.core.database import SessionLocal
 from backend.app.core.security import hash_password
-from backend.app.models import AdminUser, InventoryCategory, Service, Technician
+from backend.app.models import AdminUser, InventoryCategory, InventoryState, Service
 from backend.app.schemas import ADMIN_MODULES
 
 
@@ -48,11 +48,18 @@ SERVICES = (
     ("desarrollo-web", "Desarrollo web y soluciones digitales", "Digital"),
 )
 
-TECHNICIANS = (
-    ("Ing. Carlos Mendoza (Taller Central)", "Taller Central"),
-    ("Téc. Miguel Alva (Soporte Campo)", "Soporte de campo"),
-    ("Téc. Fernando Ruiz (Audio LAB)", "Audio"),
-    ("Ing. Roberto Quispe (Redes & Servidores)", "Redes y servidores"),
+INVENTORY_STATES = (
+    ("Almacén 1", False),
+    ("Oficina", False),
+    ("Alquiler", True),
+    ("Reparación", False),
+    ("Taller", True),
+    ("Mantenimiento", False),
+    ("Venta", True),
+    ("Diagnóstico", True),
+    ("Reemplazo requerido", True),
+    ("Reservado para reemplazo", True),
+    ("Baja", True),
 )
 
 
@@ -63,14 +70,13 @@ def seed() -> None:
             if db.get(InventoryCategory, category_id) is None:
                 db.add(InventoryCategory(id=category_id, label=label, code=code, icon_name=icon))
 
+        for order, (name, immutable) in enumerate(INVENTORY_STATES):
+            if db.get(InventoryState, name) is None:
+                db.add(InventoryState(name=name, is_immutable=immutable, sort_order=order))
+
         for order, (service_id, title, category) in enumerate(SERVICES):
             if db.get(Service, service_id) is None:
                 db.add(Service(id=service_id, title=title, category=category, description="", sort_order=order))
-
-        existing_technicians = set(db.scalars(select(Technician.name)).all())
-        for name, specialty in TECHNICIANS:
-            if name not in existing_technicians:
-                db.add(Technician(name=name, specialty=specialty))
 
         for account in ADMIN_ACCOUNTS:
             existing = db.scalar(select(AdminUser).where(AdminUser.email == account["email"]))

@@ -3,6 +3,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, JSON, Numeric, String, Text
+from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.core.database import Base
@@ -55,9 +56,18 @@ class InventoryCategory(TimestampMixin, Base):
     label: Mapped[str] = mapped_column(String(120), unique=True)
     code: Mapped[int] = mapped_column(Integer, unique=True)
     icon_name: Mapped[str] = mapped_column(String(30), default="package")
+    base_fields: Mapped[list[str] | None] = mapped_column(JSON, default=list, nullable=True)
     custom_fields: Mapped[list[dict]] = mapped_column(JSON, default=list)
 
     assets: Mapped[list["InventoryAsset"]] = relationship(back_populates="category")
+
+
+class InventoryState(TimestampMixin, Base):
+    __tablename__ = "inventory_states"
+
+    name: Mapped[str] = mapped_column(String(80), primary_key=True)
+    is_immutable: Mapped[bool] = mapped_column(Boolean, default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class InventoryAsset(TimestampMixin, Base):
@@ -67,7 +77,7 @@ class InventoryAsset(TimestampMixin, Base):
     category_id: Mapped[str] = mapped_column(ForeignKey("inventory_categories.id"), index=True)
     sku: Mapped[str] = mapped_column(String(80), unique=True, index=True)
     qr: Mapped[str] = mapped_column(String(160), unique=True, index=True)
-    photo_url: Mapped[str] = mapped_column(String(500), default="")
+    photo_url: Mapped[str] = mapped_column(Text().with_variant(LONGTEXT(), "mysql"), default="")
     item: Mapped[str | None] = mapped_column(String(120), nullable=True)
     brand: Mapped[str] = mapped_column(String(100))
     description: Mapped[str] = mapped_column(String(300))
@@ -92,22 +102,6 @@ class InventoryAsset(TimestampMixin, Base):
     category: Mapped[InventoryCategory] = relationship(back_populates="assets")
 
 
-class Customer(TimestampMixin, Base):
-    __tablename__ = "customers"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    name: Mapped[str] = mapped_column(String(200))
-    ruc: Mapped[str] = mapped_column(String(11), unique=True, index=True)
-    sector: Mapped[str] = mapped_column(String(120))
-    contact_name: Mapped[str] = mapped_column(String(160))
-    email: Mapped[str] = mapped_column(String(190))
-    phone: Mapped[str] = mapped_column(String(40))
-    event_count: Mapped[int] = mapped_column(Integer, default=0)
-    rating: Mapped[str] = mapped_column(String(20), default="Estándar")
-    last_activity: Mapped[date | None] = mapped_column(Date, nullable=True)
-    status: Mapped[str] = mapped_column(String(20), default="Activo", index=True)
-
-
 class Order(TimestampMixin, Base):
     __tablename__ = "orders"
 
@@ -122,16 +116,10 @@ class Order(TimestampMixin, Base):
     unit: Mapped[str] = mapped_column(String(10), default="UND")
     transfer_reason: Mapped[str] = mapped_column(String(160), index=True)
     notes: Mapped[str] = mapped_column(Text, default="")
-
-
-class Technician(TimestampMixin, Base):
-    __tablename__ = "technicians"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    name: Mapped[str] = mapped_column(String(180))
-    phone: Mapped[str] = mapped_column(String(40), default="")
-    specialty: Mapped[str] = mapped_column(String(120), default="")
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    operational_status: Mapped[str] = mapped_column(String(20), default="Activo")
+    finalized_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    skus: Mapped[list[str] | None] = mapped_column(JSON, default=list, nullable=True)
+    previous_states: Mapped[dict[str, str] | None] = mapped_column(JSON, default=dict, nullable=True)
 
 
 class SupportTicket(TimestampMixin, Base):
@@ -151,11 +139,20 @@ class SupportTicket(TimestampMixin, Base):
     contact_phone: Mapped[str] = mapped_column(String(40), default="")
     order_address: Mapped[str] = mapped_column(String(1000), default="")
     equipment_status: Mapped[str] = mapped_column(String(80), default="")
-    technician_id: Mapped[str | None] = mapped_column(ForeignKey("technicians.id"), nullable=True)
+    support_user_id: Mapped[str | None] = mapped_column(ForeignKey("admin_users.id"), nullable=True)
     technician_name: Mapped[str] = mapped_column(String(180), default="")
     technician_phone: Mapped[str] = mapped_column(String(40), default="")
+    asset_ids: Mapped[list[str] | None] = mapped_column(JSON, default=list, nullable=True)
+    previous_states: Mapped[dict[str, str] | None] = mapped_column(JSON, default=dict, nullable=True)
+    is_repairable: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    workflow_type: Mapped[str] = mapped_column(String(30), default="Pendiente")
+    replacement_asset_ids: Mapped[list[str] | None] = mapped_column(JSON, default=list, nullable=True)
+    replacement_previous_states: Mapped[dict[str, str] | None] = mapped_column(JSON, default=dict, nullable=True)
+    evidence_urls: Mapped[list[str] | None] = mapped_column(JSON, default=list, nullable=True)
+    solution_description: Mapped[str | None] = mapped_column(Text, default="", nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    technician: Mapped[Technician | None] = relationship()
+    support_user: Mapped[AdminUser | None] = relationship()
 
 
 class AuditLog(Base):
@@ -169,6 +166,8 @@ class AuditLog(Base):
     action: Mapped[str] = mapped_column(String(30))
     element: Mapped[str] = mapped_column(String(160))
     detail: Mapped[str] = mapped_column(Text)
+    ip_address: Mapped[str] = mapped_column(String(64), default="")
+    device: Mapped[str] = mapped_column(String(500), default="")
 
 
 class WebAsset(TimestampMixin, Base):
@@ -198,16 +197,54 @@ class Service(TimestampMixin, Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
 
-class QuoteRequest(TimestampMixin, Base):
-    __tablename__ = "quote_requests"
+class ShippingGuide(TimestampMixin, Base):
+    __tablename__ = "shipping_guides"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
-    full_name: Mapped[str] = mapped_column(String(160))
-    company: Mapped[str] = mapped_column(String(200))
-    email: Mapped[str] = mapped_column(String(190), index=True)
-    phone: Mapped[str] = mapped_column(String(40))
-    service_id: Mapped[str] = mapped_column(String(100), index=True)
-    requested_dates: Mapped[str] = mapped_column(String(200), default="")
-    city: Mapped[str] = mapped_column(String(100))
-    message: Mapped[str] = mapped_column(Text)
-    status: Mapped[str] = mapped_column(String(30), default="Nueva", index=True)
+    order_id: Mapped[str] = mapped_column(ForeignKey("orders.id", ondelete="CASCADE"), unique=True, index=True)
+    guide_number: Mapped[str] = mapped_column(String(30))
+    transfer_date: Mapped[date] = mapped_column(Date)
+    recipient_ruc: Mapped[str] = mapped_column(String(20), default="")
+    recipient_document: Mapped[str] = mapped_column(String(20), default="")
+    vehicle: Mapped[str] = mapped_column(String(200), default="")
+    registration_certificate: Mapped[str] = mapped_column(String(100), default="")
+    driver_license: Mapped[str] = mapped_column(String(100), default="")
+    driver_document: Mapped[str] = mapped_column(String(20), default="")
+    carrier: Mapped[str] = mapped_column(String(200), default="")
+    carrier_ruc: Mapped[str] = mapped_column(String(20), default="")
+    transfer_cost: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    receipt_type: Mapped[str] = mapped_column(String(80), default="")
+    receipt_number: Mapped[str] = mapped_column(String(80), default="")
+    reasons: Mapped[list[str] | None] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(20), default="Borrador")
+    items: Mapped[list["ShippingGuideItem"]] = relationship(cascade="all, delete-orphan", order_by="ShippingGuideItem.sort_order")
+
+
+class ShippingGuideItem(Base):
+    __tablename__ = "shipping_guide_items"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    guide_id: Mapped[str] = mapped_column(ForeignKey("shipping_guides.id", ondelete="CASCADE"), index=True)
+    description: Mapped[str] = mapped_column(Text)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    unit: Mapped[str] = mapped_column(String(20))
+    notes: Mapped[str] = mapped_column(Text, default="")
+    weight: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class SiteContent(TimestampMixin, Base):
+    __tablename__ = "site_content"
+
+    key: Mapped[str] = mapped_column(String(80), primary_key=True)
+    value: Mapped[dict | list] = mapped_column(JSON)
+
+
+class FAQ(TimestampMixin, Base):
+    __tablename__ = "faqs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    question: Mapped[str] = mapped_column(String(500))
+    answer: Mapped[str] = mapped_column(Text)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)

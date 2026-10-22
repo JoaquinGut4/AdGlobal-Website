@@ -1,17 +1,16 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Search, UserCheck, UserX } from 'lucide-react';
-import { derivarClientes, filtrarClientes } from '@/lib/clientes';
+import { filtrarClientes } from '@/lib/clientes';
 import { formatFecha } from '@/lib/utils';
-import type { ClienteEstado, PedidoRegistro } from '@/types';
+import type { ClienteDerivado, ClienteEstado } from '@/types';
 
 type EstadoFiltro = 'Todos' | ClienteEstado;
 
 interface ClientesPageProps {
-  pedidos: PedidoRegistro[];
+  clientes: ClienteDerivado[];
 }
 
-export function ClientesPage({ pedidos }: ClientesPageProps) {
-  const clientes = useMemo(() => derivarClientes(pedidos), [pedidos]);
+export function ClientesPage({ clientes }: ClientesPageProps) {
   const [search, setSearch] = useState('');
   const [estadoFiltro, setEstadoFiltro] = useState<EstadoFiltro>('Todos');
 

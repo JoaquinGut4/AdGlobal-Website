@@ -74,22 +74,16 @@ function clearStoredSession() {
 export function useAuth() {
   const [session, setSession] = useState<AuthSession>(readSession);
   const [isAuthenticated, setIsAuthenticated] = useState(
-    () => Boolean(
-      readSession().id &&
-      (readStored(AUTH_TOKEN_STORAGE_KEY) || readStored(REFRESH_TOKEN_STORAGE_KEY)),
-    ),
+    () => Boolean(readSession().id),
   );
 
   const logout = useCallback(() => {
-    const token = readStored(AUTH_TOKEN_STORAGE_KEY);
-    if (token) {
-      // Revoca los tokens en el servidor; si falla, la sesión local se cierra igual.
-      void fetch(`${ADMIN_CONFIG.apiUrl}/auth/logout`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        keepalive: true,
-      }).catch(() => undefined);
-    }
+    // Revoca la cookie HttpOnly; si falla, la sesión local se cierra igual.
+    void fetch(`${ADMIN_CONFIG.apiUrl}/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+      keepalive: true,
+    }).catch(() => undefined);
     setIsAuthenticated(false);
     setSession(EMPTY_SESSION);
     clearStoredSession();
@@ -103,7 +97,7 @@ export function useAuth() {
 
   // Valida el token guardado contra el servidor y refresca módulos y rol.
   useEffect(() => {
-    if (!readStored(AUTH_TOKEN_STORAGE_KEY) && !readStored(REFRESH_TOKEN_STORAGE_KEY)) return;
+    if (!readStored(AUTH_SESSION_STORAGE_KEY)) return;
     apiRequest<AuthSession>('/auth/me')
       .then((user) => {
         setSession(user);
@@ -133,6 +127,7 @@ export function useAuth() {
       const response = await fetch(`${ADMIN_CONFIG.apiUrl}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ email: email.trim(), usuario: usuario.trim(), password }),
       });
 
@@ -161,8 +156,10 @@ export function useAuth() {
 
       target.setItem(AUTH_STORAGE_KEY, 'true');
       target.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify(sessionPayload.user));
-      target.setItem(AUTH_TOKEN_STORAGE_KEY, sessionPayload.accessToken);
-      target.setItem(REFRESH_TOKEN_STORAGE_KEY, sessionPayload.refreshToken);
+      // Los tokens viven únicamente en cookies HttpOnly. Se eliminan restos de
+      // versiones anteriores del panel.
+      target.removeItem(AUTH_TOKEN_STORAGE_KEY);
+      target.removeItem(REFRESH_TOKEN_STORAGE_KEY);
 
       setSession(sessionPayload.user);
       setIsAuthenticated(true);

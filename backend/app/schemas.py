@@ -1,7 +1,7 @@
 import re
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
@@ -41,7 +41,7 @@ class LoginRequest(Schema):
 
 
 class RefreshRequest(Schema):
-    refreshToken: str
+    refreshToken: str | None = None
 
 
 class SessionUser(Schema):
@@ -155,11 +155,26 @@ class CategoryIn(Schema):
     label: str
     codigo: int = Field(gt=0)
     iconName: str = "package"
-    camposPersonalizados: list[CustomField] = []
+    camposBase: list[str] = Field(default_factory=list)
+    camposPersonalizados: list[CustomField] = Field(default_factory=list)
 
 
 class CategoryOut(CategoryIn):
     pass
+
+
+class InventoryStateIn(Schema):
+    nombre: str = Field(min_length=1, max_length=80)
+
+
+class InventoryStateUpdate(Schema):
+    nombre: str = Field(min_length=1, max_length=80)
+
+
+class InventoryStateOut(Schema):
+    nombre: str
+    inmutable: bool
+    orden: int
 
 
 class InventoryIn(Schema):
@@ -183,7 +198,7 @@ class InventoryIn(Schema):
     facturaGuiaCompra: str
     precio: Decimal = Field(ge=0)
     proveedor: str
-    alquiler: bool | None = None
+    alquiler: bool | str | None = None
     estado: str
     observaciones: str = ""
     especificacionesPersonalizadas: dict[str, str] = {}
@@ -192,23 +207,6 @@ class InventoryIn(Schema):
 class InventoryOut(InventoryIn):
     id: str
     categoria: int
-
-
-class CustomerIn(Schema):
-    name: str
-    ruc: str = Field(pattern=r"^\d{11}$")
-    sector: str
-    contacto: str
-    email: EmailStr
-    telefono: str
-    eventos: int = Field(default=0, ge=0)
-    rating: Literal["VIP", "A+", "Estándar"] = "Estándar"
-    ultimaActividad: date | None = None
-    estado: Literal["Activo", "Inactivo"] = "Activo"
-
-
-class CustomerOut(CustomerIn):
-    id: str
 
 
 class OrderIn(Schema):
@@ -221,6 +219,7 @@ class OrderIn(Schema):
     unidadMedida: Literal["UND"] = "UND"
     motivoTraslado: str
     observaciones: str = ""
+    skus: list[str] = Field(default_factory=list)
 
     @field_validator("telefonoContacto")
     @classmethod
@@ -236,17 +235,14 @@ class OrderIn(Schema):
 class OrderOut(OrderIn):
     id: str
     numeroPedido: str
+    estadoPedido: Literal["Activo", "Finalizado"] = "Activo"
+    fechaFinalizacion: datetime | None = None
+    estadosAnteriores: dict[str, str] = Field(default_factory=dict)
 
 
-class TechnicianIn(Schema):
-    nombre: str
-    telefono: str = ""
-    especialidad: str = ""
-    activo: bool = True
-
-
-class TechnicianOut(TechnicianIn):
-    id: str
+class OrderFinishOut(Schema):
+    pedido: OrderOut
+    inventarioActualizado: int
 
 
 class TicketIn(Schema):
@@ -264,6 +260,7 @@ class TicketIn(Schema):
     tecnicoId: str | None = None
     tecnico: str = ""
     tecnicoTelefono: str = ""
+    equiposIds: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_context(self) -> "TicketIn":
@@ -277,7 +274,7 @@ class TicketIn(Schema):
 class TicketUpdate(Schema):
     area: str | None = None
     prioridad: Literal["Urgente", "Alta", "Media", "Baja"] | None = None
-    estado: Literal["Abierto", "En Diagnóstico", "En Reparación", "Resuelto"] | None = None
+    estado: Literal["Abierto", "En Diagnóstico", "En Reparación", "En Reemplazo", "Resuelto"] | None = None
     descripcion: str | None = None
     tecnicoId: str | None = None
 
@@ -289,6 +286,24 @@ class TicketOut(TicketIn):
     codigo: str
     estado: str
     fecha: datetime
+    estadosAnteriores: dict[str, str] = Field(default_factory=dict)
+    reparable: bool | None = None
+    flujo: str = "Pendiente"
+    equiposReemplazoIds: list[str] = Field(default_factory=list)
+    evidencias: list[str] = Field(default_factory=list)
+    descripcionSolucion: str = ""
+    fechaResolucion: datetime | None = None
+
+
+class TicketDiagnosisIn(Schema):
+    equiposAfectadosIds: list[str] = Field(min_length=1)
+    reparable: bool | None = None
+    equiposReemplazoIds: list[str] = Field(default_factory=list)
+
+
+class TicketResolveIn(Schema):
+    evidencias: list[str] = Field(default_factory=list)
+    descripcionSolucion: str = Field(min_length=3, max_length=5000)
 
 
 class AuditOut(Schema):
@@ -299,6 +314,111 @@ class AuditOut(Schema):
     accion: str
     elemento: str
     detalle: str
+    ip: str = ""
+    dispositivo: str = ""
+
+
+class AuditIn(Schema):
+    modulo: Literal["Pedidos", "Inventario", "Tickets"]
+    accion: Literal["Creó", "Editó", "Eliminó", "Agregó", "Modificó", "Guardó"]
+    elemento: str = Field(min_length=1, max_length=160)
+    detalle: str = Field(min_length=1, max_length=5000)
+
+
+class DerivedCustomerOut(Schema):
+    id: str
+    nombre: str
+    tipo: Literal["Empresa", "Persona natural"]
+    telefono: str
+    ubicacion: str
+    pedidos: int
+    pedidosVigentes: int
+    ultimaActividad: date
+    estado: Literal["Activo", "Inactivo"]
+    numerosPedido: list[str]
+
+
+class PaginatedAuditOut(Schema):
+    items: list[AuditOut]
+    total: int
+    page: int
+    pageSize: int
+    pages: int
+
+
+class PaginatedInventoryOut(Schema):
+    items: list[InventoryOut]
+    total: int
+    page: int
+    pageSize: int
+    pages: int
+
+
+class ShippingGuideItemIn(Schema):
+    descripcion: str
+    cantidad: Decimal = Field(ge=0)
+    unidad: str
+    observaciones: str = ""
+    peso: Decimal = Field(default=0, ge=0)
+
+
+class ShippingGuideIn(Schema):
+    numeroGuia: str = Field(min_length=1, max_length=30)
+    fechaTraslado: date
+    destinatarioRuc: str = ""
+    destinatarioDocumento: str = ""
+    vehiculo: str = ""
+    certificado: str = ""
+    licencia: str = ""
+    conductorDocumento: str = ""
+    transportista: str = ""
+    transportistaRuc: str = ""
+    costoTraslado: Decimal = Field(default=0, ge=0)
+    comprobanteTipo: str = ""
+    comprobanteNumero: str = ""
+    motivos: list[str] = Field(default_factory=list)
+    estado: Literal["Borrador", "Emitida"] = "Borrador"
+    bienes: list[ShippingGuideItemIn] = Field(default_factory=list)
+
+
+class ShippingGuideOut(ShippingGuideIn):
+    id: str
+    pedidoId: str
+    updatedAt: datetime
+
+
+class SiteContentOut(Schema):
+    key: str
+    value: Any
+
+
+class SiteContentUpdate(Schema):
+    value: Any
+
+
+class FAQIn(Schema):
+    question: str = Field(min_length=2, max_length=500)
+    answer: str = Field(min_length=2, max_length=5000)
+    sortOrder: int = Field(default=0, ge=0)
+    isActive: bool = True
+
+
+class FAQOut(FAQIn):
+    id: str
+
+
+class DashboardOut(Schema):
+    inventarioTotal: int
+    inventarioPorEstado: dict[str, int]
+    pedidosTotal: int
+    pedidosActivos: int
+    pedidosFinalizados: int
+    ticketsPorEstado: dict[str, int]
+    clientesTotal: int
+    clientesActivos: int
+    clientesInactivos: int
+    alquileresPorMes: list[dict[str, Any]]
+    movimientosRecientes: list[AuditOut]
 
 
 class ServiceIn(Schema):
@@ -311,27 +431,6 @@ class ServiceIn(Schema):
     idealFor: list[str] = []
     activo: bool = True
     orden: int = 0
-
-
-class QuoteIn(Schema):
-    nombre: str = Field(min_length=2, max_length=160)
-    empresa: str = Field(min_length=2, max_length=200)
-    correo: EmailStr
-    telefono: str = Field(min_length=7, max_length=40)
-    servicioId: str
-    fechas: str = ""
-    ciudad: str
-    mensaje: str = Field(min_length=10, max_length=5000)
-
-
-class QuoteOut(QuoteIn):
-    id: str
-    estado: str
-    createdAt: datetime
-
-
-class QuoteUpdate(Schema):
-    estado: Literal["Nueva", "Contactada", "Cotizada", "Cerrada", "Descartada"]
 
 
 class WebAssetOut(Schema):

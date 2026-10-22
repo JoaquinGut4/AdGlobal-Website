@@ -15,7 +15,7 @@ administrativo) y sirve como base del modelo final del apartado admin.
 | Inventario | Equipos, características, estados y categorías (filtros y detalle expandible). |
 | Pedidos | Registro y seguimiento de pedidos; guía de remisión y control de estados. |
 | Clientes | Directorio derivado de los pedidos (oculto en el menú, accesible desde el Dashboard). |
-| Movimientos | Historial de acciones locales de Pedidos, Inventario y Tickets. |
+| Movimientos | Auditoría centralizada de Pedidos, Inventario y Tickets. |
 | Tickets de soporte | Incidencias técnicas y ciclo de vida (abierto → diagnóstico → reparación → resuelto). |
 | Gestión web | Imágenes y videos de la web pública (subida, orden, visibilidad y borrado). |
 | Configuración | Usuarios, roles, módulos y teléfonos de contacto. |
@@ -39,8 +39,8 @@ src/
 │   └── AdGlobalLogo.tsx
 ├── pages/           # Dashboard, Inventario, Pedidos, Clientes, Movimientos,
 │                    # Tickets, Gestión web, Configuración
-├── data/            # datos semilla de pedidos, inventario y movimientos
-├── hooks/           # useAuth, useLocalStorage
+├── data/            # catálogos visuales compartidos
+├── hooks/           # useAuth
 ├── context/         # ToastContext
 ├── config/          # site.ts (env), navigation.ts (menú)
 ├── lib/             # API, sincronización de inventario, tickets y utilidades
@@ -77,15 +77,11 @@ Solo las variables con prefijo `VITE_` se exponen al navegador:
 
 ## Datos y persistencia
 
-Consumen la API/MySQL: autenticación (con refresh token), usuarios, gestión web y tickets.
-Los tickets se cargan con `GET /tickets` al iniciar sesión y se combinan con los vínculos
-locales de inventario (`equiposIds` y `estadosAnteriores`).
-
-Siguen en `localStorage` (etiqueta **“Solo este navegador”**): inventario, pedidos, clientes
-derivados y movimientos. Esto significa que no se comparten entre equipos ni sobreviven al
-borrado de datos del navegador. Como la clave es del navegador y no de la cuenta, dos usuarios
-que usen el mismo equipo verán la misma información operativa. Las cuentas iniciales se crean
-mediante el *seed* seguro del backend.
+Consumen la API/MySQL: autenticación (con refresh token), usuarios, gestión web, inventario,
+pedidos, clientes derivados, movimientos y tickets. MySQL es la fuente de verdad y los cambios
+se comparten entre equipos. Las asignaciones de inventario producidas por pedidos y tickets se
+realizan transaccionalmente en el backend. Las cuentas iniciales se crean mediante el *seed*
+seguro del backend.
 
 ### Ciclo de vida de pedidos e inventario
 
@@ -100,17 +96,20 @@ función no tienen estados originales guardados y no se restauran automáticamen
 El formulario no pide una cantidad manual: cada SKU distinto encontrado en el inventario
 cuenta como una unidad. Los pedidos existentes conservan su cantidad histórica.
 
-Los estados `Alquiler`, `Taller` y `Venta` son fijos: siempre están disponibles y no se
-pueden editar ni eliminar. El estado anterior `Vendido` se convierte automáticamente a
-`Venta` en los datos locales existentes.
+Los estados operativos `Alquiler`, `Venta`, `Diagnóstico`, `Reparación`,
+`Reemplazo requerido`, `Reservado para reemplazo` y `Baja` están protegidos y no se pueden
+editar ni eliminar. El estado anterior `Vendido` se normaliza como `Venta`.
 
-El ticket tiene dos pestañas: **Por pedido** (se elige un pedido, se leen su cliente y
-contacto y solo se pueden seleccionar sus SKU) y **General / Inventario** (se elige un
-estado y solo se muestran equipos de ese estado). Al crearlo, sus equipos pasan a `Taller`.
-Al completarlo o eliminarlo regresan al estado anterior, siempre que nadie los haya
-cambiado manualmente. Un equipo no puede pertenecer a dos tickets activos. Si un pedido
-se finaliza mientras su equipo está en Taller, el equipo volverá al estado anterior al
-pedido cuando se complete el ticket. El mensaje de WhatsApp sigue siendo manual.
+El ticket tiene dos pestañas: **Por pedido** (se elige un pedido activo y se leen cliente,
+contacto y dirección) y **General / Inventario** (se elige el estado de origen). Los equipos
+afectados se seleccionan posteriormente dentro de **Gestionar flujo**. Al guardar los cambios,
+los equipos pasan a `Diagnóstico`. El botón **Volver** revierte el diagnóstico y restaura en
+MySQL todos los estados anteriores. En tickets por pedido se decide si el equipo es reparable: el flujo de
+reparación lo mueve a `Reparación`; el flujo de reemplazo mueve el afectado a
+`Reemplazo requerido` y reserva un sustituto. Al resolver una reparación se restaura el
+estado anterior. Al resolver un reemplazo, el afectado pasa a `Baja`, el sustituto ocupa su
+estado y se actualiza el SKU del pedido activo. Ambos flujos requieren evidencia y descripción
+de la solución. El mensaje de WhatsApp sigue siendo manual.
 
 ## Despliegue (Webuzo / Apache)
 
@@ -122,5 +121,5 @@ compresión, caché y cabecera `noindex`).
    del subdominio o carpeta destino (por ejemplo `admin.tudominio.com`).
 3. Activa SSL (Let's Encrypt) y la redirección a HTTPS.
 
-Para desplegar en un subdirectorio, compila con `VITE_BASE_PATH="/admin/"` y ajusta
-`RewriteBase` en `.htaccess`.
+Para desplegar en el subdirectorio acordado, compila con
+`VITE_BASE_PATH="/panel_admin/"`; el `.htaccess` ya usa ese `RewriteBase`.

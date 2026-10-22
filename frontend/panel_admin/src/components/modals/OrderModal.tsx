@@ -16,11 +16,11 @@ export type NuevoPedidoInput = Omit<PedidoRegistro, 'id' | 'numeroPedido'>;
 interface OrderModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreate: (input: NuevoPedidoInput) => boolean;
+  onCreate: (input: NuevoPedidoInput) => boolean | Promise<boolean>;
   inventario: InventarioRegistro[];
   categorias: InventarioCategoria[];
   editingPedido?: PedidoRegistro | null;
-  onUpdate?: (pedido: PedidoRegistro) => boolean;
+  onUpdate?: (pedido: PedidoRegistro) => boolean | Promise<boolean>;
 }
 
 const DIRECCION_PARTIDA = 'Av. Húsares de Junín 527, Jesús María, Lima, Lima';
@@ -139,7 +139,7 @@ export function OrderModal({ isOpen, onClose, onCreate, inventario, categorias, 
     setMenuProductosOpen(false);
   }, [isOpen, editingPedido]);
 
-  const handleSubmit = (event: FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setOrderError('');
     const telefono = telefonoContacto.trim();
@@ -178,13 +178,13 @@ export function OrderModal({ isOpen, onClose, onCreate, inventario, categorias, 
     };
 
     if (editingPedido && onUpdate) {
-      if (!onUpdate({ ...editingPedido, ...payload })) {
+      if (!await onUpdate({ ...editingPedido, ...payload })) {
         setOrderError('Revisa los SKU: alguno no existe o está asignado a otro pedido activo.');
       }
       return;
     }
 
-    if (onCreate(payload)) resetForm();
+    if (await onCreate(payload)) resetForm();
     else setOrderError('Selecciona un equipo del inventario o introduce un SKU existente en la descripción.');
   };
 

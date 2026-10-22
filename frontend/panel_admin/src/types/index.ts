@@ -21,7 +21,7 @@ export type TicketArea =
 
 export type TicketPrioridad = 'Urgente' | 'Alta' | 'Media' | 'Baja';
 
-export type TicketEstado = 'Abierto' | 'En Diagnóstico' | 'En Reparación' | 'Resuelto';
+export type TicketEstado = 'Abierto' | 'En Diagnóstico' | 'En Reparación' | 'En Reemplazo' | 'Resuelto';
 export type TicketTipo = 'pedido' | 'general';
 
 /** Ticket de soporte técnico / reparación de equipos. */
@@ -43,6 +43,12 @@ export interface SupportTicket {
   equiposIds?: string[];
   /** Estado de cada activo antes de enviarlo a Taller; clave = id del activo. */
   estadosAnteriores?: Record<string, string>;
+  reparable?: boolean | null;
+  flujo?: 'Pendiente' | 'Reparación' | 'Reemplazo' | 'General';
+  equiposReemplazoIds?: string[];
+  evidencias?: string[];
+  descripcionSolucion?: string;
+  fechaResolucion?: string;
   tecnico: string;
   tecnicoTelefono?: string;
   fecha: string;
@@ -152,6 +158,22 @@ export interface MovimientoAuditoria {
   accion: MovimientoAccion;
   elemento: string;
   detalle: string;
+  ip?: string;
+  dispositivo?: string;
+}
+
+export interface DashboardResumen {
+  inventarioTotal: number;
+  inventarioPorEstado: Record<string, number>;
+  pedidosTotal: number;
+  pedidosActivos: number;
+  pedidosFinalizados: number;
+  ticketsPorEstado: Record<string, number>;
+  clientesTotal: number;
+  clientesActivos: number;
+  clientesInactivos: number;
+  alquileresPorMes: Array<{ periodo: string; alquiler: number; ventas: number }>;
+  movimientosRecientes: MovimientoAuditoria[];
 }
 
 export type WebImageSection = 'hero' | 'servicio' | 'faq';

@@ -1,10 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.core.database import get_db
-from backend.app.models import QuoteRequest, Service, WebAsset, as_utc
-from backend.app.schemas import QuoteIn, QuoteOut, ServiceIn, WebAssetOut
+from backend.app.models import FAQ, Service, SiteContent, WebAsset, as_utc
+from backend.app.schemas import FAQOut, ServiceIn, SiteContentOut, WebAssetOut
 
 
 router = APIRouter(prefix="/public", tags=["Web pública"])
@@ -38,20 +38,12 @@ def web_asset_out(item: WebAsset) -> WebAssetOut:
     )
 
 
-def quote_out(item: QuoteRequest) -> QuoteOut:
-    return QuoteOut(
-        id=item.id,
-        nombre=item.full_name,
-        empresa=item.company,
-        correo=item.email,
-        telefono=item.phone,
-        servicioId=item.service_id,
-        fechas=item.requested_dates,
-        ciudad=item.city,
-        mensaje=item.message,
-        estado=item.status,
-        createdAt=as_utc(item.created_at),
-    )
+def site_content_out(item: SiteContent) -> SiteContentOut:
+    return SiteContentOut(key=item.key, value=item.value)
+
+
+def faq_out(item: FAQ) -> FAQOut:
+    return FAQOut(id=item.id, question=item.question, answer=item.answer, sortOrder=item.sort_order, isActive=item.is_active)
 
 
 @router.get("/services", response_model=list[ServiceIn])
@@ -60,6 +52,16 @@ def services(db: Session = Depends(get_db)) -> list[ServiceIn]:
         select(Service).where(Service.is_active.is_(True)).order_by(Service.sort_order, Service.title)
     ).all()
     return [service_out(item) for item in items]
+
+
+@router.get("/content", response_model=list[SiteContentOut])
+def content(db: Session = Depends(get_db)) -> list[SiteContentOut]:
+    return [site_content_out(item) for item in db.scalars(select(SiteContent).order_by(SiteContent.key)).all()]
+
+
+@router.get("/faqs", response_model=list[FAQOut])
+def faqs(db: Session = Depends(get_db)) -> list[FAQOut]:
+    return [faq_out(item) for item in db.scalars(select(FAQ).where(FAQ.is_active.is_(True)).order_by(FAQ.sort_order, FAQ.created_at)).all()]
 
 
 @router.get("/web-assets", response_model=list[WebAssetOut])
@@ -75,23 +77,3 @@ def web_assets(
         query = query.where(WebAsset.service_id == service_id)
     items = db.scalars(query.order_by(WebAsset.sort_order, WebAsset.created_at)).all()
     return [web_asset_out(item) for item in items]
-
-
-@router.post("/quotes", response_model=QuoteOut, status_code=status.HTTP_201_CREATED)
-def create_quote(payload: QuoteIn, db: Session = Depends(get_db)) -> QuoteOut:
-    if db.get(Service, payload.servicioId) is None:
-        raise HTTPException(status_code=422, detail="El servicio indicado no existe")
-    item = QuoteRequest(
-        full_name=payload.nombre,
-        company=payload.empresa,
-        email=payload.correo.lower(),
-        phone=payload.telefono,
-        service_id=payload.servicioId,
-        requested_dates=payload.fechas,
-        city=payload.ciudad,
-        message=payload.mensaje,
-    )
-    db.add(item)
-    db.commit()
-    db.refresh(item)
-    return quote_out(item)

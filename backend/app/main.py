@@ -5,10 +5,12 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from sqlalchemy import text
 
 from backend.app.api import admin, auth, public
 from backend.app.core.config import get_settings
+from backend.app.core.audit_context import capture_request_context, reset_request_context
 from backend.app.core.database import engine
 
 
@@ -34,6 +36,8 @@ app = FastAPI(
     lifespan=lifespan,
     **documentation_urls(settings.environment),
 )
+if settings.force_https:
+    app.add_middleware(HTTPSRedirectMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -45,6 +49,15 @@ app.mount(settings.public_upload_url, StaticFiles(directory=settings.upload_dire
 app.include_router(auth.router, prefix=settings.api_v1_prefix)
 app.include_router(public.router, prefix=settings.api_v1_prefix)
 app.include_router(admin.router, prefix=settings.api_v1_prefix)
+
+
+@app.middleware("http")
+async def audit_request_context(request, call_next):
+    tokens = capture_request_context(request)
+    try:
+        return await call_next(request)
+    finally:
+        reset_request_context(tokens)
 
 
 @app.get("/health", tags=["Sistema"])

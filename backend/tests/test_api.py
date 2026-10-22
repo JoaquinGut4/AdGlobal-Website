@@ -29,24 +29,6 @@ def test_refresh_token_returns_a_usable_access_token(client: TestClient) -> None
     assert client.get("/api/v1/auth/me", headers=headers).status_code == 200
 
 
-def test_public_quote_flow(client: TestClient) -> None:
-    response = client.post(
-        "/api/v1/public/quotes",
-        json={
-            "nombre": "Carlos Mendoza",
-            "empresa": "Empresa SAC",
-            "correo": "carlos@empresa.com",
-            "telefono": "999888777",
-            "servicioId": "laptops-computadores",
-            "fechas": "Noviembre",
-            "ciudad": "Lima",
-            "mensaje": "Necesito veinte equipos configurados.",
-        },
-    )
-    assert response.status_code == 201
-    assert response.json()["estado"] == "Nueva"
-
-
 def test_support_user_is_available_for_tickets(client: TestClient, auth_headers: dict[str, str]) -> None:
     created = client.post(
         "/api/v1/usuarios",
@@ -209,11 +191,7 @@ def test_create_ticket_assigns_support_user(client: TestClient, auth_headers: di
             "direccionPedido": "Av. Principal 123, Miraflores, Lima",
         },
     )
-    assert by_order.status_code == 201, by_order.text
-    assert by_order.json()["tipoTicket"] == "pedido"
-    assert by_order.json()["numeroPedido"] == "PED-2026-001"
-    assert by_order.json()["telefonoContacto"] == "955746704"
-    assert by_order.json()["direccionPedido"] == "Av. Principal 123, Miraflores, Lima"
+    assert by_order.status_code == 422
 
     missing_state = client.post(
         "/api/v1/tickets",
@@ -225,13 +203,12 @@ def test_create_ticket_assigns_support_user(client: TestClient, auth_headers: di
     )
     assert missing_state.status_code == 422
 
-    completed = client.patch(
-        f"/api/v1/tickets/{ticket['id']}",
+    completed = client.post(
+        f"/api/v1/tickets/{ticket['id']}/resolver",
         headers=auth_headers,
-        json={"estado": "Resuelto"},
+        json={"evidencias": ["/uploads/tickets/evidencia.jpg"], "descripcionSolucion": "Incidencia atendida"},
     )
-    assert completed.status_code == 200, completed.text
-    assert completed.json()["estado"] == "Resuelto"
+    assert completed.status_code == 409
 
     deleted = client.delete(f"/api/v1/tickets/{ticket['id']}", headers=auth_headers)
     assert deleted.status_code == 204
@@ -318,7 +295,7 @@ def test_inventory_crud(client: TestClient, auth_headers: dict[str, str]) -> Non
 
     listed = client.get("/api/v1/inventario?search=LAP-TEST", headers=auth_headers)
     assert listed.status_code == 200
-    assert len(listed.json()) == 1
+    assert len(listed.json()["items"]) == 1
 
     invalid_update = client.put(
         f"/api/v1/inventario/{item_id}",
@@ -331,57 +308,177 @@ def test_inventory_crud(client: TestClient, auth_headers: dict[str, str]) -> Non
     assert deleted.status_code == 204
 
 
-def test_customer_update_conflict_returns_409(client: TestClient, auth_headers: dict[str, str]) -> None:
-    first = client.post(
-        "/api/v1/clientes",
-        headers=auth_headers,
-        json={
-            "name": "Cliente Uno",
-            "ruc": "20123456789",
-            "sector": "Tecnología",
-            "contacto": "Contacto Uno",
-            "email": "uno@empresa.com",
-            "telefono": "999888777",
-            "eventos": 1,
-            "rating": "VIP",
-            "estado": "Activo",
-        },
-    )
-    assert first.status_code == 201, first.text
+def test_operational_modules_are_persisted_together(client: TestClient, auth_headers: dict[str, str]) -> None:
+    asset_payload = {
+        "categoriaId": "laptops",
+        "sku": "LAP-FLOW-001",
+        "qr": "QR-LAP-FLOW-001",
+        "foto": "",
+        "marca": "Lenovo",
+        "descripcion": "Equipo para flujo integrado",
+        "numeroSerial": "SERIAL-FLOW-001",
+        "fechaCompra": "2026-10-20",
+        "facturaGuiaCompra": "F001-100",
+        "precio": 2500,
+        "proveedor": "Proveedor SAC",
+        "estado": "Almacén 1",
+        "observaciones": "",
+    }
+    asset = client.post("/api/v1/inventario", json=asset_payload, headers=auth_headers)
+    assert asset.status_code == 201, asset.text
 
-    second = client.post(
-        "/api/v1/clientes",
-        headers=auth_headers,
-        json={
-            "name": "Cliente Dos",
-            "ruc": "20987654321",
-            "sector": "Retail",
-            "contacto": "Contacto Dos",
-            "email": "dos@empresa.com",
-            "telefono": "999888666",
-            "eventos": 0,
-            "rating": "Estándar",
-            "estado": "Activo",
-        },
-    )
-    assert second.status_code == 201, second.text
+    order_payload = {
+        "fechaEmision": "2026-10-22",
+        "direccionPartida": "Almacén",
+        "direccionLlegada": "Empresa: Cliente Integrado SAC · Dirección: Av. Principal 123 · Distrito: Miraflores · Provincia: Lima · Departamento: Lima",
+        "telefonoContacto": "999888777",
+        "descripcionProductos": "LAP-FLOW-001 · Laptops · Equipo para flujo integrado",
+        "cantidadProductos": 1,
+        "unidadMedida": "UND",
+        "motivoTraslado": "Alquiler",
+        "observaciones": "",
+        "skus": ["LAP-FLOW-001"],
+    }
+    created = client.post("/api/v1/pedidos", json=order_payload, headers=auth_headers)
+    assert created.status_code == 201, created.text
+    order = created.json()
+    assert order["estadoPedido"] == "Activo"
+    assert order["estadosAnteriores"] == {asset.json()["id"]: "Almacén 1"}
 
-    duplicated = client.put(
-        f"/api/v1/clientes/{second.json()['id']}",
+    inventory = client.get("/api/v1/inventario", headers=auth_headers).json()["items"]
+    assert next(item for item in inventory if item["id"] == asset.json()["id"])["estado"] == "Alquiler"
+
+    customers = client.get("/api/v1/clientes/derivados", headers=auth_headers)
+    assert customers.status_code == 200, customers.text
+    assert customers.json()[0]["nombre"] == "Cliente Integrado SAC"
+    assert customers.json()[0]["pedidosVigentes"] == 1
+
+    finished = client.patch(f"/api/v1/pedidos/{order['id']}/finalizar", headers=auth_headers)
+    assert finished.status_code == 200, finished.text
+    assert finished.json()["pedido"]["estadoPedido"] == "Finalizado"
+    assert finished.json()["inventarioActualizado"] == 1
+
+    inventory = client.get("/api/v1/inventario", headers=auth_headers).json()["items"]
+    assert next(item for item in inventory if item["id"] == asset.json()["id"])["estado"] == "Almacén 1"
+    movements = client.get("/api/v1/movimientos", headers=auth_headers)
+    assert movements.status_code == 200
+    assert any(item["elemento"] == order["numeroPedido"] for item in movements.json()["items"])
+
+
+def test_ticket_persists_inventory_transition(client: TestClient, auth_headers: dict[str, str]) -> None:
+    asset_payload = {
+        "categoriaId": "laptops",
+        "sku": "LAP-TICKET-001",
+        "qr": "QR-LAP-TICKET-001",
+        "foto": "",
+        "marca": "Dell",
+        "descripcion": "Equipo con incidencia",
+        "numeroSerial": "SERIAL-TICKET-001",
+        "fechaCompra": "2026-10-20",
+        "facturaGuiaCompra": "F001-200",
+        "precio": 2200,
+        "proveedor": "Proveedor SAC",
+        "estado": "Oficina",
+        "observaciones": "",
+    }
+    asset = client.post("/api/v1/inventario", json=asset_payload, headers=auth_headers).json()
+    ticket = client.post(
+        "/api/v1/tickets",
         headers=auth_headers,
         json={
-            "name": "Cliente Dos",
-            "ruc": first.json()["ruc"],
-            "sector": "Retail",
-            "contacto": "Contacto Dos",
-            "email": "dos@empresa.com",
-            "telefono": "999888666",
-            "eventos": 0,
-            "rating": "Estándar",
-            "estado": "Activo",
+            "cliente": "Inventario interno",
+            "equipo": "LAP-TICKET-001 — Equipo con incidencia",
+            "numeroPedidoEstado": "Oficina",
+            "tipoTicket": "general",
+            "estadoEquipo": "Oficina",
+            "prioridad": "Alta",
+            "descripcion": "No enciende",
+            "equiposIds": [],
         },
     )
-    assert duplicated.status_code == 409
+    assert ticket.status_code == 201, ticket.text
+    assert ticket.json()["equiposIds"] == []
+    diagnosed = client.post(
+        f"/api/v1/tickets/{ticket.json()['id']}/diagnostico",
+        headers=auth_headers,
+        json={"equiposAfectadosIds": [asset["id"]]},
+    )
+    assert diagnosed.status_code == 200, diagnosed.text
+    assert diagnosed.json()["equiposIds"] == [asset["id"]]
+    assert diagnosed.json()["estadosAnteriores"] == {asset["id"]: "Oficina"}
+    inventory = client.get("/api/v1/inventario", headers=auth_headers).json()["items"]
+    assert next(item for item in inventory if item["id"] == asset["id"])["estado"] == "Diagnóstico"
+
+    resolved = client.post(
+        f"/api/v1/tickets/{ticket.json()['id']}/resolver",
+        headers=auth_headers,
+        json={"evidencias": ["/uploads/tickets/evidencia.jpg"], "descripcionSolucion": "Equipo reparado"},
+    )
+    assert resolved.status_code == 200, resolved.text
+    inventory = client.get("/api/v1/inventario", headers=auth_headers).json()["items"]
+    assert next(item for item in inventory if item["id"] == asset["id"])["estado"] == "Oficina"
+
+
+def test_replacement_workflow_updates_inventory_and_order(client: TestClient, auth_headers: dict[str, str]) -> None:
+    def create_asset(sku: str, serial: str) -> dict:
+        response = client.post("/api/v1/inventario", headers=auth_headers, json={
+            "categoriaId": "laptops", "sku": sku, "qr": f"QR-{sku}", "foto": "", "marca": "Dell",
+            "descripcion": f"Equipo {sku}", "numeroSerial": serial, "fechaCompra": "2026-10-20",
+            "facturaGuiaCompra": "F001", "precio": 2000, "proveedor": "Proveedor", "estado": "Almacén 1", "observaciones": "",
+        })
+        assert response.status_code == 201, response.text
+        return response.json()
+
+    affected = create_asset("LAP-REP-001", "SER-REP-001")
+    replacement = create_asset("LAP-REP-002", "SER-REP-002")
+    order = client.post("/api/v1/pedidos", headers=auth_headers, json={
+        "fechaEmision": "2026-10-22", "direccionPartida": "Almacén",
+        "direccionLlegada": "Empresa: Cliente SAC · Dirección: Calle 1 · Distrito: Lima · Provincia: Lima · Departamento: Lima",
+        "telefonoContacto": "999999999", "descripcionProductos": "LAP-REP-001 · Laptop", "cantidadProductos": 1,
+        "unidadMedida": "UND", "motivoTraslado": "Alquiler", "observaciones": "", "skus": ["LAP-REP-001"],
+    }).json()
+    ticket = client.post("/api/v1/tickets", headers=auth_headers, json={
+        "cliente": "Cliente SAC", "equipo": "LAP-REP-001 — Equipo", "numeroPedidoEstado": order["numeroPedido"],
+        "tipoTicket": "pedido", "numeroPedido": order["numeroPedido"], "telefonoContacto": "999999999",
+        "direccionPedido": "Calle 1", "prioridad": "Alta", "descripcion": "No reparable", "equiposIds": [],
+    }).json()
+
+    diagnosed = client.post(f"/api/v1/tickets/{ticket['id']}/diagnostico", headers=auth_headers, json={
+        "equiposAfectadosIds": [affected["id"]], "reparable": False, "equiposReemplazoIds": [replacement["id"]],
+    })
+    assert diagnosed.status_code == 200, diagnosed.text
+    assert diagnosed.json()["estado"] == "En Reemplazo"
+    inventory = client.get("/api/v1/inventario?page_size=50", headers=auth_headers).json()["items"]
+    assert next(item for item in inventory if item["id"] == affected["id"])["estado"] == "Reemplazo requerido"
+    assert next(item for item in inventory if item["id"] == replacement["id"])["estado"] == "Reservado para reemplazo"
+
+    rolled_back = client.post(f"/api/v1/tickets/{ticket['id']}/volver", headers=auth_headers)
+    assert rolled_back.status_code == 200, rolled_back.text
+    assert rolled_back.json()["flujo"] == "Pendiente"
+    assert rolled_back.json()["equiposIds"] == []
+    inventory = client.get("/api/v1/inventario?page_size=50", headers=auth_headers).json()["items"]
+    assert next(item for item in inventory if item["id"] == affected["id"])["estado"] == "Alquiler"
+    assert next(item for item in inventory if item["id"] == replacement["id"])["estado"] == "Almacén 1"
+
+    diagnosed = client.post(f"/api/v1/tickets/{ticket['id']}/diagnostico", headers=auth_headers, json={
+        "equiposAfectadosIds": [affected["id"]], "reparable": False, "equiposReemplazoIds": [replacement["id"]],
+    })
+    assert diagnosed.status_code == 200, diagnosed.text
+
+    resolved = client.post(f"/api/v1/tickets/{ticket['id']}/resolver", headers=auth_headers, json={
+        "evidencias": ["/uploads/tickets/reemplazo.jpg"], "descripcionSolucion": "Se instaló equipo de reemplazo",
+    })
+    assert resolved.status_code == 200, resolved.text
+    inventory = client.get("/api/v1/inventario?page_size=50", headers=auth_headers).json()["items"]
+    assert next(item for item in inventory if item["id"] == affected["id"])["estado"] == "Baja"
+    assert next(item for item in inventory if item["id"] == replacement["id"])["estado"] == "Alquiler"
+    updated_order = next(item for item in client.get("/api/v1/pedidos", headers=auth_headers).json() if item["id"] == order["id"])
+    assert updated_order["skus"] == ["LAP-REP-002"]
+
+    finished = client.patch(f"/api/v1/pedidos/{order['id']}/finalizar", headers=auth_headers)
+    assert finished.status_code == 200
+    inventory = client.get("/api/v1/inventario?page_size=50", headers=auth_headers).json()["items"]
+    assert next(item for item in inventory if item["id"] == replacement["id"])["estado"] == "Almacén 1"
 
 
 def login_as(client: TestClient, email: str, usuario: str, password: str) -> dict:
@@ -416,7 +513,6 @@ def test_staff_directory_requires_tickets_module(client: TestClient, auth_header
     limited = {"Authorization": f"Bearer {session['accessToken']}"}
 
     assert client.get("/api/v1/usuarios/soporte", headers=limited).status_code == 403
-    assert client.get("/api/v1/tecnicos", headers=limited).status_code == 403
     assert client.get("/api/v1/usuarios/soporte", headers=auth_headers).status_code == 200
 
     granted = client.patch(
@@ -432,7 +528,6 @@ def test_staff_directory_requires_tickets_module(client: TestClient, auth_header
     renewed = login_as(client, created["email"], created["usuario"], "UsuarioPrueba2026")
     allowed = {"Authorization": f"Bearer {renewed['accessToken']}"}
     assert client.get("/api/v1/usuarios/soporte", headers=allowed).status_code == 200
-    assert client.get("/api/v1/tecnicos", headers=allowed).status_code == 200
 
 
 def test_password_change_revokes_existing_tokens(client: TestClient, auth_headers: dict[str, str]) -> None:

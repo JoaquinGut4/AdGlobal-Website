@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Dispatch, SetStateAction } from 'react';
 import {
   Check,
   ChevronDown,
@@ -10,13 +9,13 @@ import {
   Pencil,
   Plus,
   Printer,
+  RefreshCw,
   Search,
   Tablet,
   Trash2,
   Tv,
 } from 'lucide-react';
 import { InventoryModal } from '@/components/modals/InventoryModal';
-import { LocalDataNotice } from '@/components/ui/LocalDataNotice';
 import { Modal } from '@/components/ui/Modal';
 import { esEstadoInmutable } from '@/lib/inventoryStates';
 import { camposBaseHabilitados, esCategoriaPrincipal } from '@/lib/inventoryCategoryFields';
@@ -27,23 +26,27 @@ import type {
   InventarioCategoriaId,
   InventarioFiltro,
   InventarioRegistro,
-  MovimientoAccion,
 } from '@/types';
 
 interface InventarioPageProps {
   filtro: InventarioFiltro;
   onFiltroChange: (filtro: InventarioFiltro) => void;
   registrosInventario: InventarioRegistro[];
-  setRegistrosInventario: Dispatch<SetStateAction<InventarioRegistro[]>>;
+  pagina: number;
+  paginas: number;
+  totalRegistros: number;
+  onPaginaChange: (pagina: number) => void;
+  onRefresh: () => void;
   estadosInventario: string[];
-  setEstadosInventario: Dispatch<SetStateAction<string[]>>;
   categoriasPersonalizadas: InventarioCategoria[];
   onAgregarCategoria: (categoria: InventarioCategoria) => void;
   onEliminarCategoria: (categoriaId: InventarioCategoriaId) => void;
-  onRegistrarMovimiento: (
-    accion: Extract<MovimientoAccion, 'Agregó' | 'Modificó' | 'Eliminó'>,
-    registro: InventarioRegistro,
-  ) => void;
+  onAgregarEstado: (estado: string) => void;
+  onRenombrarEstado: (anterior: string, nuevo: string) => void;
+  onEliminarEstado: (estado: string) => void;
+  onAgregarRegistro: (registro: InventarioRegistro) => void;
+  onActualizarRegistro: (registro: InventarioRegistro) => void;
+  onEliminarRegistro: (registro: InventarioRegistro) => void;
 }
 
 type CampoInventario = keyof InventarioRegistro;
@@ -232,7 +235,7 @@ function coincideEstado(registro: InventarioRegistro, filtro: string) {
   if (filtro === 'alquiler') return estado.includes('alquiler');
   if (filtro === 'oficina') return estado.includes('oficina') || estado.includes('almacén');
   if (filtro === 'taller') {
-    return estado.includes('taller') || estado.includes('reparación') || estado.includes('mantenimiento');
+    return estado.includes('taller') || estado.includes('diagnóstico') || estado.includes('reparación') || estado.includes('reemplazo') || estado.includes('mantenimiento');
   }
   return estado === filtro.replace(/^custom:/, '').toLowerCase();
 }
@@ -241,7 +244,7 @@ function EstadoBadge({ estado }: { estado: string }) {
   const normalizado = estado.toLowerCase();
   const tone = normalizado.includes('alquiler')
     ? 'bg-blue-50 text-[#2B5C94] border-blue-200'
-    : normalizado.includes('reparación') || normalizado.includes('taller')
+    : normalizado.includes('reparación') || normalizado.includes('taller') || normalizado.includes('diagnóstico') || normalizado.includes('reemplazo')
       ? 'bg-amber-50 text-amber-700 border-amber-200'
       : 'bg-emerald-50 text-emerald-700 border-emerald-200';
 
@@ -335,13 +338,21 @@ export function InventarioPage({
   filtro,
   onFiltroChange,
   registrosInventario,
-  setRegistrosInventario,
+  pagina,
+  paginas,
+  totalRegistros,
+  onPaginaChange,
+  onRefresh,
   estadosInventario,
-  setEstadosInventario,
   categoriasPersonalizadas,
   onAgregarCategoria,
   onEliminarCategoria,
-  onRegistrarMovimiento,
+  onAgregarEstado,
+  onRenombrarEstado,
+  onEliminarEstado,
+  onAgregarRegistro,
+  onActualizarRegistro,
+  onEliminarRegistro,
 }: InventarioPageProps) {
   const [search, setSearch] = useState('');
   const [categoriaActiva, setCategoriaActiva] = useState<InventarioCategoriaId>('laptops');
@@ -462,7 +473,7 @@ export function InventarioPage({
   const guardarEstadoEditado = () => {
     if (!editingEstado) return;
     if (esEstadoInmutable(editingEstado)) {
-      setEstadoError('Alquiler, Taller y Venta son estados inmutables.');
+      setEstadoError('Este es un estado operativo protegido y no se puede editar.');
       return;
     }
     const nuevo = nombreEstadoEditado.trim();
@@ -471,7 +482,7 @@ export function InventarioPage({
       return;
     }
     if (esEstadoInmutable(nuevo)) {
-      setEstadoError('Alquiler, Taller y Venta son nombres reservados.');
+      setEstadoError('Ese nombre está reservado para el flujo operativo.');
       return;
     }
     const duplicado = estadosInventario.some(
@@ -483,16 +494,7 @@ export function InventarioPage({
     }
 
     if (nuevo !== editingEstado) {
-      setEstadosInventario((current) =>
-        current.map((estado) => (estado === editingEstado ? nuevo : estado)),
-      );
-      setRegistrosInventario((current) =>
-        current.map((registro) =>
-          registro.estado.toLowerCase() === editingEstado.toLowerCase()
-            ? { ...registro, estado: nuevo }
-            : registro,
-        ),
-      );
+      onRenombrarEstado(editingEstado, nuevo);
       setEstadoActivo((current) =>
         current === `custom:${editingEstado}` ? `custom:${nuevo}` : current,
       );
@@ -507,7 +509,7 @@ export function InventarioPage({
 
   const eliminarEstado = (estado: string) => {
     if (esEstadoInmutable(estado)) {
-      setEstadoError('Alquiler, Taller y Venta no se pueden eliminar.');
+      setEstadoError('Este es un estado operativo protegido y no se puede eliminar.');
       return;
     }
     if (estadosInventario.length <= 1) {
@@ -530,7 +532,7 @@ export function InventarioPage({
     );
     if (!confirmed) return;
 
-    setEstadosInventario((current) => current.filter((item) => item !== estado));
+    onEliminarEstado(estado);
     if (estadoActivo === `custom:${estado}`) {
       setEstadoActivo('all');
       onFiltroChange('all');
@@ -546,7 +548,7 @@ export function InventarioPage({
     const estado = nuevoEstado.trim();
     if (!estado) return;
     if (esEstadoInmutable(estado)) {
-      setEstadoError('Alquiler, Taller y Venta ya existen y son inmutables.');
+      setEstadoError('Ese estado ya existe y está protegido por el flujo operativo.');
       return;
     }
     const existente = estadosInventario.find(
@@ -556,7 +558,7 @@ export function InventarioPage({
       setEstadoError('Ese estado ya existe.');
       return;
     }
-    setEstadosInventario((current) => [...current, estado]);
+    onAgregarEstado(estado);
     setEstadoActivo(`custom:${estado}`);
     setNuevoEstado('');
     setIsAddingEstado(false);
@@ -631,8 +633,7 @@ export function InventarioPage({
     );
     if (!confirmed) return;
 
-    setRegistrosInventario((current) => current.filter((item) => item.id !== registro.id));
-    onRegistrarMovimiento('Eliminó', registro);
+    onEliminarRegistro(registro);
     if (selectedRegistro?.id === registro.id) setSelectedRegistro(null);
   };
 
@@ -657,17 +658,6 @@ export function InventarioPage({
     setEstadoActivo(filtro);
   }, [filtro]);
 
-  useEffect(() => {
-    setRegistrosInventario((current) => {
-      if (current.every((registro) => Boolean(registro.qr) && 'foto' in registro)) return current;
-      return current.map((registro) => ({
-        ...registro,
-        qr: registro.qr || `QR-${registro.sku}`,
-        foto: registro.foto ?? '',
-      }));
-    });
-  }, [setRegistrosInventario]);
-
   return (
     <div className="space-y-6">
       <div className="border-b border-slate-200 pb-4">
@@ -678,15 +668,16 @@ export function InventarioPage({
                 Control de Inventario de Equipos
               </h2>
               <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-[#2B5C94]">
-                {registrosInventario.length} equipos registrados
+                {totalRegistros} equipos registrados
               </span>
-              <LocalDataNotice />
             </div>
             <p className="mt-1 text-xs text-slate-500">
               Fichas técnicas y distribución operativa por categoría de activo
             </p>
           </div>
 
+          <div className="flex gap-2">
+          <button type="button" onClick={onRefresh} title="Actualizar inventario" className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"><RefreshCw className="h-4 w-4" /></button>
           <button
             type="button"
             onClick={() => {
@@ -698,6 +689,7 @@ export function InventarioPage({
             <Plus className="h-4 w-4" />
             <span>Agregar</span>
           </button>
+          </div>
         </div>
       </div>
 
@@ -1088,6 +1080,7 @@ export function InventarioPage({
             {registros.length} {registros.length === 1 ? 'producto mostrado' : 'productos mostrados'}
           </span>
           en la tabla actual.
+          <div className="ml-auto flex items-center gap-2"><button type="button" disabled={pagina <= 1} onClick={() => onPaginaChange(pagina - 1)} className="rounded border px-2 py-1 disabled:opacity-40">Anterior</button><span>Página {pagina} de {paginas}</span><button type="button" disabled={pagina >= paginas} onClick={() => onPaginaChange(pagina + 1)} className="rounded border px-2 py-1 disabled:opacity-40">Siguiente</button></div>
         </div>
       </section>
 
@@ -1098,8 +1091,7 @@ export function InventarioPage({
           setEditingRegistro(null);
         }}
         onCreate={(registro) => {
-          setRegistrosInventario((current) => [registro, ...current]);
-          onRegistrarMovimiento('Agregó', registro);
+          onAgregarRegistro(registro);
           setCategoriaActiva(registro.categoriaId);
           onFiltroChange('all');
           setSearch('');
@@ -1107,10 +1099,7 @@ export function InventarioPage({
         }}
         editingRegistro={editingRegistro}
         onUpdate={(registro) => {
-          setRegistrosInventario((current) =>
-            current.map((item) => (item.id === registro.id ? registro : item)),
-          );
-          onRegistrarMovimiento('Modificó', registro);
+          onActualizarRegistro(registro);
           setCategoriaActiva(registro.categoriaId);
           setEditingRegistro(null);
           setIsInventoryModalOpen(false);

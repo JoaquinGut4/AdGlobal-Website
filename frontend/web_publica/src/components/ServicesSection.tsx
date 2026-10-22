@@ -1,6 +1,6 @@
 import React from 'react';
-import { SERVICIOS_DATA } from '@/data/servicios';
 import { ServicePanel } from './ServicePanel';
+import { useSiteData } from '@/hooks/useSiteData';
 
 interface ServicesSectionProps {
   openId: string;
@@ -8,7 +8,9 @@ interface ServicesSectionProps {
   onQuote: (id: string) => void;
 }
 
-export const ServicesSection: React.FC<ServicesSectionProps> = ({ openId, onToggle, onQuote }) => (
+export const ServicesSection: React.FC<ServicesSectionProps> = ({ openId, onToggle, onQuote }) => {
+  const { services } = useSiteData();
+  return (
   <section id="servicios" className="section">
     <div className="wrap">
       <div className="grid12 gap-y-8">
@@ -26,7 +28,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ openId, onTogg
       </div>
 
       <div className="mt-[clamp(2.5rem,5vw,4.5rem)]">
-        {SERVICIOS_DATA.map((service) => (
+        {services.map((service) => (
           <ServicePanel
             key={service.id}
             service={service}
@@ -38,4 +40,5 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({ openId, onTogg
       </div>
     </div>
   </section>
-);
+  );
+};
