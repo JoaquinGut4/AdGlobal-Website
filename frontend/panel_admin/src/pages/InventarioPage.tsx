@@ -10,12 +10,14 @@ import {
   Plus,
   Printer,
   RefreshCw,
+  ScanLine,
   Search,
   Tablet,
   Trash2,
   Tv,
 } from 'lucide-react';
 import { InventoryModal } from '@/components/modals/InventoryModal';
+import { InventoryScannerModal } from '@/components/modals/InventoryScannerModal';
 import { Modal } from '@/components/ui/Modal';
 import { esEstadoInmutable } from '@/lib/inventoryStates';
 import { camposBaseHabilitados, esCategoriaPrincipal } from '@/lib/inventoryCategoryFields';
@@ -360,6 +362,7 @@ export function InventarioPage({
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
   const [isStatusMenuOpen, setIsStatusMenuOpen] = useState(false);
   const [isInventoryModalOpen, setIsInventoryModalOpen] = useState(false);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [editingRegistro, setEditingRegistro] = useState<InventarioRegistro | null>(null);
   const [selectedRegistro, setSelectedRegistro] = useState<InventarioRegistro | null>(null);
   const [nuevoEstado, setNuevoEstado] = useState('');
@@ -397,9 +400,7 @@ export function InventarioPage({
   ];
   const columnasVisibles = isGlobalSearch
     ? columnasGlobales
-    : categoriaActiva.startsWith('custom-')
-      ? columnas
-      : columnas.slice(0, 8);
+    : columnas.slice(0, 8);
 
   const registros = registrosInventario.filter((registro) => {
     if (!coincideEstado(registro, estadoActivo)) return false;
@@ -678,6 +679,7 @@ export function InventarioPage({
 
           <div className="flex gap-2">
           <button type="button" onClick={onRefresh} title="Actualizar inventario" className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"><RefreshCw className="h-4 w-4" /></button>
+          <button type="button" onClick={() => setIsScannerOpen(true)} className="inline-flex h-9 shrink-0 touch-manipulation select-none items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3.5 text-xs font-bold text-[#2B5C94] hover:bg-blue-100 active:scale-[.98]"><ScanLine className="h-4 w-4" /><span className="hidden sm:inline">Escanear QR</span></button>
           <button
             type="button"
             onClick={() => {
@@ -1119,6 +1121,15 @@ export function InventarioPage({
         existingQrs={registrosInventario
           .filter((registro) => registro.id !== editingRegistro?.id)
           .map((registro) => registro.qr)}
+      />
+
+      <InventoryScannerModal
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        onFound={(registro) => {
+          setIsScannerOpen(false);
+          setSelectedRegistro(registro);
+        }}
       />
 
       <Modal

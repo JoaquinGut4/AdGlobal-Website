@@ -48,6 +48,7 @@ export default function App() {
   const [pedidos, setPedidos] = useState<PedidoRegistro[]>([]);
   const [inventario, setInventario] = useState<InventarioRegistro[]>([]);
   const [estadosInventario, setEstadosInventario] = useState<string[]>([]);
+  const [estadosTicketEditables, setEstadosTicketEditables] = useState<string[]>([]);
   const [inventarioCategorias, setInventarioCategorias] = useState<InventarioCategoria[]>([]);
   const [clientes, setClientes] = useState<ClienteDerivado[]>([]);
   const [dashboard, setDashboard] = useState<DashboardResumen | null>(null);
@@ -71,10 +72,15 @@ export default function App() {
     setInventoryPage(assets.page); setInventoryPages(assets.pages); setInventoryTotal(assets.total);
     setInventarioCategorias(categories.filter((category) => category.id.startsWith('custom-')));
     setEstadosInventario(states.map((state) => state.nombre));
+    setEstadosTicketEditables(states.filter((state) => !state.inmutable).map((state) => state.nombre));
   }, [inventoryPage]);
 
   const loadInventoryCatalog = useCallback(async () => {
-    const response = await apiRequest<PaginatedApi<InventarioRegistro>>('/inventario?page=1&page_size=1000');
+    const [response, states] = await Promise.all([
+      apiRequest<PaginatedApi<InventarioRegistro>>('/inventario?page=1&page_size=1000'),
+      apiRequest<InventoryStateApi[]>('/inventario/estados'),
+    ]);
+    setEstadosTicketEditables(states.filter((state) => !state.inmutable).map((state) => state.nombre));
     const rows = response.items.map(inventoryFromApi); setInventoryCatalog(rows); return rows;
   }, []);
 
@@ -119,6 +125,19 @@ export default function App() {
       }
     });
   }, [activeNav, isAuthenticated, loadInventoryCatalog, notify, refreshDashboard, refreshInventory, refreshMovements, refreshOrdersAndCustomers, refreshTickets, session.modulos]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !session.modulos.includes('dashboard')) return;
+    const updateNotifications = () => void refreshDashboard().catch(() => undefined);
+    updateNotifications();
+    const timer = window.setInterval(updateNotifications, 30_000);
+    const onVisibility = () => { if (document.visibilityState === 'visible') updateNotifications(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [isAuthenticated, refreshDashboard, session.modulos]);
 
   const ticketsActivos = dashboard
     ? Object.entries(dashboard.ticketsPorEstado).filter(([state]) => state !== 'Resuelto').reduce((sum, [, value]) => sum + value, 0)
@@ -449,6 +468,7 @@ export default function App() {
         session={session}
         ticketsActivos={ticketsActivos}
         pendingOrders={dashboard?.pedidosActivos ?? pedidos.filter((pedido) => pedido.estadoPedido !== 'Finalizado').length}
+        notificationRevision={dashboard?.notificacionVersion ?? ''}
         inventarioCategorias={CATEGORIAS_BASE_TOTAL + inventarioCategorias.length}
       >
         {renderPage()}
@@ -458,8 +478,8 @@ export default function App() {
         isOpen={isTicketModalOpen}
         onClose={() => setIsTicketModalOpen(false)}
         onCreate={crearTicket}
-        inventario={inventoryCatalog}
         pedidos={pedidos}
+        estadosDisponibles={estadosTicketEditables}
       />
 
       <TicketWorkflowModal

@@ -15,6 +15,7 @@ interface AdminLayoutProps {
   session: AuthSession;
   ticketsActivos: number;
   pendingOrders: number;
+  notificationRevision: string;
   inventarioCategorias: number;
   children: ReactNode;
 }
@@ -28,6 +29,7 @@ export function AdminLayout({
   session,
   ticketsActivos,
   pendingOrders,
+  notificationRevision,
   inventarioCategorias,
   children,
 }: AdminLayoutProps) {
@@ -79,6 +81,7 @@ export function AdminLayout({
           canOpenOrders={session.modulos.includes('pedidos')}
           pendingOrders={pendingOrders}
           activeTickets={ticketsActivos}
+          notificationRevision={notificationRevision}
           onNavigate={handleNavigate}
         />
 

@@ -27,6 +27,9 @@ backend/uploads/*
 # Sistema
 .DS_Store
 Thumbs.db
+.cert/
+adglobal-dev-cert.crt
+qr_pruebas/
 
 # Artefactos de la skill de diseño
 .taste-skill/

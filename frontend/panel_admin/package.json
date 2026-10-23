@@ -6,12 +6,16 @@
   "description": "Panel administrativo de AD GLOBAL - cotizaciones, inventario, presupuestos y soporte técnico",
   "scripts": {
     "dev": "vite --port=3001 --host=0.0.0.0",
+    "dev:http": "vite --port=3001 --host=0.0.0.0 --mode http",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
     "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
+    "@zxing/browser": "^0.2.1",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "lucide-react": "^1.55.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
@@ -21,6 +25,7 @@
     "@types/node": "^22.14.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",

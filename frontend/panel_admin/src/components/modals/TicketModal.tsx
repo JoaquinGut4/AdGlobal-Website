@@ -4,7 +4,7 @@ import { Search, Wrench } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { apiRequest } from '@/lib/api';
 import { formatDireccionLlegada, parseDireccionLlegada } from '@/lib/utils';
-import type { InventarioRegistro, PedidoRegistro, SupportTicket, TicketPrioridad, TicketTipo } from '@/types';
+import type { PedidoRegistro, SupportTicket, TicketPrioridad, TicketTipo } from '@/types';
 
 export interface NuevoTicketInput {
   equipo: string;
@@ -27,8 +27,8 @@ interface TicketModalProps {
   isOpen: boolean;
   onClose: () => void;
   onCreate: (input: NuevoTicketInput) => Promise<SupportTicket>;
-  inventario: InventarioRegistro[];
   pedidos: PedidoRegistro[];
+  estadosDisponibles: string[];
 }
 
 interface TecnicoSoporte {
@@ -52,7 +52,7 @@ function normalizarTelefonoWhatsApp(telefono: string) {
   return digits.length === 9 ? `51${digits}` : digits;
 }
 
-export function TicketModal({ isOpen, onClose, onCreate, inventario, pedidos }: TicketModalProps) {
+export function TicketModal({ isOpen, onClose, onCreate, pedidos, estadosDisponibles }: TicketModalProps) {
   const [tipoTicket, setTipoTicket] = useState<TicketTipo>('pedido');
   const [pedidoSearch, setPedidoSearch] = useState('');
   const [pedidoId, setPedidoId] = useState('');
@@ -122,7 +122,6 @@ export function TicketModal({ isOpen, onClose, onCreate, inventario, pedidos }: 
   const cliente = selectedOrder ? parseDireccionLlegada(selectedOrder.direccionLlegada).destinatario : '';
   const telefonoContacto = selectedOrder?.telefonoContacto?.trim() ?? '';
   const direccionPedido = selectedOrder ? formatDireccionLlegada(selectedOrder.direccionLlegada) : '';
-  const estadosDisponibles = Array.from(new Set(inventario.map((item) => item.estado.trim()).filter(Boolean)));
   const pedidoQuery = pedidoSearch.trim().toLowerCase();
   const orderResults = pedidoQuery && !selectedOrder
     ? pedidos.filter((order) => order.estadoPedido !== 'Finalizado' &&

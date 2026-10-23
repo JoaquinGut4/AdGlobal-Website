@@ -292,8 +292,44 @@ Desarrollo local:
 cd frontend/panel_admin
 npm install
 cp .env.example .env     # ajusta nombre, URL de la web pública y API
-npm run dev              # http://localhost:3001
+npm run dev              # https://localhost:3001
 ```
+
+El servidor de desarrollo usa **HTTPS** porque la cámara del navegador (escáner QR de
+Inventario) solo se habilita en contextos seguros. Vite redirige `/api` y `/uploads` al
+backend en `http://127.0.0.1:8000`, por lo que no hay contenido mixto ni CORS. Para trabajar
+sin cámara en el escritorio se puede usar `npm run dev:http`.
+
+### Escáner QR desde una tablet en la red local
+
+1. Genera el certificado local incluyendo la IP de la laptop:
+
+   ```bash
+   .venv\Scripts\python.exe -m backend.scripts.generate_dev_certificate --ip 192.168.18.249
+   ```
+
+   Crea `.cert/adglobal-dev-ca.crt` (autoridad local en DER, formato que acepta Android),
+   `.cert/adglobal-dev-ca.pem` (misma autoridad en PEM) y `.cert/server.crt` + `server.key`
+   (certificado del panel). Todos están excluidos de Git.
+
+2. En la tablet descarga la autoridad local:
+
+   ```text
+   http://192.168.18.249:8000/dev-ca.crt
+   ```
+
+3. Instálala como certificado de confianza:
+   - **Android:** Ajustes → Seguridad → Cifrado y credenciales → Instalar certificado →
+     Certificado de CA. Chrome debe reiniciarse.
+   - **iPad/iOS:** Ajustes → General → VPN y gestión de dispositivos → instalar el perfil;
+     luego Ajustes → General → Información → Ajustes de confianza de certificados → activar
+     confianza total.
+
+4. Abre el panel en `https://192.168.18.249:3001`. Si la IP de la laptop cambia, vuelve a
+   ejecutar el paso 1 y reinstala la CA.
+
+> En producción el panel se sirve por HTTPS real, por lo que la cámara funciona sin pasos
+> adicionales.
 
 > La autenticación, usuarios, gestión web, inventario, pedidos, clientes, movimientos y
 > tickets consumen la API y utilizan MySQL como fuente de verdad.

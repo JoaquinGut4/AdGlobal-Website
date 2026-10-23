@@ -297,6 +297,11 @@ def test_inventory_crud(client: TestClient, auth_headers: dict[str, str]) -> Non
     assert listed.status_code == 200
     assert len(listed.json()["items"]) == 1
 
+    scanned = client.get("/api/v1/inventario/por-qr?codigo=QR-LAP-TEST-001", headers=auth_headers)
+    assert scanned.status_code == 200
+    assert scanned.json()["id"] == item_id
+    assert client.get("/api/v1/inventario/por-qr?codigo=QR-NO-EXISTE", headers=auth_headers).status_code == 404
+
     invalid_update = client.put(
         f"/api/v1/inventario/{item_id}",
         json={**payload, "categoriaId": "categoria-inexistente"},

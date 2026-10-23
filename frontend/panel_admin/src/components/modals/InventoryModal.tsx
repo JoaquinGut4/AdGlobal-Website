@@ -463,7 +463,11 @@ export function InventoryModal({
             onClick={() => {
               const next = !isAddingCategory;
               setIsAddingCategory(next);
-              if (next) setNewCategoryBaseFields([...CAMPOS_BASE_OPCIONALES_KEYS]);
+              if (next) {
+                setNewCategoryBaseFields([...CAMPOS_BASE_OPCIONALES_KEYS]);
+                const nextCode = Math.max(0, ...categorias.map((item) => item.codigo)) + 1;
+                setNewCategoryCode(String(nextCode));
+              }
               setCategoryError('');
             }}
             className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-[#2B5C94] transition-colors hover:bg-blue-50"

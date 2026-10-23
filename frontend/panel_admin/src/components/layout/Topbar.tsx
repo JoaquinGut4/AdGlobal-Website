@@ -11,6 +11,7 @@ interface TopbarProps {
   canOpenOrders: boolean;
   pendingOrders: number;
   activeTickets: number;
+  notificationRevision: string;
   onNavigate: (section: AdminSection) => void;
 }
 
@@ -23,12 +24,48 @@ export function Topbar({
   canOpenOrders,
   pendingOrders,
   activeTickets,
+  notificationRevision,
   onNavigate,
 }: TopbarProps) {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const notificationsRef = useRef<HTMLDivElement>(null);
+  const previousNotifications = useRef<number | null>(null);
+  const previousRevision = useRef<string | null>(null);
   const totalNotifications =
     (canOpenOrders ? pendingOrders : 0) + (canOpenTicket ? activeTickets : 0);
+
+  useEffect(() => {
+    const previous = previousNotifications.current;
+    const priorRevision = previousRevision.current;
+    const shouldSound = totalNotifications > 0 && (
+      previous === null || totalNotifications > previous ||
+      (priorRevision !== null && notificationRevision !== '' && notificationRevision !== priorRevision)
+    );
+    previousNotifications.current = totalNotifications;
+    previousRevision.current = notificationRevision;
+    if (!shouldSound) return;
+    try {
+      const AudioContextClass = window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const context = new AudioContextClass();
+      const gain = context.createGain();
+      gain.gain.setValueAtTime(0.0001, context.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.16, context.currentTime + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.55);
+      gain.connect(context.destination);
+      [740, 988].forEach((frequency, index) => {
+        const oscillator = context.createOscillator();
+        oscillator.type = 'sine';
+        oscillator.frequency.value = frequency;
+        oscillator.connect(gain);
+        oscillator.start(context.currentTime + index * 0.13);
+        oscillator.stop(context.currentTime + 0.35 + index * 0.13);
+      });
+      window.setTimeout(() => void context.close(), 800);
+    } catch {
+      // El navegador puede bloquear audio hasta la primera interacción del usuario.
+    }
+  }, [notificationRevision, totalNotifications]);
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
@@ -71,7 +108,7 @@ export function Topbar({
 
       <div className="flex items-center gap-2 sm:gap-3">
         {/* Notification bell */}
-        <div ref={notificationsRef} className="relative">
+        <div ref={notificationsRef} className="relative order-3">
           <button
             type="button"
             onClick={() => setIsNotificationsOpen((current) => !current)}
@@ -179,7 +216,7 @@ export function Topbar({
           type="button"
           onClick={onOpenTicket}
           title="Aperturar ticket para el área de soporte técnico y reparación"
-          className="inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 active:scale-95 text-white text-xs font-bold transition-all shadow-xs cursor-pointer border border-slate-700/80 group shrink-0"
+          className="order-1 inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-900 active:scale-95 text-white text-xs font-bold transition-all shadow-xs cursor-pointer border border-slate-700/80 group shrink-0"
         >
           <Wrench className="w-3.5 h-3.5 text-amber-400 group-hover:rotate-12 transition-transform" />
           <span className="hidden sm:inline">Ticket</span>
@@ -191,7 +228,7 @@ export function Topbar({
           type="button"
           onClick={onOpenOrders}
           title="Pedidos"
-          className="inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-lg bg-[#2B5C94] hover:bg-[#1F4778] active:scale-95 text-white text-xs font-bold transition-all shadow-xs cursor-pointer group shrink-0"
+          className="order-2 inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-lg bg-[#2B5C94] hover:bg-[#1F4778] active:scale-95 text-white text-xs font-bold transition-all shadow-xs cursor-pointer group shrink-0"
         >
           <FileText className="w-3.5 h-3.5 text-blue-200 group-hover:scale-110 transition-transform" />
           <span>Pedidos</span>

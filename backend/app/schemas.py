@@ -419,6 +419,7 @@ class DashboardOut(Schema):
     clientesInactivos: int
     alquileresPorMes: list[dict[str, Any]]
     movimientosRecientes: list[AuditOut]
+    notificacionVersion: str
 
 
 class ServiceIn(Schema):

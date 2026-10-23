@@ -218,6 +218,8 @@ def dashboard(_: AdminUser = Depends(require_module("dashboard")), db: Session =
             "ventas": sum(order.product_quantity for order in rows if order.transfer_reason.startswith("Venta")),
         })
     recent = db.scalars(select(AuditLog).order_by(AuditLog.occurred_at.desc()).limit(10)).all()
+    active_updates = [order.updated_at for order in orders if order.operational_status != "Finalizado"]
+    active_updates.extend(ticket.updated_at for ticket in db.scalars(select(SupportTicket).where(SupportTicket.status != "Resuelto")).all())
     return DashboardOut(
         inventarioTotal=sum(by_status.values()),
         inventarioPorEstado=by_status,
@@ -230,6 +232,7 @@ def dashboard(_: AdminUser = Depends(require_module("dashboard")), db: Session =
         clientesInactivos=sum(not active for active in customer_orders.values()),
         alquileresPorMes=monthly,
         movimientosRecientes=[audit_out(item) for item in recent],
+        notificacionVersion=max(active_updates).isoformat() if active_updates else "",
     )
 
 
@@ -464,6 +467,19 @@ def inventory(
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
     rows = db.scalars(query.order_by(InventoryAsset.sku).offset((page - 1) * page_size).limit(page_size)).all()
     return PaginatedInventoryOut(items=[inventory_out(item) for item in rows], total=total, page=page, pageSize=page_size, pages=max(1, math.ceil(total / page_size)))
+
+
+@router.get("/inventario/por-qr", response_model=InventoryOut)
+def inventory_by_qr(
+    codigo: str = Query(min_length=1, max_length=160),
+    _: AdminUser = Depends(require_any_module("dashboard", "inventario", "pedidos", "tickets")),
+    db: Session = Depends(get_db),
+) -> InventoryOut:
+    normalized = codigo.strip()
+    item = db.scalar(select(InventoryAsset).join(InventoryCategory).where(InventoryAsset.qr == normalized))
+    if item is None:
+        raise HTTPException(404, "No existe un producto asociado a este código QR")
+    return inventory_out(item)
 
 
 @router.post("/inventario/fotos", status_code=201)

@@ -174,6 +174,7 @@ export interface DashboardResumen {
   clientesInactivos: number;
   alquileresPorMes: Array<{ periodo: string; alquiler: number; ventas: number }>;
   movimientosRecientes: MovimientoAuditoria[];
+  notificacionVersion: string;
 }
 
 export type WebImageSection = 'hero' | 'servicio' | 'faq';

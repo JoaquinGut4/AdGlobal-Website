@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { FileText, Lock, Printer, Save } from 'lucide-react';
 import { AdGlobalLogo } from '@/components/AdGlobalLogo';
 import { Modal } from '@/components/ui/Modal';
-import { ADMIN_CONFIG } from '@/config/site';
 import { ApiError, apiRequest } from '@/lib/api';
 import logo from '@/assets/logo/adglobal-logo.png';
 import type { PedidoRegistro } from '@/types';
@@ -181,17 +180,46 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
   };
 
   const descargarPdf = async () => {
-    const response = await fetch(`${ADMIN_CONFIG.apiUrl}/pedidos/${pedido.id}/guia/pdf`, { credentials: 'include' });
-    if (!response.ok) {
-      setStatus('No se pudo descargar el PDF.');
+    const documentBody = previewRef.current?.contentDocument?.body;
+    if (!documentBody) {
+      setStatus('La vista previa aún se está cargando.');
       return;
     }
-    const url = URL.createObjectURL(await response.blob());
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `guia-${numeroGuia}.pdf`;
-    link.click();
-    URL.revokeObjectURL(url);
+    setStatus('Generando PDF con el diseño de la guía...');
+    try {
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf'),
+      ]);
+      const canvas = await html2canvas(documentBody, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        windowWidth: previewRef.current?.contentDocument?.documentElement.scrollWidth,
+      });
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+      const pageWidthMm = 210;
+      const pageHeightMm = 297;
+      const pageHeightPx = Math.floor(canvas.width * pageHeightMm / pageWidthMm);
+      let offset = 0;
+      let page = 0;
+      while (offset < canvas.height) {
+        const sliceHeight = Math.min(pageHeightPx, canvas.height - offset);
+        const pageCanvas = document.createElement('canvas');
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = sliceHeight;
+        pageCanvas.getContext('2d')?.drawImage(canvas, 0, offset, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
+        if (page > 0) pdf.addPage();
+        const renderedHeight = sliceHeight * pageWidthMm / canvas.width;
+        pdf.addImage(pageCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pageWidthMm, renderedHeight, undefined, 'FAST');
+        offset += sliceHeight;
+        page += 1;
+      }
+      pdf.save(`guia-${numeroGuia}.pdf`);
+      setStatus('PDF descargado correctamente.');
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'No se pudo generar el PDF.');
+    }
   };
 
   const imprimirGuia = async () => {

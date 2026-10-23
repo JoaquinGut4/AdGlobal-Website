@@ -2,8 +2,9 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
 from sqlalchemy import text
@@ -49,6 +50,23 @@ app.mount(settings.public_upload_url, StaticFiles(directory=settings.upload_dire
 app.include_router(auth.router, prefix=settings.api_v1_prefix)
 app.include_router(public.router, prefix=settings.api_v1_prefix)
 app.include_router(admin.router, prefix=settings.api_v1_prefix)
+
+# Certificado de la autoridad local de desarrollo: permite descargarlo desde la tablet
+# por HTTP y confiarlo antes de abrir el panel por HTTPS (requisito para usar la cámara).
+DEV_CA_CERTIFICATE = Path(__file__).resolve().parents[2] / ".cert" / "adglobal-dev-ca.crt"
+
+
+if settings.environment == "development":
+
+    @app.get("/dev-ca.crt", include_in_schema=False)
+    def development_certificate() -> FileResponse:
+        if not DEV_CA_CERTIFICATE.exists():
+            raise HTTPException(404, "Certificado de desarrollo no generado")
+        return FileResponse(
+            DEV_CA_CERTIFICATE,
+            media_type="application/x-x509-ca-cert",
+            filename="adglobal-dev-ca.crt",
+        )
 
 
 @app.middleware("http")
