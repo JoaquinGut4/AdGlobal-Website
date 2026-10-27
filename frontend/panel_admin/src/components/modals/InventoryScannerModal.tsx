@@ -11,7 +11,7 @@ interface InventoryScannerModalProps {
   onFound: (registro: InventarioRegistro) => void;
 }
 
-type ScannerStatus = 'idle' | 'requesting' | 'scanning' | 'searching' | 'denied' | 'unavailable' | 'insecure' | 'not-found';
+type ScannerStatus = 'idle' | 'requesting' | 'scanning' | 'decoding' | 'searching' | 'denied' | 'unavailable' | 'insecure' | 'not-found';
 type ScannerControls = { stop: () => void };
 type NativeBarcodeDetector = { detect: (source: ImageBitmapSource) => Promise<Array<{ rawValue: string }>> };
 type NativeBarcodeDetectorConstructor = new (options: { formats: string[] }) => NativeBarcodeDetector;
@@ -20,15 +20,17 @@ const STATUS_TEXT: Record<ScannerStatus, string> = {
   idle: 'Pulsa “Activar cámara” para comenzar.',
   requesting: 'Solicitando permiso para usar la cámara...',
   scanning: 'Apunta la cámara al código QR del producto.',
+  decoding: 'Analizando la foto del código QR...',
   searching: 'Código detectado. Buscando el producto...',
   denied: 'No se concedió permiso para usar la cámara. Puedes ingresar el código manualmente.',
   unavailable: 'No hay una cámara disponible. Puedes ingresar el código manualmente.',
-  insecure: 'La cámara está bloqueada porque el panel se abrió sin HTTPS. Instala el certificado de desarrollo y vuelve a entrar usando https://.',
+  insecure: 'La vista en vivo requiere HTTPS. En esta conexión puedes tomar una foto del QR para identificar el producto.',
   'not-found': 'El QR no pertenece a ningún producto registrado.',
 };
 
 export function InventoryScannerModal({ isOpen, onClose, onFound }: InventoryScannerModalProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const captureInputRef = useRef<HTMLInputElement>(null);
   const controlsRef = useRef<ScannerControls | null>(null);
   const lockedRef = useRef(false);
   const [status, setStatus] = useState<ScannerStatus>('idle');
@@ -135,12 +137,30 @@ export function InventoryScannerModal({ isOpen, onClose, onFound }: InventorySca
     }
   }, [findProduct, stopCamera]);
 
+  const decodeCapturedImage = useCallback(async (file: File) => {
+    lockedRef.current = false;
+    setStatus('decoding');
+    setError('');
+    const imageUrl = URL.createObjectURL(file);
+    try {
+      const { BrowserQRCodeReader } = await import('@zxing/browser');
+      const reader = new BrowserQRCodeReader();
+      const result = await reader.decodeFromImageUrl(imageUrl);
+      await findProduct(result.getText());
+    } catch {
+      setStatus('not-found');
+      setError('No se encontró un código QR legible en la foto. Acércate más y vuelve a intentarlo.');
+    } finally {
+      URL.revokeObjectURL(imageUrl);
+    }
+  }, [findProduct]);
+
   useEffect(() => {
     if (!isOpen) {
       stopCamera();
       return;
     }
-    setStatus('idle');
+    setStatus(window.isSecureContext ? 'idle' : 'insecure');
     setManualCode('');
     setError('');
     lockedRef.current = false;
@@ -181,24 +201,41 @@ export function InventoryScannerModal({ isOpen, onClose, onFound }: InventorySca
           {error || STATUS_TEXT[status]}
         </p>
 
-        {status === 'insecure' && import.meta.env.DEV && (
-          <a
-            href={`http://${window.location.hostname}:8000/dev-ca.crt`}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800"
+        {window.isSecureContext ? (
+          <button
+            type="button"
+            onClick={() => void startCamera()}
+            disabled={status === 'requesting' || status === 'searching' || status === 'decoding'}
+            className="inline-flex w-full touch-manipulation select-none items-center justify-center gap-2 rounded-xl bg-[#2B5C94] px-4 py-3 text-sm font-bold text-white active:scale-[.98] disabled:opacity-50"
           >
-            Descargar certificado de desarrollo para la tablet
-          </a>
+            {status === 'scanning' ? <RefreshCw className="h-4 w-4" /> : <Camera className="h-4 w-4" />}
+            {status === 'scanning' ? 'Reiniciar cámara' : 'Activar cámara'}
+          </button>
+        ) : (
+          <>
+            <input
+              ref={captureInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void decodeCapturedImage(file);
+                event.target.value = '';
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => captureInputRef.current?.click()}
+              disabled={status === 'searching' || status === 'decoding'}
+              className="inline-flex w-full touch-manipulation select-none items-center justify-center gap-2 rounded-xl bg-[#2B5C94] px-4 py-3 text-sm font-bold text-white active:scale-[.98] disabled:opacity-50"
+            >
+              <Camera className="h-4 w-4" />
+              Tomar foto del QR
+            </button>
+          </>
         )}
-
-        <button
-          type="button"
-          onClick={() => void startCamera()}
-          disabled={status === 'requesting' || status === 'searching'}
-          className="inline-flex w-full touch-manipulation select-none items-center justify-center gap-2 rounded-xl bg-[#2B5C94] px-4 py-3 text-sm font-bold text-white active:scale-[.98] disabled:opacity-50"
-        >
-          {status === 'scanning' ? <RefreshCw className="h-4 w-4" /> : <Camera className="h-4 w-4" />}
-          {status === 'scanning' ? 'Reiniciar cámara' : 'Activar cámara'}
-        </button>
 
         <div className="border-t border-slate-200 pt-4">
           <label htmlFor="manual-qr" className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase text-slate-600">
@@ -221,7 +258,7 @@ export function InventoryScannerModal({ isOpen, onClose, onFound }: InventorySca
         </div>
 
         <p className="text-[10px] leading-relaxed text-slate-400">
-          La cámara requiere HTTPS en producción. En desarrollo funciona desde localhost. Al cerrar esta ventana, la cámara se desactiva automáticamente.
+          Con HTTPS se usa el escáner en vivo. En HTTP, la captura abre la cámara nativa y analiza la foto sin mantenerla almacenada.
         </p>
       </div>
     </Modal>
