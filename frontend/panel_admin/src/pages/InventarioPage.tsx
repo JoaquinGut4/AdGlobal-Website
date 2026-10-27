@@ -34,9 +34,11 @@ interface InventarioPageProps {
   filtro: InventarioFiltro;
   onFiltroChange: (filtro: InventarioFiltro) => void;
   registrosInventario: InventarioRegistro[];
+  categoriaActiva: InventarioCategoriaId;
   pagina: number;
   paginas: number;
   totalRegistros: number;
+  onCategoriaChange: (categoriaId: InventarioCategoriaId) => void;
   onPaginaChange: (pagina: number) => void;
   onRefresh: () => void;
   estadosInventario: string[];
@@ -111,7 +113,6 @@ const COLUMNAS_POR_CATEGORIA: Record<InventarioCategoriaBaseId, ColumnaInventari
   ],
   monitores: [
     ...COLUMNAS_COMUNES,
-    { key: 'item', label: 'Item' },
     { key: 'marca', label: 'Marca' },
     { key: 'descripcion', label: 'Descripción del equipo', width: 'min-w-52' },
     { key: 'numeroSerial', label: 'Número serial', width: 'min-w-36' },
@@ -291,7 +292,7 @@ function valorCelda(
   if (campoBase === 'estado') return <EstadoBadge estado={registro.estado} />;
   if (campoBase === 'categoria') return categoriaNombre ?? `Categoría ${registro.categoria}`;
   const value = registro[campoBase];
-  return value === undefined || value === '' ? '—' : String(value);
+  return value === undefined || value === null || value === '' ? '—' : String(value);
 }
 
 function DetallesInventario({
@@ -340,9 +341,11 @@ export function InventarioPage({
   filtro,
   onFiltroChange,
   registrosInventario,
+  categoriaActiva,
   pagina,
   paginas,
   totalRegistros,
+  onCategoriaChange,
   onPaginaChange,
   onRefresh,
   estadosInventario,
@@ -357,7 +360,6 @@ export function InventarioPage({
   onEliminarRegistro,
 }: InventarioPageProps) {
   const [search, setSearch] = useState('');
-  const [categoriaActiva, setCategoriaActiva] = useState<InventarioCategoriaId>('laptops');
   const [estadoActivo, setEstadoActivo] = useState<string>(filtro);
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
   const [isStatusMenuOpen, setIsStatusMenuOpen] = useState(false);
@@ -379,6 +381,8 @@ export function InventarioPage({
     id: `custom:${estado}`,
     label: estado,
   }));
+  const estadosProtegidos = filtrosEstados.filter((item) => esEstadoInmutable(item.label));
+  const estadosEditables = filtrosEstados.filter((item) => !esEstadoInmutable(item.label));
   // Los filtros agrupadores se conservan solo para el Dashboard y las etiquetas.
   const filtrosEstado = [...ESTADOS_BASE, ...filtrosEstados];
   const categoryMenuRef = useRef<HTMLDivElement>(null);
@@ -440,7 +444,7 @@ export function InventarioPage({
 
     onEliminarCategoria(categoriaItem.id);
     if (categoriaActiva === categoriaItem.id) {
-      setCategoriaActiva('laptops');
+      onCategoriaChange('laptops');
       onFiltroChange('all');
     }
     setIsCategoryMenuOpen(false);
@@ -740,7 +744,7 @@ export function InventarioPage({
                           role="menuitemradio"
                           aria-checked={active}
                           onClick={() => {
-                            setCategoriaActiva(item.id);
+                            if (!active) onCategoriaChange(item.id);
                             setIsCategoryMenuOpen(false);
                           }}
                           className={`flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs transition-colors ${
@@ -941,8 +945,24 @@ export function InventarioPage({
                     <span>Todos los estados</span>
                     {estadoActivo === 'all' && <Check className="h-3.5 w-3.5" />}
                   </button>
-                  <div className="mx-1 my-1 border-t border-slate-100" />
-                  {filtrosEstados.map((item) => renderFiltroEstado(item))}
+                  {estadosProtegidos.length > 0 && (
+                    <div role="group" aria-label="Estados protegidos" className="mt-1 border-t border-slate-100 pt-1">
+                      <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                        <LockKeyhole className="h-3 w-3" />
+                        Protegidos · no editables
+                      </div>
+                      {estadosProtegidos.map((item) => renderFiltroEstado(item))}
+                    </div>
+                  )}
+                  {estadosEditables.length > 0 && (
+                    <div role="group" aria-label="Estados editables" className="mt-1 border-t border-slate-100 pt-1">
+                      <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                        <Pencil className="h-3 w-3" />
+                        Editables
+                      </div>
+                      {estadosEditables.map((item) => renderFiltroEstado(item))}
+                    </div>
+                  )}
                 </div>
 
               </div>
@@ -1094,7 +1114,7 @@ export function InventarioPage({
         }}
         onCreate={(registro) => {
           onAgregarRegistro(registro);
-          setCategoriaActiva(registro.categoriaId);
+          onCategoriaChange(registro.categoriaId);
           onFiltroChange('all');
           setSearch('');
           setIsInventoryModalOpen(false);
@@ -1102,7 +1122,7 @@ export function InventarioPage({
         editingRegistro={editingRegistro}
         onUpdate={(registro) => {
           onActualizarRegistro(registro);
-          setCategoriaActiva(registro.categoriaId);
+          onCategoriaChange(registro.categoriaId);
           setEditingRegistro(null);
           setIsInventoryModalOpen(false);
         }}

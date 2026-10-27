@@ -179,13 +179,13 @@ class InventoryStateOut(Schema):
 
 class InventoryIn(Schema):
     categoriaId: str
-    sku: str
-    qr: str
+    sku: str = Field(min_length=1)
+    qr: str = Field(min_length=1)
     foto: str = ""
     item: str | None = None
-    marca: str
-    descripcion: str
-    numeroSerial: str
+    marca: str = ""
+    descripcion: str = ""
+    numeroSerial: str = ""
     procesador: str | None = None
     ghz: str | None = None
     generacion: str | None = None
@@ -194,12 +194,12 @@ class InventoryIn(Schema):
     memoriaInterna: str | None = None
     tipoMemoriaInterna: str | None = None
     modelo: str | None = None
-    fechaCompra: date
-    facturaGuiaCompra: str
-    precio: Decimal = Field(ge=0)
-    proveedor: str
+    fechaCompra: date | None = None
+    facturaGuiaCompra: str = ""
+    precio: Decimal = Field(default=Decimal("0"), ge=0)
+    proveedor: str = ""
     alquiler: bool | str | None = None
-    estado: str
+    estado: str = ""
     observaciones: str = ""
     especificacionesPersonalizadas: dict[str, str] = {}
 

@@ -273,6 +273,85 @@ def test_order_contact_phone_is_saved_and_editable(client: TestClient, auth_head
     assert invalid.status_code == 422
 
 
+def test_shipping_guide_requires_an_active_order(client: TestClient, auth_headers: dict[str, str]) -> None:
+    order_payload = {
+        "fechaEmision": "2026-10-20",
+        "direccionPartida": "Almacén",
+        "direccionLlegada": "Empresa: Cliente SAC · Dirección: Av. Principal 123",
+        "telefonoContacto": "999888777",
+        "descripcionProductos": "LAP-0001 · Laptop",
+        "cantidadProductos": 1,
+        "unidadMedida": "UND",
+        "motivoTraslado": "Alquiler",
+        "observaciones": "",
+    }
+    created = client.post("/api/v1/pedidos", json=order_payload, headers=auth_headers)
+    assert created.status_code == 201, created.text
+    order = created.json()
+
+    lookup = client.get(
+        f"/api/v1/pedidos/por-numero?numero={order['numeroPedido'].lower()}",
+        headers=auth_headers,
+    )
+    assert lookup.status_code == 200, lookup.text
+    assert lookup.json()["id"] == order["id"]
+    assert client.get(
+        "/api/v1/pedidos/por-numero?numero=PED-NO-EXISTE",
+        headers=auth_headers,
+    ).status_code == 404
+
+    guide_payload = {
+        "numeroGuia": "000001",
+        "fechaTraslado": "2026-10-21",
+        "estado": "Borrador",
+        "bienes": [{
+            "descripcion": "LAP-0001 · Laptop",
+            "cantidad": 1,
+            "unidad": "UND",
+            "observaciones": "",
+            "peso": 2.5,
+        }],
+    }
+    guide = client.post(
+        f"/api/v1/pedidos/{order['id']}/guia",
+        json=guide_payload,
+        headers=auth_headers,
+    )
+    assert guide.status_code == 201, guide.text
+
+    updated = client.put(
+        f"/api/v1/pedidos/{order['id']}/guia",
+        json={**guide_payload, "estado": "Emitida"},
+        headers=auth_headers,
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["estado"] == "Emitida"
+
+    finished = client.patch(f"/api/v1/pedidos/{order['id']}/finalizar", headers=auth_headers)
+    assert finished.status_code == 200, finished.text
+
+    blocked_update = client.put(
+        f"/api/v1/pedidos/{order['id']}/guia",
+        json=guide_payload,
+        headers=auth_headers,
+    )
+    assert blocked_update.status_code == 409
+    assert "finalizado" in blocked_update.json()["detail"]
+    assert client.delete(
+        f"/api/v1/pedidos/{order['id']}/guia",
+        headers=auth_headers,
+    ).status_code == 409
+
+    second_order = client.post("/api/v1/pedidos", json=order_payload, headers=auth_headers).json()
+    client.patch(f"/api/v1/pedidos/{second_order['id']}/finalizar", headers=auth_headers)
+    blocked_create = client.post(
+        f"/api/v1/pedidos/{second_order['id']}/guia",
+        json=guide_payload,
+        headers=auth_headers,
+    )
+    assert blocked_create.status_code == 409
+
+
 def test_inventory_crud(client: TestClient, auth_headers: dict[str, str]) -> None:
     payload = {
         "categoriaId": "laptops",
@@ -311,6 +390,46 @@ def test_inventory_crud(client: TestClient, auth_headers: dict[str, str]) -> Non
 
     deleted = client.delete(f"/api/v1/inventario/{item_id}", headers=auth_headers)
     assert deleted.status_code == 204
+
+
+def test_inventory_purchase_date_is_optional(client: TestClient, auth_headers: dict[str, str]) -> None:
+    payload = {
+        "categoriaId": "laptops",
+        "sku": "LAP-SIN-FECHA",
+        "qr": "QR-LAP-SIN-FECHA",
+        "foto": "",
+        "marca": "Lenovo",
+        "descripcion": "Equipo sin fecha de compra",
+        "numeroSerial": "SERIAL-SIN-FECHA",
+        "facturaGuiaCompra": "F001-SF",
+        "precio": 2500,
+        "proveedor": "Proveedor SAC",
+        "estado": "Almacén 1",
+        "observaciones": "",
+    }
+
+    created = client.post("/api/v1/inventario", json=payload, headers=auth_headers)
+    assert created.status_code == 201, created.text
+    assert created.json()["fechaCompra"] is None
+
+
+def test_inventory_only_requires_sku_and_qr(client: TestClient, auth_headers: dict[str, str]) -> None:
+    first = client.post(
+        "/api/v1/inventario",
+        json={"categoriaId": "laptops", "sku": "LAP-MIN-001", "qr": "QR-LAP-MIN-001"},
+        headers=auth_headers,
+    )
+    second = client.post(
+        "/api/v1/inventario",
+        json={"categoriaId": "laptops", "sku": "LAP-MIN-002", "qr": "QR-LAP-MIN-002"},
+        headers=auth_headers,
+    )
+
+    assert first.status_code == 201, first.text
+    assert second.status_code == 201, second.text
+    assert first.json()["numeroSerial"] == ""
+    assert second.json()["numeroSerial"] == ""
+    assert first.json()["precio"] == "0.00"
 
 
 def test_operational_modules_are_persisted_together(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -564,6 +683,21 @@ def test_last_superadmin_cannot_deactivate_itself(client: TestClient, auth_heade
     )
     assert response.status_code == 400, response.text
     assert client.get("/api/v1/auth/me", headers=auth_headers).status_code == 200
+
+
+def test_superadmin_always_keeps_all_current_modules(client: TestClient, auth_headers: dict[str, str]) -> None:
+    from backend.app.schemas import ADMIN_MODULES
+
+    me = client.get("/api/v1/auth/me", headers=auth_headers).json()
+    updated = client.patch(
+        f"/api/v1/usuarios/{me['id']}",
+        headers=auth_headers,
+        json={"modulos": ["dashboard"]},
+    )
+
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["modulos"] == sorted(ADMIN_MODULES)
+    assert client.get("/api/v1/auth/me", headers=auth_headers).json()["modulos"] == sorted(ADMIN_MODULES)
 
 
 def test_password_hash_uses_recommended_work_factor() -> None:

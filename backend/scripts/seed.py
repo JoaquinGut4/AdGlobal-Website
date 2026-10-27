@@ -66,6 +66,13 @@ INVENTORY_STATES = (
 def seed() -> None:
     settings = get_settings()
     with SessionLocal() as db:
+        all_modules = sorted(ADMIN_MODULES)
+        for superadmin in db.scalars(select(AdminUser).where(AdminUser.is_super_admin.is_(True))).all():
+            if sorted(superadmin.modules or []) != all_modules:
+                superadmin.modules = all_modules
+                superadmin.token_version += 1
+                logger.info("Módulos de %s sincronizados con el catálogo actual", superadmin.email)
+
         for category_id, label, code, icon in CATEGORIES:
             if db.get(InventoryCategory, category_id) is None:
                 db.add(InventoryCategory(id=category_id, label=label, code=code, icon_name=icon))
@@ -94,7 +101,7 @@ def seed() -> None:
                     password_hash=hash_password(password),
                     role="Administrador",
                     is_super_admin=True,
-                    modules=sorted(ADMIN_MODULES),
+                    modules=all_modules,
                 )
             )
         db.commit()

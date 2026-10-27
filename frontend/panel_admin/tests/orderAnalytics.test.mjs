@@ -54,24 +54,28 @@ test('agrupa por mes las unidades de alquiler y venta desde los pedidos', () => 
   assert.match(data.subtitle, /^3 pedidos considerados/);
 });
 
-test('incluye semanas sin movimientos y ubica cada pedido en su semana', () => {
-  const data = construirAnaliticaPedidos(pedidos, 'semana', REFERENCIA);
+test('muestra la semana actual de lunes a domingo y agrupa cada día', () => {
+  const pedidosSemana = [
+    pedido('PED-LUN', '2026-10-19', 'Alquiler', 4),
+    pedido('PED-MIE', '2026-10-21', 'Venta', 2),
+    pedido('PED-DOM', '2026-10-25', 'Alquiler', 3),
+    pedido('PED-FUERA', '2026-10-26', 'Venta', 9),
+  ];
+  const data = construirAnaliticaPedidos(pedidosSemana, 'semana', REFERENCIA);
 
-  assert.equal(data.items.length, 6);
-  assert.equal(data.items.at(-1)?.sublabel, '19/10');
-  assert.deepEqual(
-    { alquiler: data.items.find((item) => item.sublabel === '28/09')?.alquiler, ventas: 0 },
-    { alquiler: 60, ventas: 0 },
-  );
+  assert.equal(data.items.length, 7);
+  assert.deepEqual(data.items.map((item) => item.label), ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']);
+  assert.deepEqual(data.items.map((item) => item.sublabel), ['19/10', '20/10', '21/10', '22/10', '23/10', '24/10', '25/10']);
   assert.deepEqual(
     {
-      alquiler: data.items.find((item) => item.sublabel === '14/09')?.alquiler,
-      ventas: data.items.find((item) => item.sublabel === '12/10')?.ventas,
+      lunes: data.items[0].alquiler,
+      miercoles: data.items[2].ventas,
+      domingo: data.items[6].alquiler,
     },
-    { alquiler: 5, ventas: 35 },
+    { lunes: 4, miercoles: 2, domingo: 3 },
   );
-  assert.equal(data.resumen.totalAlquiler, 65);
-  assert.equal(data.resumen.totalVentas, 35);
+  assert.equal(data.resumen.totalAlquiler, 7);
+  assert.equal(data.resumen.totalVentas, 2);
 });
 
 test('agrupa por año y excluye devoluciones, pedidos sin cantidad y fechas inválidas', () => {

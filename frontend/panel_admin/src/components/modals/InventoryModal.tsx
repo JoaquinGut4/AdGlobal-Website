@@ -48,37 +48,33 @@ const BASE_FIELDS: CampoConfig[] = [
   { key: 'sku', label: 'SKU', required: true, placeholder: 'Ej. LAP-0003' },
   { key: 'qr', label: 'Código QR', required: true, placeholder: 'Ej. QR-LAP-0003' },
   { key: 'foto', label: 'Foto del producto', type: 'file', wide: true },
-  { key: 'marca', label: 'Marca', required: true, placeholder: 'Ej. HP, Lenovo, Samsung' },
+  { key: 'marca', label: 'Marca', placeholder: 'Ej. HP, Lenovo, Samsung' },
   {
     key: 'descripcion',
     label: 'Descripción del equipo',
-    required: true,
     placeholder: 'Modelo o línea específica',
     wide: true,
   },
   {
     key: 'numeroSerial',
     label: 'Número serial',
-    required: true,
     placeholder: 'Código único del fabricante',
   },
 ];
 
 const PURCHASE_FIELDS: CampoConfig[] = [
-  { key: 'fechaCompra', label: 'Fecha de compra', type: 'date', required: true },
+  { key: 'fechaCompra', label: 'Fecha de compra', type: 'date' },
   {
     key: 'facturaGuiaCompra',
     label: 'Factura / Guía de compra',
-    required: true,
     placeholder: 'Ej. F001-000123',
   },
-  { key: 'precio', label: 'Precio de compra (S/)', type: 'number', required: true },
-  { key: 'proveedor', label: 'Proveedor', required: true, placeholder: 'Empresa proveedora' },
+  { key: 'precio', label: 'Precio de compra (S/)', type: 'number' },
+  { key: 'proveedor', label: 'Proveedor', placeholder: 'Empresa proveedora' },
   {
     key: 'estado',
     label: 'Estado / Ubicación',
     type: 'select',
-    required: true,
     options: ['Almacén 1', 'Oficina', 'Alquiler', 'Reparación', 'Taller', 'Mantenimiento'],
   },
   {
@@ -119,7 +115,6 @@ const SPECIFIC_FIELDS: Record<InventarioCategoriaBaseId, CampoConfig[]> = {
     },
   ],
   monitores: [
-    { key: 'item', label: 'Item', placeholder: 'Ej. Monitor LED' },
     { key: 'pantalla', label: 'Pantalla', placeholder: 'Ej. 24"' },
     { key: 'alquiler', label: 'Disponible para alquiler', type: 'select', options: ['Sí', 'No'] },
   ],
@@ -394,7 +389,7 @@ export function InventoryModal({
       marca: textValue('marca'),
       descripcion: textValue('descripcion'),
       numeroSerial: textValue('numeroSerial'),
-      fechaCompra: values.fechaCompra ?? '',
+      fechaCompra: values.fechaCompra || null,
       facturaGuiaCompra: textValue('facturaGuiaCompra'),
       precio: Number(values.precio) || 0,
       proveedor: textValue('proveedor'),

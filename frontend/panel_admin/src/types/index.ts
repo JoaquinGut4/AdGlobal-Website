@@ -100,7 +100,7 @@ export interface InventarioRegistro {
   memoriaInterna?: string;
   tipoMemoriaInterna?: string;
   modelo?: string;
-  fechaCompra: string;
+  fechaCompra: string | null;
   facturaGuiaCompra: string;
   precio: number;
   proveedor: string;

@@ -53,6 +53,7 @@ export default function App() {
   const [clientes, setClientes] = useState<ClienteDerivado[]>([]);
   const [dashboard, setDashboard] = useState<DashboardResumen | null>(null);
   const [inventoryCatalog, setInventoryCatalog] = useState<InventarioRegistro[]>([]);
+  const [inventoryCategory, setInventoryCategory] = useState<InventarioCategoria['id']>('laptops');
   const [inventoryPage, setInventoryPage] = useState(1);
   const [inventoryPages, setInventoryPages] = useState(1);
   const [inventoryTotal, setInventoryTotal] = useState(0);
@@ -62,9 +63,14 @@ export default function App() {
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [editingPedido, setEditingPedido] = useState<PedidoRegistro | null>(null);
 
-  const refreshInventory = useCallback(async (page = inventoryPage) => {
+  const refreshInventory = useCallback(async (
+    page = inventoryPage,
+    categoryId = inventoryCategory,
+  ) => {
     const [assets, categories, states] = await Promise.all([
-      apiRequest<PaginatedApi<InventarioRegistro>>(`/inventario?page=${page}&page_size=50`),
+      apiRequest<PaginatedApi<InventarioRegistro>>(
+        `/inventario?category_id=${encodeURIComponent(categoryId)}&page=${page}&page_size=50`,
+      ),
       apiRequest<InventarioCategoria[]>('/inventario/categorias'),
       apiRequest<InventoryStateApi[]>('/inventario/estados'),
     ]);
@@ -73,7 +79,7 @@ export default function App() {
     setInventarioCategorias(categories.filter((category) => category.id.startsWith('custom-')));
     setEstadosInventario(states.map((state) => state.nombre));
     setEstadosTicketEditables(states.filter((state) => !state.inmutable).map((state) => state.nombre));
-  }, [inventoryPage]);
+  }, [inventoryCategory, inventoryPage]);
 
   const loadInventoryCatalog = useCallback(async () => {
     const [response, states] = await Promise.all([
@@ -86,6 +92,10 @@ export default function App() {
 
   const refreshDashboard = useCallback(async () => {
     setDashboard(await apiRequest<DashboardResumen>('/dashboard'));
+  }, []);
+
+  const refreshOrders = useCallback(async () => {
+    setPedidos(await apiRequest<PedidoRegistro[]>('/pedidos'));
   }, []);
 
   const refreshOrdersAndCustomers = useCallback(async () => {
@@ -113,7 +123,7 @@ export default function App() {
   useEffect(() => {
     if (!isAuthenticated || session.modulos.length === 0) return;
     const tasks: Promise<unknown>[] = [];
-    if (activeNav === 'dashboard') tasks.push(refreshDashboard());
+    if (activeNav === 'dashboard') tasks.push(refreshDashboard(), refreshOrders());
     if (activeNav === 'inventario') tasks.push(refreshInventory());
     if (['pedidos', 'clientes', 'tickets'].includes(activeNav)) tasks.push(refreshOrdersAndCustomers());
     if (activeNav === 'movimientos') tasks.push(refreshMovements());
@@ -124,7 +134,7 @@ export default function App() {
         notify(failed.reason instanceof Error ? failed.reason.message : 'No se pudieron cargar los datos operativos.');
       }
     });
-  }, [activeNav, isAuthenticated, loadInventoryCatalog, notify, refreshDashboard, refreshInventory, refreshMovements, refreshOrdersAndCustomers, refreshTickets, session.modulos]);
+  }, [activeNav, isAuthenticated, loadInventoryCatalog, notify, refreshDashboard, refreshInventory, refreshMovements, refreshOrders, refreshOrdersAndCustomers, refreshTickets, session.modulos]);
 
   useEffect(() => {
     if (!isAuthenticated || !session.modulos.includes('dashboard')) return;
@@ -402,7 +412,10 @@ export default function App() {
     switch (activeNav) {
       case 'dashboard':
         return (
-            <DashboardPage resumen={dashboard} />
+            <DashboardPage
+              resumen={dashboard}
+              pedidos={pedidos}
+            />
         );
       case 'inventario':
         return (
@@ -410,9 +423,15 @@ export default function App() {
             filtro={inventarioFiltro}
             onFiltroChange={setInventarioFiltro}
             registrosInventario={inventario}
+            categoriaActiva={inventoryCategory}
             pagina={inventoryPage}
             paginas={inventoryPages}
             totalRegistros={inventoryTotal}
+            onCategoriaChange={(categoryId) => {
+              setInventoryCategory(categoryId);
+              setInventoryPage(1);
+              void refreshInventory(1, categoryId);
+            }}
             onPaginaChange={(page) => void refreshInventory(page)}
             onRefresh={() => void refreshInventory(inventoryPage)}
             estadosInventario={estadosInventario}

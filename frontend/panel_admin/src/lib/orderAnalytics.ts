@@ -11,7 +11,8 @@ interface PeriodoInfo {
 }
 
 const MESES_CORTOS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-const PERIODOS_POR_VISTA: Record<StatsPeriodo, number> = { semana: 6, mes: 6, año: 5 };
+const DIAS_CORTOS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+const PERIODOS_POR_VISTA: Record<StatsPeriodo, number> = { semana: 7, mes: 6, año: 5 };
 const ETIQUETA_PERIODO: Record<StatsPeriodo, string> = { semana: 'Semana', mes: 'Mes', año: 'Año' };
 
 /** Clasifica el pedido según su motivo de traslado. Devoluciones y otros no suman. */
@@ -36,14 +37,6 @@ function inicioSemana(fecha: Date): Date {
   return date;
 }
 
-function semanaISO(fecha: Date): number {
-  const date = new Date(Date.UTC(fecha.getFullYear(), fecha.getMonth(), fecha.getDate()));
-  const day = date.getUTCDay() || 7;
-  date.setUTCDate(date.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-  return Math.ceil(((date.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
-}
-
 function diaCorto(fecha: Date): string {
   return `${String(fecha.getDate()).padStart(2, '0')}/${String(fecha.getMonth() + 1).padStart(2, '0')}`;
 }
@@ -55,12 +48,12 @@ function generarPeriodos(periodo: StatsPeriodo, referencia: Date): PeriodoInfo[]
     const semanaActual = inicioSemana(referencia);
     return Array.from({ length: cantidad }, (_, index) => {
       const inicio = new Date(semanaActual);
-      inicio.setDate(inicio.getDate() - (cantidad - 1 - index) * 7);
+      inicio.setDate(inicio.getDate() + index);
       const fin = new Date(inicio);
-      fin.setDate(fin.getDate() + 7);
+      fin.setDate(fin.getDate() + 1);
       return {
-        key: `semana-${inicio.getFullYear()}-${inicio.getMonth()}-${inicio.getDate()}`,
-        label: `Sem ${semanaISO(inicio)}`,
+        key: `dia-${inicio.getFullYear()}-${inicio.getMonth()}-${inicio.getDate()}`,
+        label: DIAS_CORTOS[index],
         sublabel: diaCorto(inicio),
         inicio,
         fin,

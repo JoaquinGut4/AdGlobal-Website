@@ -41,6 +41,7 @@ from backend.app.models import (
     utcnow,
 )
 from backend.app.schemas import (
+    ADMIN_MODULES,
     AdminUserCreate,
     AdminUserOut,
     AdminUserUpdate,
@@ -103,7 +104,8 @@ def audit(db: Session, user: AdminUser, module: str, action: str, element: str, 
 
 
 def user_out(item: AdminUser) -> AdminUserOut:
-    return AdminUserOut(id=item.id, nombre=item.full_name, email=item.email, usuario=item.username, rol=item.role, telefono=item.phone, activo=item.is_active, modulos=item.modules, superAdmin=item.is_super_admin, createdAt=as_utc(item.created_at))
+    modules = sorted(ADMIN_MODULES) if item.is_super_admin else item.modules
+    return AdminUserOut(id=item.id, nombre=item.full_name, email=item.email, usuario=item.username, rol=item.role, telefono=item.phone, activo=item.is_active, modulos=modules, superAdmin=item.is_super_admin, createdAt=as_utc(item.created_at))
 
 
 def category_out(item: InventoryCategory) -> CategoryOut:
@@ -121,7 +123,7 @@ def inventory_out(item: InventoryAsset) -> InventoryOut:
     return InventoryOut(
         id=item.id, categoriaId=item.category_id, categoria=item.category.code, sku=item.sku, qr=item.qr,
         foto=item.photo_url, item=item.item, marca=item.brand, descripcion=item.description,
-        numeroSerial=item.serial_number, procesador=item.processor, ghz=item.ghz, generacion=item.generation,
+        numeroSerial=item.serial_number or "", procesador=item.processor, ghz=item.ghz, generacion=item.generation,
         pantalla=item.screen, memoriaRam=item.ram, memoriaInterna=item.storage,
         tipoMemoriaInterna=item.storage_type, modelo=item.model, fechaCompra=item.purchase_date,
         facturaGuiaCompra=item.purchase_document, precio=item.price, proveedor=item.supplier,
@@ -243,7 +245,8 @@ def list_users(_: AdminUser = Depends(require_super_admin), db: Session = Depend
 
 @router.post("/usuarios", response_model=AdminUserOut, status_code=201)
 def create_user(payload: AdminUserCreate, actor: AdminUser = Depends(require_super_admin), db: Session = Depends(get_db)) -> AdminUserOut:
-    item = AdminUser(full_name=payload.nombre, email=payload.email.lower(), username=payload.usuario, password_hash=hash_password(payload.password), role=payload.rol, phone=payload.telefono, is_active=payload.activo, is_super_admin=payload.superAdmin, modules=payload.modulos)
+    modules = sorted(ADMIN_MODULES) if payload.superAdmin else payload.modulos
+    item = AdminUser(full_name=payload.nombre, email=payload.email.lower(), username=payload.usuario, password_hash=hash_password(payload.password), role=payload.rol, phone=payload.telefono, is_active=payload.activo, is_super_admin=payload.superAdmin, modules=modules)
     db.add(item)
     audit(db, actor, "Configuración", "Creó", payload.usuario, f"Creó la cuenta administrativa {payload.usuario}.")
     try:
@@ -283,7 +286,10 @@ def update_user(user_id: str, payload: AdminUserUpdate, actor: AdminUser = Depen
     if "rol" in changes: item.role = changes["rol"]
     if "telefono" in changes: item.phone = changes["telefono"]
     if "activo" in changes: item.is_active = changes["activo"]
-    if "modulos" in changes: item.modules = changes["modulos"]
+    if item.is_super_admin:
+        item.modules = sorted(ADMIN_MODULES)
+    elif "modulos" in changes:
+        item.modules = changes["modulos"]
     if before != (item.email, item.username, item.password_hash, item.role, item.modules, item.is_active):
         item.token_version += 1
     audit(db, actor, "Configuración", "Editó", item.username, f"Actualizó la cuenta {item.username}.")
@@ -518,7 +524,7 @@ def remove_inventory_photo(url: str) -> None:
 
 def apply_inventory(item: InventoryAsset, payload: InventoryIn) -> None:
     item.category_id = payload.categoriaId; item.sku = payload.sku; item.qr = payload.qr; item.photo_url = payload.foto
-    item.item = payload.item; item.brand = payload.marca; item.description = payload.descripcion; item.serial_number = payload.numeroSerial
+    item.item = payload.item; item.brand = payload.marca; item.description = payload.descripcion; item.serial_number = payload.numeroSerial.strip() or None
     item.processor = payload.procesador; item.ghz = payload.ghz; item.generation = payload.generacion; item.screen = payload.pantalla
     item.ram = payload.memoriaRam; item.storage = payload.memoriaInterna; item.storage_type = payload.tipoMemoriaInterna; item.model = payload.modelo
     item.purchase_date = payload.fechaCompra; item.purchase_document = payload.facturaGuiaCompra; item.price = payload.precio
@@ -532,7 +538,7 @@ def apply_inventory(item: InventoryAsset, payload: InventoryIn) -> None:
 @router.post("/inventario", response_model=InventoryOut, status_code=201)
 def create_inventory(payload: InventoryIn, actor: AdminUser = Depends(require_module("inventario")), db: Session = Depends(get_db)) -> InventoryOut:
     if db.get(InventoryCategory, payload.categoriaId) is None: raise HTTPException(422, "Categoría inexistente")
-    if db.get(InventoryState, payload.estado) is None: raise HTTPException(422, "Estado de inventario inexistente")
+    if payload.estado and db.get(InventoryState, payload.estado) is None: raise HTTPException(422, "Estado de inventario inexistente")
     item = InventoryAsset(); apply_inventory(item, payload); db.add(item)
     audit(db, actor, "Inventario", "Agregó", payload.sku, f"Agregó el producto {payload.sku} · {payload.descripcion}.")
     try: db.commit()
@@ -545,7 +551,7 @@ def update_inventory(item_id: str, payload: InventoryIn, actor: AdminUser = Depe
     item = db.get(InventoryAsset, item_id)
     if item is None: raise HTTPException(404, "Activo no encontrado")
     if db.get(InventoryCategory, payload.categoriaId) is None: raise HTTPException(422, "Categoría inexistente")
-    if db.get(InventoryState, payload.estado) is None: raise HTTPException(422, "Estado de inventario inexistente")
+    if payload.estado and db.get(InventoryState, payload.estado) is None: raise HTTPException(422, "Estado de inventario inexistente")
     old_photo = item.photo_url
     apply_inventory(item, payload); audit(db, actor, "Inventario", "Modificó", payload.sku, f"Modificó el producto {payload.sku}.")
     try: db.commit()
@@ -643,6 +649,19 @@ def derived_customers(
 @router.get("/pedidos", response_model=list[OrderOut])
 def orders(_: AdminUser = Depends(require_any_module("dashboard", "pedidos", "clientes", "tickets")), db: Session = Depends(get_db)) -> list[OrderOut]:
     return [order_out(item) for item in db.scalars(select(Order).order_by(Order.issue_date.desc(), Order.order_number.desc())).all()]
+
+
+@router.get("/pedidos/por-numero", response_model=OrderOut)
+def order_by_number(
+    numero: str = Query(min_length=1, max_length=30),
+    _: AdminUser = Depends(require_module("pedidos")),
+    db: Session = Depends(get_db),
+) -> OrderOut:
+    normalized = numero.strip().upper()
+    item = db.scalar(select(Order).where(func.upper(Order.order_number) == normalized))
+    if item is None:
+        raise HTTPException(404, "No se encontró un pedido con este número")
+    return order_out(item)
 
 
 def next_order_number(db: Session) -> str:
@@ -799,6 +818,15 @@ def apply_guide(item: ShippingGuide, payload: ShippingGuideIn, db: Session) -> N
         item.items.append(ShippingGuideItem(description=row.descripcion, quantity=row.cantidad, unit=row.unidad, notes=row.observaciones, weight=row.peso, sort_order=index))
 
 
+def active_order_for_guide(item_id: str, db: Session) -> Order:
+    order = db.get(Order, item_id)
+    if order is None:
+        raise HTTPException(404, "Pedido no encontrado")
+    if order.operational_status == "Finalizado":
+        raise HTTPException(409, "El pedido está finalizado. No se puede aperturar ni editar su guía de remisión")
+    return order
+
+
 @router.get("/pedidos/{item_id}/guia", response_model=ShippingGuideOut)
 def get_shipping_guide(item_id: str, _: AdminUser = Depends(require_module("pedidos")), db: Session = Depends(get_db)) -> ShippingGuideOut:
     item = db.scalar(select(ShippingGuide).where(ShippingGuide.order_id == item_id))
@@ -808,8 +836,7 @@ def get_shipping_guide(item_id: str, _: AdminUser = Depends(require_module("pedi
 
 @router.post("/pedidos/{item_id}/guia", response_model=ShippingGuideOut, status_code=201)
 def create_shipping_guide(item_id: str, payload: ShippingGuideIn, actor: AdminUser = Depends(require_module("pedidos")), db: Session = Depends(get_db)) -> ShippingGuideOut:
-    order = db.get(Order, item_id)
-    if order is None: raise HTTPException(404, "Pedido no encontrado")
+    order = active_order_for_guide(item_id, db)
     if db.scalar(select(ShippingGuide).where(ShippingGuide.order_id == item_id)) is not None: raise HTTPException(409, "El pedido ya tiene una guía")
     item = ShippingGuide(order_id=item_id, guide_number=payload.numeroGuia, transfer_date=payload.fechaTraslado)
     apply_guide(item, payload, db); db.add(item)
@@ -819,6 +846,7 @@ def create_shipping_guide(item_id: str, payload: ShippingGuideIn, actor: AdminUs
 
 @router.put("/pedidos/{item_id}/guia", response_model=ShippingGuideOut)
 def update_shipping_guide(item_id: str, payload: ShippingGuideIn, actor: AdminUser = Depends(require_module("pedidos")), db: Session = Depends(get_db)) -> ShippingGuideOut:
+    active_order_for_guide(item_id, db)
     item = db.scalar(select(ShippingGuide).where(ShippingGuide.order_id == item_id))
     if item is None: raise HTTPException(404, "Guía no encontrada")
     apply_guide(item, payload, db)
@@ -828,6 +856,7 @@ def update_shipping_guide(item_id: str, payload: ShippingGuideIn, actor: AdminUs
 
 @router.delete("/pedidos/{item_id}/guia", status_code=204)
 def delete_shipping_guide(item_id: str, actor: AdminUser = Depends(require_module("pedidos")), db: Session = Depends(get_db)) -> None:
+    active_order_for_guide(item_id, db)
     item = db.scalar(select(ShippingGuide).where(ShippingGuide.order_id == item_id))
     if item is None: raise HTTPException(404, "Guía no encontrada")
     audit(db, actor, "Pedidos", "Eliminó", f"Guía {item.guide_number}", "Eliminó la guía de remisión.")

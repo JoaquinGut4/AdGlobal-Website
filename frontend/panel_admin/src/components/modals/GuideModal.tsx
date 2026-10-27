@@ -11,7 +11,6 @@ interface GuideModalProps {
   pedido: PedidoRegistro | null;
   onClose: () => void;
 }
-
 const FIELD_CLASS =
   'w-full rounded-lg border border-slate-300 px-2.5 py-2 text-xs focus:border-[#2B5C94] focus:outline-none focus:ring-1 focus:ring-[#2B5C94]';
 
@@ -158,6 +157,9 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
   };
 
   const guardar = async (estado: 'Borrador' | 'Emitida') => {
+    if (soloLectura) {
+      throw new Error('El pedido está finalizado. No se puede aperturar ni editar su guía de remisión.');
+    }
     try {
       await apiRequest(`/pedidos/${pedido.id}/guia`, { method: 'PUT', body: JSON.stringify(payloadGuia(estado)) });
     } catch (error) {
@@ -180,8 +182,9 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
   };
 
   const descargarPdf = async () => {
-    const documentBody = previewRef.current?.contentDocument?.body;
-    if (!documentBody) {
+    const previewDocument = previewRef.current?.contentDocument;
+    const guidePage = previewDocument?.querySelector<HTMLElement>('.guide');
+    if (!previewDocument || !guidePage) {
       setStatus('La vista previa aún se está cargando.');
       return;
     }
@@ -191,30 +194,32 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
         import('html2canvas'),
         import('jspdf'),
       ]);
-      const canvas = await html2canvas(documentBody, {
+      const canvas = await html2canvas(guidePage, {
         scale: 2,
         useCORS: true,
         backgroundColor: '#ffffff',
-        windowWidth: previewRef.current?.contentDocument?.documentElement.scrollWidth,
+        windowWidth: previewDocument.documentElement.scrollWidth,
       });
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [210, 297], compress: true });
       const pageWidthMm = 210;
       const pageHeightMm = 297;
-      const pageHeightPx = Math.floor(canvas.width * pageHeightMm / pageWidthMm);
-      let offset = 0;
-      let page = 0;
-      while (offset < canvas.height) {
-        const sliceHeight = Math.min(pageHeightPx, canvas.height - offset);
-        const pageCanvas = document.createElement('canvas');
-        pageCanvas.width = canvas.width;
-        pageCanvas.height = sliceHeight;
-        pageCanvas.getContext('2d')?.drawImage(canvas, 0, offset, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
-        if (page > 0) pdf.addPage();
-        const renderedHeight = sliceHeight * pageWidthMm / canvas.width;
-        pdf.addImage(pageCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pageWidthMm, renderedHeight, undefined, 'FAST');
-        offset += sliceHeight;
-        page += 1;
-      }
+      const pageMarginMm = 7;
+      const contentWidthMm = pageWidthMm - pageMarginMm * 2;
+      const contentHeightMm = pageHeightMm - pageMarginMm * 2;
+      const scale = Math.min(contentWidthMm / canvas.width, contentHeightMm / canvas.height);
+      const renderedWidth = canvas.width * scale;
+      const renderedHeight = canvas.height * scale;
+      const horizontalOffset = (pageWidthMm - renderedWidth) / 2;
+      pdf.addImage(
+        canvas.toDataURL('image/jpeg', 0.92),
+        'JPEG',
+        horizontalOffset,
+        pageMarginMm,
+        renderedWidth,
+        renderedHeight,
+        undefined,
+        'FAST',
+      );
       pdf.save(`guia-${numeroGuia}.pdf`);
       setStatus('PDF descargado correctamente.');
     } catch (error) {
@@ -223,6 +228,10 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
   };
 
   const imprimirGuia = async () => {
+    if (soloLectura) {
+      setStatus('El pedido está finalizado. No se puede aperturar ni editar su guía de remisión.');
+      return;
+    }
     if (!formRef.current) return;
     if (!formRef.current.reportValidity()) {
       setStatus('Completa los campos obligatorios antes de imprimir.');
@@ -272,7 +281,7 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
     const html = `<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><title>Guía ${value('numero_guia')}</title>
 <style>
-@page{size:A4 portrait;margin:7mm}*{box-sizing:border-box}body{margin:0;background:#fff;font-family:Arial,sans-serif;color:#183b6a;font-size:9px}.guide{width:100%;min-height:276mm;border:1.5px solid #285a97;padding:6mm;position:relative}.header{display:grid;grid-template-columns:1.15fr .85fr;gap:8px;align-items:stretch}.company{display:grid;grid-template-columns:170px 1fr;gap:9px;align-items:center}.logo{max-width:165px;filter:brightness(0) saturate(100%) invert(34%) sepia(18%) saturate(2026%) hue-rotate(171deg) brightness(89%) contrast(91%)}.company-info{text-align:center;font-weight:700;line-height:1.35}.services{border:1px dashed #285a97;border-radius:7px;padding:5px;margin-bottom:5px;text-align:left;font-size:8px}.docbox{border:2px solid #285a97;border-radius:10px;overflow:hidden;text-align:center}.ruc{font-size:20px;font-weight:900;padding:11px}.doctype{background:#285a97;color:#fff;padding:10px;font-size:15px;font-weight:900}.number{padding:11px;font-size:18px;font-weight:900;color:#c63d3d}.number strong{color:#285a97}.dates{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:7px}.date{display:grid;grid-template-columns:120px 1fr;border:1.5px solid #285a97;border-radius:6px;overflow:hidden}.date b{background:#285a97;color:#fff;padding:7px;text-transform:uppercase}.date span{padding:7px;color:#222}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:7px}.box{border:1.5px solid #285a97;border-radius:8px;overflow:hidden;min-height:59px}.box h3,.goods h3,.bottom h3{margin:0;background:#285a97;color:#fff;text-align:center;text-transform:uppercase;letter-spacing:.5px;padding:5px;font-size:10px}.box-content{padding:7px;color:#222;line-height:1.55;white-space:pre-wrap}.line{border-bottom:1px dotted #667992;min-height:17px;padding:2px 0}.goods{border:1.5px solid #285a97;border-radius:8px;overflow:hidden;margin-top:7px}.goods table{width:100%;border-collapse:collapse;color:#222}.goods .filler td{padding:0}.goods thead{display:table-header-group}.goods th{background:#285a97;color:#fff;padding:5px;border-right:1px solid #fff;text-transform:uppercase}.goods td{border-right:1px solid #285a97;padding:7px;vertical-align:top}.goods tfoot td{border-top:1.5px solid #285a97;background:#eef2f7;font-weight:700}.bottom-grid{display:grid;grid-template-columns:.8fr 1.2fr;gap:7px;margin-top:7px}.bottom{border:1.5px solid #285a97;border-radius:8px;overflow:hidden}.bottom-content{padding:7px;color:#222}.reason-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 10px}.reason{display:flex;gap:5px;align-items:flex-start;line-height:1.2}.check{width:12px;height:12px;border:1px solid #285a97;display:inline-flex;align-items:center;justify-content:center;font-weight:900;flex:none}.signatures{display:grid;grid-template-columns:1fr 1fr;gap:60px;margin:18mm 20mm 0;text-align:center;color:#183b6a;font-weight:700}.signature{border-top:1px solid #183b6a;padding-top:5px}.foot{margin-top:8px;text-align:center;font-size:7px;color:#777}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}.goods tr,.signatures{page-break-inside:avoid}}
+@page{size:210mm 297mm;margin:0}*{box-sizing:border-box}html,body{width:210mm;min-height:297mm;margin:0}body{padding:7mm;background:#fff;font-family:Arial,sans-serif;color:#183b6a;font-size:9px}.guide{width:100%;min-height:283mm;border:1.5px solid #285a97;padding:6mm;position:relative}.header{display:grid;grid-template-columns:1.15fr .85fr;gap:8px;align-items:stretch}.company{display:grid;grid-template-columns:170px 1fr;gap:9px;align-items:center}.logo{max-width:165px;filter:brightness(0) saturate(100%) invert(34%) sepia(18%) saturate(2026%) hue-rotate(171deg) brightness(89%) contrast(91%)}.company-info{text-align:center;font-weight:700;line-height:1.35}.services{border:1px dashed #285a97;border-radius:7px;padding:5px;margin-bottom:5px;text-align:left;font-size:8px}.docbox{border:2px solid #285a97;border-radius:10px;overflow:hidden;text-align:center}.ruc{font-size:20px;font-weight:900;padding:11px}.doctype{background:#285a97;color:#fff;padding:10px;font-size:15px;font-weight:900}.number{padding:11px;font-size:18px;font-weight:900;color:#c63d3d}.number strong{color:#285a97}.dates{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:7px}.date{display:grid;grid-template-columns:120px 1fr;border:1.5px solid #285a97;border-radius:6px;overflow:hidden}.date b{background:#285a97;color:#fff;padding:7px;text-transform:uppercase}.date span{padding:7px;color:#222}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:7px}.box{border:1.5px solid #285a97;border-radius:8px;overflow:hidden;min-height:59px}.box h3,.goods h3,.bottom h3{margin:0;background:#285a97;color:#fff;text-align:center;text-transform:uppercase;letter-spacing:.5px;padding:5px;font-size:10px}.box-content{padding:7px;color:#222;line-height:1.55;white-space:pre-wrap}.line{border-bottom:1px dotted #667992;min-height:17px;padding:2px 0}.goods{border:1.5px solid #285a97;border-radius:8px;overflow:hidden;margin-top:7px}.goods table{width:100%;border-collapse:collapse;color:#222}.goods .filler td{padding:0}.goods thead{display:table-header-group}.goods th{background:#285a97;color:#fff;padding:5px;border-right:1px solid #fff;text-transform:uppercase}.goods td{border-right:1px solid #285a97;padding:7px;vertical-align:top}.goods tfoot td{border-top:1.5px solid #285a97;background:#eef2f7;font-weight:700}.bottom-grid{display:grid;grid-template-columns:.8fr 1.2fr;gap:7px;margin-top:7px}.bottom{border:1.5px solid #285a97;border-radius:8px;overflow:hidden}.bottom-content{padding:7px;color:#222}.reason-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 10px}.reason{display:flex;gap:5px;align-items:flex-start;line-height:1.2}.check{width:12px;height:12px;border:1px solid #285a97;display:inline-flex;align-items:center;justify-content:center;font-weight:900;flex:none}.signatures{display:grid;grid-template-columns:1fr 1fr;gap:60px;margin:18mm 20mm 0;text-align:center;color:#183b6a;font-weight:700}.signature{border-top:1px solid #183b6a;padding-top:5px}.foot{margin-top:8px;text-align:center;font-size:7px;color:#777}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}.goods tr,.signatures{page-break-inside:avoid}}
 </style></head><body><main class="guide">
 <section class="header"><div class="company"><img class="logo" src="${escapeHtml(logoUrl)}"><div class="company-info"><div class="services">Tecnología de Información<br>Sistemas Audiovisuales<br>Pantallas LED Gigantes<br>Computadoras y Portátiles<br>Impresoras y Proyectores Multimedia</div>Av. Húsares de Junín 527, Jesús María – Lima – Lima<br>Telf: 01-7353734 · Cel: 957586421 / 944825839<br>E-mail: atencionalcliente@adglobal.com</div></div><div class="docbox"><div class="ruc">RUC 20602583849</div><div class="doctype">GUÍA DE REMISIÓN - REMITENTE</div><div class="number"><strong>0001 -</strong> N° ${value('numero_guia')}</div></div></section>
 <section class="dates"><div class="date"><b>Fecha de emisión</b><span>${value('fecha_emision')}</span></div><div class="date"><b>Inicio del traslado</b><span>${value('fecha_traslado')}</span></div></section>
@@ -286,7 +295,7 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
       .replace(/<script[\s\S]*?<\/script>/gi, '')
       .replace(
         '</head>',
-        '<style>@media screen{html,body{background:#e5e7eb}body{max-width:210mm;margin:0 auto;padding:12px}}</style></head>',
+        '<style>@media screen{html{background:#e5e7eb}body{max-width:210mm;margin:0 auto;padding:7mm;background:#fff;box-shadow:0 8px 30px rgba(15,23,42,.16)}}</style></head>',
       );
     setPreviewHtml(preview);
     setStatus('Vista previa generada. Revisa el documento y usa «Imprimir / Guardar PDF».');
@@ -330,7 +339,7 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
               Guardar borrador
             </button>
           )}
-          <button type="button" onClick={() => void imprimirGuia()} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">
+          <button type="button" onClick={() => void imprimirGuia()} disabled={soloLectura} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400">
             <Printer className="h-3.5 w-3.5" />
             Imprimir / PDF
           </button>
@@ -376,7 +385,15 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             <GuideSection title="Fechas del documento">
               <GuideField label="Fecha de emisión">
-                <input type="date" name="fecha_emision" defaultValue={pedido.fechaEmision} readOnly={soloLectura} className={fieldClass} />
+                <input
+                  type="date"
+                  name="fecha_emision"
+                  value={pedido.fechaEmision}
+                  readOnly
+                  aria-readonly="true"
+                  title="La fecha de emisión corresponde a la fecha de creación del pedido"
+                  className={`${FIELD_CLASS} cursor-not-allowed bg-slate-100 text-slate-600`}
+                />
               </GuideField>
               <GuideField label="Inicio del traslado">
                 <input type="date" name="fecha_traslado" value={fechaTraslado} onChange={(event) => setFechaTraslado(event.target.value)} readOnly={soloLectura} className={fieldClass} />

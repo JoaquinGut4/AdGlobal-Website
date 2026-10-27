@@ -15,13 +15,14 @@ from backend.app.core.security import (
     verify_dummy_password,
 )
 from backend.app.models import AdminUser, utcnow
-from backend.app.schemas import LoginRequest, RefreshRequest, SessionUser, TokenResponse
+from backend.app.schemas import ADMIN_MODULES, LoginRequest, RefreshRequest, SessionUser, TokenResponse
 
 
 router = APIRouter(prefix="/auth", tags=["Autenticación"])
 
 
 def session_user(user: AdminUser) -> SessionUser:
+    modules = sorted(ADMIN_MODULES) if user.is_super_admin else user.modules
     return SessionUser(
         id=user.id,
         email=user.email,
@@ -29,7 +30,7 @@ def session_user(user: AdminUser) -> SessionUser:
         nombre=user.full_name,
         rol=user.role,
         telefono=user.phone,
-        modulos=user.modules,
+        modulos=modules,
         superAdmin=user.is_super_admin,
     )
 
