@@ -80,6 +80,8 @@ export interface InventarioCategoria {
   camposPersonalizados?: InventarioCampoPersonalizado[];
 }
 
+export type InventarioUbicacion = 'Almacén 1' | 'Almacén 2' | 'Almacén 3' | 'Taller';
+
 /** Registro individual de un activo. Los campos opcionales dependen de su categoría. */
 export interface InventarioRegistro {
   id: string;
@@ -105,6 +107,7 @@ export interface InventarioRegistro {
   precio: number;
   proveedor: string;
   alquiler?: string;
+  ubicacion: InventarioUbicacion;
   estado: string;
   observaciones: string;
   especificacionesPersonalizadas?: Record<string, string>;
@@ -165,6 +168,13 @@ export interface MovimientoAuditoria {
 export interface DashboardResumen {
   inventarioTotal: number;
   inventarioPorEstado: Record<string, number>;
+  inventarioPorUbicacion: Array<{
+    ubicacion: InventarioUbicacion;
+    total: number;
+    disponibles: number;
+    alquiler: number;
+    mantenimiento: number;
+  }>;
   pedidosTotal: number;
   pedidosActivos: number;
   pedidosFinalizados: number;

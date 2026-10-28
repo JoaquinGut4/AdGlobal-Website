@@ -370,11 +370,22 @@ def test_inventory_crud(client: TestClient, auth_headers: dict[str, str]) -> Non
     }
     created = client.post("/api/v1/inventario", json=payload, headers=auth_headers)
     assert created.status_code == 201
+    assert created.json()["ubicacion"] == "Almacén 1"
     item_id = created.json()["id"]
 
     listed = client.get("/api/v1/inventario?search=LAP-TEST", headers=auth_headers)
     assert listed.status_code == 200
     assert len(listed.json()["items"]) == 1
+
+    updated_location = client.put(
+        f"/api/v1/inventario/{item_id}",
+        json={**payload, "ubicacion": "Taller"},
+        headers=auth_headers,
+    )
+    assert updated_location.status_code == 200
+    assert updated_location.json()["ubicacion"] == "Taller"
+    by_location = client.get("/api/v1/inventario?ubicacion=Taller", headers=auth_headers)
+    assert any(item["id"] == item_id for item in by_location.json()["items"])
 
     scanned = client.get("/api/v1/inventario/por-qr?codigo=QR-LAP-TEST-001", headers=auth_headers)
     assert scanned.status_code == 200
@@ -390,6 +401,38 @@ def test_inventory_crud(client: TestClient, auth_headers: dict[str, str]) -> Non
 
     deleted = client.delete(f"/api/v1/inventario/{item_id}", headers=auth_headers)
     assert deleted.status_code == 204
+
+
+def test_dashboard_groups_real_inventory_by_location(client: TestClient, auth_headers: dict[str, str]) -> None:
+    assets = (
+        ("DASH-001", "Almacén 1", "Disponible"),
+        ("DASH-002", "Almacén 2", "Alquiler"),
+        ("DASH-003", "Taller", "Reparación"),
+    )
+    for sku, location, status in assets:
+        created = client.post(
+            "/api/v1/inventario",
+            json={
+                "categoriaId": "laptops",
+                "sku": sku,
+                "qr": f"QR-{sku}",
+                "ubicacion": location,
+                "estado": status,
+            },
+            headers=auth_headers,
+        )
+        assert created.status_code == 201, created.text
+
+    response = client.get("/api/v1/dashboard", headers=auth_headers)
+    assert response.status_code == 200, response.text
+    dashboard = response.json()
+    assert dashboard["inventarioTotal"] == 3
+    assert dashboard["inventarioPorUbicacion"] == [
+        {"ubicacion": "Almacén 1", "total": 1, "disponibles": 1, "alquiler": 0, "mantenimiento": 0},
+        {"ubicacion": "Almacén 2", "total": 1, "disponibles": 0, "alquiler": 1, "mantenimiento": 0},
+        {"ubicacion": "Almacén 3", "total": 0, "disponibles": 0, "alquiler": 0, "mantenimiento": 0},
+        {"ubicacion": "Taller", "total": 1, "disponibles": 0, "alquiler": 0, "mantenimiento": 1},
+    ]
 
 
 def test_inventory_purchase_date_is_optional(client: TestClient, auth_headers: dict[str, str]) -> None:

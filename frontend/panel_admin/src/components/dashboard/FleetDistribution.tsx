@@ -121,7 +121,7 @@ export function FleetDistribution({ registrosInventario, onVerFiltro }: FleetDis
     <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
       <div className="px-5 py-3.5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-slate-50/70 via-white to-slate-50/40">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-[#2B5C94]/10 text-[#2B5C94] flex items-center justify-center font-bold">
+          <div className="w-8 h-8 rounded-lg bg-brand/10 text-brand flex items-center justify-center font-bold">
             <Layers className="w-4 h-4" />
           </div>
           <div>
@@ -129,7 +129,7 @@ export function FleetDistribution({ registrosInventario, onVerFiltro }: FleetDis
               <h2 className="text-sm font-bold text-slate-900 tracking-tight">
                 Distribución de Equipos en Flota
               </h2>
-              <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-[#2B5C94] border border-blue-200">
+              <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-brand-soft text-brand border border-highlight/65">
                 Total: {flota.total} unidades
               </span>
             </div>
@@ -142,7 +142,7 @@ export function FleetDistribution({ registrosInventario, onVerFiltro }: FleetDis
         <button
           type="button"
           onClick={() => onVerFiltro('all')}
-          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#2B5C94]/10 hover:bg-[#2B5C94] text-[#2B5C94] hover:text-white text-xs font-bold transition-all cursor-pointer self-start sm:self-auto group"
+          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-brand/10 hover:bg-brand text-brand hover:text-white text-xs font-bold transition-all cursor-pointer self-start sm:self-auto group"
         >
           <span>Ir a Control de Inventario</span>
           <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
@@ -159,14 +159,14 @@ export function FleetDistribution({ registrosInventario, onVerFiltro }: FleetDis
           percentLabel={`${pctAlquiler}%`}
           footerLeft={flota.alquiler > 0 ? 'Servicios de alquiler' : 'Sin equipos en alquiler'}
           footerRight="En campo y eventos"
-          boxHover="hover:border-[#2B5C94]"
-          iconIdle="bg-blue-50 text-[#2B5C94] border-blue-100"
-          iconHover="group-hover:bg-[#2B5C94] group-hover:text-white"
-          badge="bg-blue-50 text-[#2B5C94] border-blue-200"
-          barFill="bg-[#2B5C94]"
-          labelHover="group-hover:text-[#2B5C94]"
-          footerAccent="text-[#2B5C94]"
-          linkColor="text-[#2B5C94] group-hover:text-[#1F4778]"
+          boxHover="hover:border-brand"
+          iconIdle="bg-brand-soft text-brand border-highlight/35"
+          iconHover="group-hover:bg-brand group-hover:text-white"
+          badge="bg-brand-soft text-brand border-highlight/65"
+          barFill="bg-brand"
+          labelHover="group-hover:text-brand"
+          footerAccent="text-brand"
+          linkColor="text-brand group-hover:text-brand-deep"
           onClick={() => onVerFiltro('alquiler')}
         />
 
@@ -179,14 +179,14 @@ export function FleetDistribution({ registrosInventario, onVerFiltro }: FleetDis
           percentLabel={`${pctOficina}%`}
           footerLeft={flota.oficina > 0 ? 'Listos para entrega' : 'Sin equipos en oficina'}
           footerRight="Almacén central"
-          boxHover="hover:border-emerald-500"
-          iconIdle="bg-emerald-50 text-emerald-600 border-emerald-100"
-          iconHover="group-hover:bg-emerald-600 group-hover:text-white"
-          badge="bg-emerald-50 text-emerald-700 border-emerald-200"
-          barFill="bg-emerald-600"
-          labelHover="group-hover:text-emerald-700"
-          footerAccent="text-emerald-700"
-          linkColor="text-emerald-700 group-hover:text-emerald-800"
+          boxHover="hover:border-success"
+          iconIdle="bg-success/10 text-success border-success/20"
+          iconHover="group-hover:bg-success group-hover:text-white"
+          badge="bg-success/10 text-success border-success/30"
+          barFill="bg-success"
+          labelHover="group-hover:text-success"
+          footerAccent="text-success"
+          linkColor="text-success group-hover:text-success"
           onClick={() => onVerFiltro('oficina')}
         />
 
@@ -199,14 +199,14 @@ export function FleetDistribution({ registrosInventario, onVerFiltro }: FleetDis
           percentLabel={`${pctTaller}%`}
           footerLeft={flota.taller > 0 ? 'En revisión técnica' : 'Sin equipos en taller'}
           footerRight="Laboratorio & calibración"
-          boxHover="hover:border-amber-500"
-          iconIdle="bg-amber-50 text-amber-600 border-amber-100"
-          iconHover="group-hover:bg-amber-600 group-hover:text-white"
-          badge="bg-amber-50 text-amber-700 border-amber-200"
-          barFill="bg-amber-500"
-          labelHover="group-hover:text-amber-700"
-          footerAccent="text-amber-700"
-          linkColor="text-amber-700 group-hover:text-amber-800"
+          boxHover="hover:border-warning"
+          iconIdle="bg-warning/10 text-warning border-warning/20"
+          iconHover="group-hover:bg-warning group-hover:text-white"
+          badge="bg-warning/10 text-warning border-warning/30"
+          barFill="bg-warning"
+          labelHover="group-hover:text-warning"
+          footerAccent="text-warning"
+          linkColor="text-warning group-hover:text-warning"
           onClick={() => onVerFiltro('taller')}
         />
       </div>

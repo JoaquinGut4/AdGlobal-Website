@@ -9,7 +9,7 @@ interface ProgressBarProps {
 
 export function ProgressBar({
   percent,
-  fillClass = 'bg-[#2B5C94]',
+  fillClass = 'bg-brand',
   className = 'h-1.5 bg-slate-100',
 }: ProgressBarProps) {
   const safePercent = Math.max(0, Math.min(100, percent));

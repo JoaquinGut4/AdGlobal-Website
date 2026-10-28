@@ -53,7 +53,7 @@ export default function App() {
   const [clientes, setClientes] = useState<ClienteDerivado[]>([]);
   const [dashboard, setDashboard] = useState<DashboardResumen | null>(null);
   const [inventoryCatalog, setInventoryCatalog] = useState<InventarioRegistro[]>([]);
-  const [inventoryCategory, setInventoryCategory] = useState<InventarioCategoria['id']>('laptops');
+  const [inventoryCategory, setInventoryCategory] = useState<InventarioCategoria['id'] | 'all'>('all');
   const [inventoryPage, setInventoryPage] = useState(1);
   const [inventoryPages, setInventoryPages] = useState(1);
   const [inventoryTotal, setInventoryTotal] = useState(0);
@@ -67,9 +67,10 @@ export default function App() {
     page = inventoryPage,
     categoryId = inventoryCategory,
   ) => {
+    const categoryQuery = categoryId === 'all' ? '' : `&category_id=${encodeURIComponent(categoryId)}`;
     const [assets, categories, states] = await Promise.all([
       apiRequest<PaginatedApi<InventarioRegistro>>(
-        `/inventario?category_id=${encodeURIComponent(categoryId)}&page=${page}&page_size=50`,
+        `/inventario?page=${page}&page_size=50${categoryQuery}`,
       ),
       apiRequest<InventarioCategoria[]>('/inventario/categorias'),
       apiRequest<InventoryStateApi[]>('/inventario/estados'),
@@ -78,7 +79,7 @@ export default function App() {
     setInventoryPage(assets.page); setInventoryPages(assets.pages); setInventoryTotal(assets.total);
     setInventarioCategorias(categories.filter((category) => category.id.startsWith('custom-')));
     setEstadosInventario(states.map((state) => state.nombre));
-    setEstadosTicketEditables(states.filter((state) => !state.inmutable).map((state) => state.nombre));
+    setEstadosTicketEditables(states.filter((state) => !state.inmutable || state.nombre === 'Disponible').map((state) => state.nombre));
   }, [inventoryCategory, inventoryPage]);
 
   const loadInventoryCatalog = useCallback(async () => {
@@ -86,7 +87,7 @@ export default function App() {
       apiRequest<PaginatedApi<InventarioRegistro>>('/inventario?page=1&page_size=1000'),
       apiRequest<InventoryStateApi[]>('/inventario/estados'),
     ]);
-    setEstadosTicketEditables(states.filter((state) => !state.inmutable).map((state) => state.nombre));
+    setEstadosTicketEditables(states.filter((state) => !state.inmutable || state.nombre === 'Disponible').map((state) => state.nombre));
     const rows = response.items.map(inventoryFromApi); setInventoryCatalog(rows); return rows;
   }, []);
 
@@ -415,6 +416,7 @@ export default function App() {
             <DashboardPage
               resumen={dashboard}
               pedidos={pedidos}
+              onNavigate={navegar}
             />
         );
       case 'inventario':

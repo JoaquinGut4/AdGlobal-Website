@@ -83,7 +83,7 @@ export function ClientesChart({ pedidos, onVerDirectorio }: ClientesChartProps) 
       <section className="rounded-2xl border border-slate-200/90 bg-white p-6 shadow-xs sm:p-7">
         <div className="flex flex-col gap-3 border-b border-slate-100 pb-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 font-bold text-[#2B5C94]">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-soft font-bold text-brand">
               <Users className="h-4 w-4" />
             </div>
             <div>
@@ -99,8 +99,8 @@ export function ClientesChart({ pedidos, onVerDirectorio }: ClientesChartProps) 
             </div>
           </div>
 
-          <span className="inline-flex items-center gap-1.5 self-start rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 sm:self-auto">
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          <span className="inline-flex items-center gap-1.5 self-start rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[11px] font-bold text-success sm:self-auto">
+            <span className="h-1.5 w-1.5 rounded-full bg-success" />
             {activos} activos · {inactivos} inactivos
           </span>
         </div>
@@ -160,7 +160,7 @@ export function ClientesChart({ pedidos, onVerDirectorio }: ClientesChartProps) 
                             ? donutCompleto()
                             : segmentoDonut(ANGULO_INICIO, anguloActivoFin)
                         }
-                        fill="#10b981"
+                        fill="#1E8E5A"
                         fillRule="evenodd"
                         opacity={hover === 'Activo' ? 0.8 : 1}
                         className="cursor-pointer transition-opacity duration-200"
@@ -201,24 +201,24 @@ export function ClientesChart({ pedidos, onVerDirectorio }: ClientesChartProps) 
               type="button"
               onClick={() => abrirRelacion('Activo')}
               disabled={activos === 0}
-              className="group flex cursor-pointer flex-col rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 text-left transition-all hover:border-emerald-400 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-2"
+              className="group flex cursor-pointer flex-col rounded-xl border border-success/30 bg-success/10 p-4 text-left transition-all hover:border-success hover:bg-success/10 disabled:cursor-not-allowed disabled:opacity-50 sm:col-span-2"
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-200 bg-white text-emerald-600">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-success/30 bg-white text-success">
                     <UserCheck className="h-4 w-4" />
                   </span>
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Clientes activos</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-success">Clientes activos</p>
                     <p className="text-[11px] text-slate-500">Con al menos un pedido vigente</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="text-right">
                     <span className="block text-2xl font-black text-slate-900">{activos}</span>
-                    <span className="text-[10px] font-bold text-emerald-700">{pctActivos}%</span>
+                    <span className="text-[10px] font-bold text-success">{pctActivos}%</span>
                   </div>
-                  <ChevronRight className="h-4 w-4 text-emerald-600 transition-transform group-hover:translate-x-0.5" />
+                  <ChevronRight className="h-4 w-4 text-success transition-transform group-hover:translate-x-0.5" />
                 </div>
               </div>
             </button>
@@ -266,7 +266,7 @@ export function ClientesChart({ pedidos, onVerDirectorio }: ClientesChartProps) 
             <button
               type="button"
               onClick={onVerDirectorio}
-              className="group inline-flex cursor-pointer items-center gap-1 self-start text-xs font-bold text-[#2B5C94] hover:text-[#1F4778] sm:self-auto"
+              className="group inline-flex cursor-pointer items-center gap-1 self-start text-xs font-bold text-brand hover:text-brand-deep sm:self-auto"
             >
               <span>Ver directorio de clientes</span>
               <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
@@ -282,7 +282,7 @@ export function ClientesChart({ pedidos, onVerDirectorio }: ClientesChartProps) 
         title={tituloRelacion}
         subtitle={`${clientesDelEstado.length} ${clientesDelEstado.length === 1 ? 'cliente' : 'clientes'} · ${porcentajeRelacion}% del total · desde pedidos`}
         icon={estadoAbierto === 'Activo' ? <UserCheck className="h-4 w-4" /> : <UserX className="h-4 w-4" />}
-        headerClass={estadoAbierto === 'Activo' ? 'bg-emerald-600' : 'bg-slate-600'}
+        headerClass={estadoAbierto === 'Activo' ? 'bg-success' : 'bg-slate-600'}
         panelClass="max-w-4xl"
       >
         <div className="flex min-h-0 flex-1 flex-col bg-slate-50/70">
@@ -296,7 +296,7 @@ export function ClientesChart({ pedidos, onVerDirectorio }: ClientesChartProps) 
                 onChange={(event) => setBusqueda(event.target.value)}
                 placeholder="Buscar cliente, ubicación, teléfono o número de pedido..."
                 aria-label="Buscar dentro de la relación de clientes"
-                className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs focus:border-[#2B5C94] focus:outline-none"
+                className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs focus:border-brand focus:outline-none"
               />
             </div>
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
@@ -308,7 +308,7 @@ export function ClientesChart({ pedidos, onVerDirectorio }: ClientesChartProps) 
                 <button
                   type="button"
                   onClick={() => setBusqueda('')}
-                  className="cursor-pointer font-semibold text-[#2B5C94] hover:underline"
+                  className="cursor-pointer font-semibold text-brand hover:underline"
                 >
                   Limpiar búsqueda
                 </button>
@@ -345,7 +345,7 @@ export function ClientesChart({ pedidos, onVerDirectorio }: ClientesChartProps) 
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-600">
                     {visibles.map((cliente) => (
-                      <tr key={cliente.id} className="align-top hover:bg-blue-50/30">
+                      <tr key={cliente.id} className="align-top hover:bg-brand-soft/30">
                         <td className="min-w-44 px-4 py-3">
                           <p className="font-bold text-slate-800">{cliente.nombre}</p>
                           <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">

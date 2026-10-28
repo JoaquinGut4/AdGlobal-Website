@@ -199,7 +199,8 @@ class InventoryIn(Schema):
     precio: Decimal = Field(default=Decimal("0"), ge=0)
     proveedor: str = ""
     alquiler: bool | str | None = None
-    estado: str = ""
+    ubicacion: Literal["Almacén 1", "Almacén 2", "Almacén 3", "Taller"] = "Almacén 1"
+    estado: str = "Disponible"
     observaciones: str = ""
     especificacionesPersonalizadas: dict[str, str] = {}
 
@@ -407,9 +408,18 @@ class FAQOut(FAQIn):
     id: str
 
 
+class InventoryLocationSummary(Schema):
+    ubicacion: Literal["Almacén 1", "Almacén 2", "Almacén 3", "Taller"]
+    total: int
+    disponibles: int
+    alquiler: int
+    mantenimiento: int
+
+
 class DashboardOut(Schema):
     inventarioTotal: int
     inventarioPorEstado: dict[str, int]
+    inventarioPorUbicacion: list[InventoryLocationSummary]
     pedidosTotal: int
     pedidosActivos: int
     pedidosFinalizados: int

@@ -64,7 +64,7 @@ export function PreguntasEditor() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-bold text-slate-900">Preguntas frecuentes</h3>
-        <div className="flex gap-2"><button onClick={() => void load()} className="rounded-lg border p-2 text-slate-500"><RefreshCw className="h-4 w-4" /></button><button onClick={() => void add()} className="inline-flex items-center gap-1.5 rounded-lg bg-[#2B5C94] px-3 py-2 text-xs font-bold text-white"><Plus className="h-3.5 w-3.5" />Agregar</button></div>
+        <div className="flex gap-2"><button onClick={() => void load()} className="rounded-lg border p-2 text-slate-500"><RefreshCw className="h-4 w-4" /></button><button onClick={() => void add()} className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-xs font-bold text-white"><Plus className="h-3.5 w-3.5" />Agregar</button></div>
       </div>
       {faqs.map((faq) => (
         <article key={faq.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
@@ -74,8 +74,8 @@ export function PreguntasEditor() {
             <div className="flex items-center gap-4">
               <label className="flex items-center gap-2 text-xs font-bold text-slate-600"><input type="checkbox" checked={faq.isActive} onChange={(e) => setFaqs(cur => cur.map(f => f.id === faq.id ? { ...f, isActive: e.target.checked } : f))} /> Activa</label>
               <label className="text-xs font-bold text-slate-600">Orden<input type="number" className="ml-2 w-20 rounded-lg border px-2 py-1 text-xs" value={faq.sortOrder} onChange={(e) => setFaqs(cur => cur.map(f => f.id === faq.id ? { ...f, sortOrder: Number(e.target.value) || 0 } : f))} /></label>
-              <button onClick={() => void save(faq)} className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-[#2B5C94] px-4 py-2 text-xs font-bold text-white"><Save className="h-3.5 w-3.5" />Guardar</button>
-              <button onClick={() => void remove(faq)} className="rounded-lg border border-rose-200 bg-rose-50 p-2 text-rose-600"><Trash2 className="h-4 w-4" /></button>
+              <button onClick={() => void save(faq)} className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-xs font-bold text-white"><Save className="h-3.5 w-3.5" />Guardar</button>
+              <button onClick={() => void remove(faq)} className="rounded-lg border border-danger/30 bg-danger/10 p-2 text-danger"><Trash2 className="h-4 w-4" /></button>
             </div>
           </div>
         </article>

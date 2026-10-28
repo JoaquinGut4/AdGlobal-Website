@@ -36,9 +36,9 @@ def database():
             )
         )
         db.add(InventoryCategory(id="laptops", label="Laptops", code=1, icon_name="laptop"))
-        states = ("Almacén 1", "Oficina", "Alquiler", "Taller", "Venta", "Diagnóstico", "Reparación", "Reemplazo requerido", "Reservado para reemplazo", "Baja")
+        states = ("Disponible", "Almacén 1", "Oficina", "Alquiler", "Taller", "Venta", "Diagnóstico", "Reparación", "Reemplazo requerido", "Reservado para reemplazo", "Baja")
         for order, state in enumerate(states):
-            db.add(InventoryState(name=state, is_immutable=state in {"Alquiler", "Taller", "Venta", "Diagnóstico", "Reparación", "Reemplazo requerido", "Reservado para reemplazo", "Baja"}, sort_order=order))
+            db.add(InventoryState(name=state, is_immutable=state in {"Disponible", "Alquiler", "Taller", "Venta", "Diagnóstico", "Reparación", "Reemplazo requerido", "Reservado para reemplazo", "Baja"}, sort_order=order))
         db.add(Service(id="laptops-computadores", title="Laptops y computadoras", category="Cómputo", description="Servicio de prueba"))
         db.commit()
     yield

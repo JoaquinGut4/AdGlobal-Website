@@ -53,7 +53,7 @@ export function AdminLayout({
   };
 
   return (
-    <div className="min-h-screen bg-[#F0F2F5] text-slate-800 flex font-sans antialiased">
+    <div className="min-h-screen bg-slate-50 text-ink flex font-sans antialiased selection:bg-highlight/40">
       <Sidebar
         activeNav={activeNav}
         onNavigate={handleNavigate}
@@ -74,6 +74,7 @@ export function AdminLayout({
       >
         <Topbar
           title={current.title}
+          description={current.description}
           onToggleSidebar={() => setIsSidebarOpen(true)}
           onOpenTicket={onOpenTicket}
           onOpenOrders={onOpenOrders}
@@ -85,7 +86,7 @@ export function AdminLayout({
           onNavigate={handleNavigate}
         />
 
-        <main className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl w-full mx-auto">{children}</main>
+        <main className="w-full max-w-[1440px] flex-1 space-y-6 p-4 sm:p-6 lg:p-7 mx-auto">{children}</main>
       </div>
     </div>
   );

@@ -49,6 +49,7 @@ SERVICES = (
 )
 
 INVENTORY_STATES = (
+    ("Disponible", True),
     ("Almacén 1", False),
     ("Oficina", False),
     ("Alquiler", True),
@@ -78,8 +79,12 @@ def seed() -> None:
                 db.add(InventoryCategory(id=category_id, label=label, code=code, icon_name=icon))
 
         for order, (name, immutable) in enumerate(INVENTORY_STATES):
-            if db.get(InventoryState, name) is None:
+            existing_state = db.get(InventoryState, name)
+            if existing_state is None:
                 db.add(InventoryState(name=name, is_immutable=immutable, sort_order=order))
+            else:
+                existing_state.is_immutable = immutable
+                existing_state.sort_order = order
 
         for order, (service_id, title, category) in enumerate(SERVICES):
             if db.get(Service, service_id) is None:

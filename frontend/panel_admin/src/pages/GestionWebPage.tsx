@@ -29,7 +29,7 @@ const SECTIONS: Array<{ id: WebImageSection; label: string; description: string 
 ];
 
 const FIELD_CLASS =
-  'w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#2B5C94]';
+  'w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand';
 
 const API_ORIGIN = ADMIN_CONFIG.apiUrl.replace(/\/api\/v1\/?$/, '');
 
@@ -198,7 +198,7 @@ export function GestionWebPage() {
       <div className="border-b border-slate-200 pb-4">
         <div className="flex flex-wrap items-center gap-2.5">
           <h2 className="text-xl font-bold tracking-tight text-slate-900">Gestión de contenido de la web</h2>
-          <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-[#2B5C94]">
+          <span className="rounded-full border border-highlight/65 bg-brand-soft px-2.5 py-0.5 text-xs font-bold text-brand">
             {assets.length} archivos administrados
           </span>
         </div>
@@ -209,7 +209,7 @@ export function GestionWebPage() {
 
       <div className="flex flex-wrap gap-2">
         {([['medios', 'Multimedia'], ['servicios', 'Servicios'], ['contenido', 'Contenido'], ['preguntas', 'Preguntas']] as Array<[GestionTab, string]>).map(([id, label]) => (
-          <button key={id} type="button" onClick={() => setTab(id)} className={`rounded-lg px-3 py-2 text-xs font-bold ${tab === id ? 'bg-[#2B5C94] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{label}</button>
+          <button key={id} type="button" onClick={() => setTab(id)} className={`rounded-lg px-3 py-2 text-xs font-bold ${tab === id ? 'bg-brand text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>{label}</button>
         ))}
       </div>
 
@@ -229,12 +229,12 @@ export function GestionWebPage() {
               onClick={() => setSection(item.id)}
               className={`cursor-pointer rounded-xl border p-4 text-left transition-all ${
                 active
-                  ? 'border-[#2B5C94] bg-blue-50/80 ring-2 ring-[#2B5C94]/20'
-                  : 'border-slate-200 bg-white hover:border-blue-300'
+                  ? 'border-brand bg-brand-soft/80 ring-2 ring-brand/20'
+                  : 'border-slate-200 bg-white hover:border-brand/50'
               }`}
             >
               <div className="flex items-center justify-between">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-blue-100 bg-blue-50 text-[#2B5C94]">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-highlight/35 bg-brand-soft text-brand">
                   {item.id === 'hero' ? <Globe className="h-4 w-4" /> : <Images className="h-4 w-4" />}
                 </div>
                 <span className="text-2xl font-black text-slate-900">{total}</span>
@@ -257,13 +257,13 @@ export function GestionWebPage() {
               <select
                 value={serviceId}
                 onChange={(event) => setServiceId(event.target.value)}
-                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 focus:border-[#2B5C94] focus:outline-none"
+                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 focus:border-brand focus:outline-none"
               >
                 {SERVICES.map((service) => <option key={service.id} value={service.id}>{service.label}</option>)}
               </select>
             )}
             <label className={`inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-lg px-3.5 text-xs font-bold text-white ${
-              processing ? 'cursor-not-allowed bg-slate-400' : 'bg-[#2B5C94] hover:bg-[#1F4778]'
+              processing ? 'cursor-not-allowed bg-slate-400' : 'bg-brand hover:bg-brand-deep'
             }`}>
               <ImagePlus className="h-4 w-4" />
               {processing ? 'Subiendo...' : 'Agregar imágenes o videos'}
@@ -283,12 +283,12 @@ export function GestionWebPage() {
         </div>
 
         {message && (
-          <div className="border-b border-emerald-100 bg-emerald-50/60 px-4 py-2 text-xs font-semibold text-emerald-700">
+          <div className="border-b border-success/20 bg-success/10 px-4 py-2 text-xs font-semibold text-success">
             {message}
           </div>
         )}
         {error && (
-          <div className="border-b border-rose-100 bg-rose-50/60 px-4 py-2 text-xs font-semibold text-rose-700">
+          <div className="border-b border-danger/20 bg-danger/10 px-4 py-2 text-xs font-semibold text-danger">
             {error}
           </div>
         )}
@@ -331,7 +331,7 @@ export function GestionWebPage() {
                         {video ? 'Video' : 'Imagen'} {index + 1}
                       </span>
                       {!asset.isActive && (
-                        <span className="absolute right-2 top-2 rounded-md bg-amber-500 px-2 py-1 text-[10px] font-bold text-white">
+                        <span className="absolute right-2 top-2 rounded-md bg-warning px-2 py-1 text-[10px] font-bold text-white">
                           Oculto
                         </span>
                       )}
@@ -348,7 +348,7 @@ export function GestionWebPage() {
                         <button
                           type="button"
                           onClick={() => openEdit(asset)}
-                          className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-bold text-[#2B5C94] hover:bg-blue-100"
+                          className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-highlight/65 bg-brand-soft px-2 py-1 text-[10px] font-bold text-brand hover:bg-highlight/25"
                         >
                           <Pencil className="h-3 w-3" />
                           Editar
@@ -357,7 +357,7 @@ export function GestionWebPage() {
                           type="button"
                           onClick={() => void removeAsset(asset)}
                           aria-label={`Eliminar ${asset.name}`}
-                          className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-[10px] font-bold text-rose-700 hover:bg-rose-100"
+                          className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-danger/30 bg-danger/10 px-2 py-1 text-[10px] font-bold text-danger hover:bg-danger/15"
                         >
                           <Trash2 className="h-3 w-3" />
                           Eliminar
@@ -380,7 +380,7 @@ export function GestionWebPage() {
         title="Editar archivo multimedia"
         subtitle="Cambia el nombre, sección, servicio u orden de publicación"
         icon={<Film className="h-4 w-4" />}
-        headerClass="bg-[#2B5C94]"
+        headerClass="bg-brand"
         panelClass="max-w-xl"
       >
         <form onSubmit={saveEdit} className="flex-1 space-y-4 overflow-y-auto p-6">
@@ -427,7 +427,7 @@ export function GestionWebPage() {
           </label>
 
           {editError && (
-            <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+            <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs font-semibold text-danger">
               {editError}
             </p>
           )}
@@ -436,7 +436,7 @@ export function GestionWebPage() {
             <button type="button" onClick={closeEdit} className="cursor-pointer rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100">
               Cancelar
             </button>
-            <button type="submit" className="cursor-pointer rounded-xl bg-[#2B5C94] px-5 py-2 text-xs font-bold text-white hover:bg-[#1F4778]">
+            <button type="submit" className="cursor-pointer rounded-xl bg-brand px-5 py-2 text-xs font-bold text-white hover:bg-brand-deep">
               Guardar cambios
             </button>
           </div>

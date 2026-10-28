@@ -66,7 +66,7 @@ export function ServiciosEditor() {
             <div className="flex items-center gap-4 sm:col-span-2">
               <label className="flex items-center gap-2 text-xs font-bold text-slate-600"><input type="checkbox" checked={service.activo} onChange={(e) => setServices(cur => cur.map(s => s.id === service.id ? { ...s, activo: e.target.checked } : s))} /> Activo</label>
               <label className="text-xs font-bold text-slate-600">Orden<input type="number" className="ml-2 w-20 rounded-lg border px-2 py-1 text-xs" value={service.orden} onChange={(e) => setServices(cur => cur.map(s => s.id === service.id ? { ...s, orden: Number(e.target.value) || 0 } : s))} /></label>
-              <button onClick={() => void save(service)} className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-[#2B5C94] px-4 py-2 text-xs font-bold text-white"><Save className="h-3.5 w-3.5" />Guardar</button>
+              <button onClick={() => void save(service)} className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-xs font-bold text-white"><Save className="h-3.5 w-3.5" />Guardar</button>
             </div>
           </div>
         </article>

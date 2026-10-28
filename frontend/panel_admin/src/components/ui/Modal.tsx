@@ -9,7 +9,7 @@ interface ModalProps {
   title: string;
   subtitle?: string;
   icon: ReactNode;
-  /** Clases de color del encabezado (ej. "bg-[#2B5C94]"). */
+  /** Clases de color del encabezado (ej. "bg-brand"). */
   headerClass?: string;
   /** Ancho máximo u otras clases del panel. */
   panelClass?: string;
@@ -23,7 +23,7 @@ export function Modal({
   title,
   subtitle,
   icon,
-  headerClass = 'bg-[#2B5C94]',
+  headerClass = 'bg-brand',
   panelClass = 'max-w-lg',
   children,
 }: ModalProps) {

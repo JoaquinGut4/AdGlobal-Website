@@ -45,7 +45,7 @@ const PRIORIDADES: { value: TicketPrioridad; label: string }[] = [
 ];
 
 const FIELD_CLASS =
-  'w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#2B5C94] bg-white font-medium';
+  'w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand bg-white font-medium';
 
 function normalizarTelefonoWhatsApp(telefono: string) {
   const digits = telefono.replace(/\D/g, '');
@@ -239,7 +239,7 @@ export function TicketModal({ isOpen, onClose, onCreate, pedidos, estadosDisponi
                 setSubmitError('');
               }}
               className={`rounded-lg px-3 py-2 text-xs font-bold transition-colors ${tipoTicket === tab.id
-                ? 'bg-white text-[#2B5C94] shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                ? 'bg-white text-brand shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
             >
               {tab.label}
             </button>
@@ -247,10 +247,10 @@ export function TicketModal({ isOpen, onClose, onCreate, pedidos, estadosDisponi
         </div>
 
         {tipoTicket === 'pedido' ? (
-          <div role="tabpanel" className="space-y-3 rounded-xl border border-blue-100 bg-blue-50/40 p-4">
+          <div role="tabpanel" className="space-y-3 rounded-xl border border-highlight/35 bg-brand-soft/40 p-4">
             <div>
               <label htmlFor="ticket-order" className="mb-1 block text-xs font-bold uppercase text-slate-600">
-                Número de pedido <span className="text-rose-500">*</span>
+                Número de pedido <span className="text-danger">*</span>
               </label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -278,9 +278,9 @@ export function TicketModal({ isOpen, onClose, onCreate, pedidos, estadosDisponi
                           setPedidoId(order.id);
                           setPedidoSearch(order.numeroPedido);
                         }}
-                        className="block w-full rounded-md px-3 py-2 text-left text-xs hover:bg-blue-50"
+                        className="block w-full rounded-md px-3 py-2 text-left text-xs hover:bg-brand-soft"
                       >
-                        <span className="block font-bold text-[#2B5C94]">{order.numeroPedido}</span>
+                        <span className="block font-bold text-brand">{order.numeroPedido}</span>
                         <span className="block truncate text-slate-500">
                           {parseDireccionLlegada(order.direccionLlegada).destinatario || 'Sin cliente'} · {order.estadoPedido ?? 'Activo'}
                         </span>
@@ -312,7 +312,7 @@ export function TicketModal({ isOpen, onClose, onCreate, pedidos, estadosDisponi
               />
             </div>
             {selectedOrder && (!cliente || !telefonoContacto || !direccionPedido) && (
-              <p className="text-[11px] font-semibold text-amber-700">
+              <p className="text-[11px] font-semibold text-warning">
                 Este pedido no tiene cliente, número de contacto o dirección. Complétalo en Pedidos antes de crear el ticket.
               </p>
             )}
@@ -320,7 +320,7 @@ export function TicketModal({ isOpen, onClose, onCreate, pedidos, estadosDisponi
         ) : (
           <div role="tabpanel">
             <label htmlFor="ticket-inventory-status" className="mb-1 block text-xs font-bold uppercase text-slate-600">
-              Estado <span className="text-rose-500">*</span>
+              Estado <span className="text-danger">*</span>
             </label>
             <select
               id="ticket-inventory-status"
@@ -344,7 +344,7 @@ export function TicketModal({ isOpen, onClose, onCreate, pedidos, estadosDisponi
           </select>
         </div>
 
-        <p className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] font-semibold text-[#2B5C94]">
+        <p className="rounded-lg border border-highlight/35 bg-brand-soft px-3 py-2 text-[11px] font-semibold text-brand">
           Los equipos afectados se seleccionarán después desde “Gestionar flujo”.
         </p>
 
@@ -368,7 +368,7 @@ export function TicketModal({ isOpen, onClose, onCreate, pedidos, estadosDisponi
           </p>
           {loadingTecnicos && <p className="mt-1 text-[10px] text-slate-500">Consultando usuarios de soporte...</p>}
           {!loadingTecnicos && tecnicos.length === 0 && (
-            <p className="mt-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] font-semibold text-amber-700">
+            <p className="mt-1 rounded-lg border border-warning/30 bg-warning/10 px-2.5 py-2 text-[11px] font-semibold text-warning">
               No hay usuarios activos con rol Soporte. Crea uno en Configuración para poder aperturar tickets.
             </p>
           )}
@@ -376,7 +376,7 @@ export function TicketModal({ isOpen, onClose, onCreate, pedidos, estadosDisponi
 
         <div>
           <label className="mb-1 block text-xs font-bold uppercase text-slate-600">
-            Descripción del problema o solicitud técnica <span className="text-rose-500">*</span>
+            Descripción del problema o solicitud técnica <span className="text-danger">*</span>
           </label>
           <textarea
             rows={4}
@@ -389,7 +389,7 @@ export function TicketModal({ isOpen, onClose, onCreate, pedidos, estadosDisponi
         </div>
 
         {submitError && (
-          <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+          <p role="alert" className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs font-semibold text-danger">
             {submitError}
           </p>
         )}
@@ -403,7 +403,7 @@ export function TicketModal({ isOpen, onClose, onCreate, pedidos, estadosDisponi
             disabled={isSubmitting || loadingTecnicos || tecnicos.length === 0}
             className="flex cursor-pointer items-center gap-1.5 rounded-xl bg-slate-900 px-5 py-2 text-xs font-bold text-white shadow-sm hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Wrench className="h-3.5 w-3.5 text-amber-400" />
+            <Wrench className="h-3.5 w-3.5 text-warning" />
             {isSubmitting ? 'Aperturando...' : 'Aperturar ticket'}
           </button>
         </div>

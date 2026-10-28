@@ -32,7 +32,7 @@ export function ClientesPage({ clientes }: ClientesPageProps) {
           <h2 className="text-xl font-bold tracking-tight text-slate-900">
             Directorio de Clientes Corporativos
           </h2>
-          <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-[#2B5C94]">
+          <span className="rounded-full border border-highlight/65 bg-brand-soft px-2.5 py-0.5 text-xs font-bold text-brand">
             {clientes.length} clientes desde pedidos
           </span>
         </div>
@@ -48,15 +48,15 @@ export function ClientesPage({ clientes }: ClientesPageProps) {
           onClick={() => setEstadoFiltro(estadoFiltro === 'Activo' ? 'Todos' : 'Activo')}
           className={`cursor-pointer rounded-xl border p-4 text-left transition-all ${
             estadoFiltro === 'Activo'
-              ? 'border-emerald-500 bg-emerald-50/80 ring-2 ring-emerald-500/20'
-              : 'border-slate-200 bg-white hover:border-emerald-300'
+              ? 'border-success bg-success/10 ring-2 ring-success/20'
+              : 'border-slate-200 bg-white hover:border-success/50'
           }`}
         >
           <div className="flex items-center justify-between">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 text-emerald-700">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-success/20 bg-success/10 text-success">
               <UserCheck className="h-4 w-4" />
             </div>
-            <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-bold text-emerald-700">
+            <span className="rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[11px] font-bold text-success">
               {porcentajeActivos}% del total
             </span>
           </div>
@@ -97,7 +97,7 @@ export function ClientesPage({ clientes }: ClientesPageProps) {
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Buscar cliente, ubicación, teléfono o pedido..."
-              className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs focus:border-[#2B5C94] focus:outline-none"
+              className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs focus:border-brand focus:outline-none"
             />
           </div>
           <div className="flex items-center gap-1.5">
@@ -108,7 +108,7 @@ export function ClientesPage({ clientes }: ClientesPageProps) {
                 onClick={() => setEstadoFiltro(estado)}
                 className={`cursor-pointer rounded-lg px-3 py-1.5 text-xs font-semibold ${
                   estadoFiltro === estado
-                    ? 'bg-[#2B5C94] text-white shadow-2xs'
+                    ? 'bg-brand text-white shadow-2xs'
                     : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 }`}
               >
@@ -144,7 +144,7 @@ export function ClientesPage({ clientes }: ClientesPageProps) {
                   </td>
                 </tr>
               ) : visibles.map((cliente) => (
-                <tr key={cliente.id} className="align-top hover:bg-blue-50/30">
+                <tr key={cliente.id} className="align-top hover:bg-brand-soft/30">
                   <td className="min-w-56 px-4 py-3">
                     <p className="font-bold text-slate-800">{cliente.nombre}</p>
                     <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
@@ -172,7 +172,7 @@ export function ClientesPage({ clientes }: ClientesPageProps) {
                     <span
                       className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-bold ${
                         cliente.estado === 'Activo'
-                          ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                          ? 'border-success/30 bg-success/10 text-success'
                           : 'border-slate-200 bg-slate-100 text-slate-600'
                       }`}
                     >

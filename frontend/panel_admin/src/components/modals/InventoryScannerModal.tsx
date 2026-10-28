@@ -188,7 +188,7 @@ export function InventoryScannerModal({ isOpen, onClose, onFound }: InventorySca
             </div>
           )}
           {status === 'scanning' && (
-            <div className="pointer-events-none absolute inset-[15%] rounded-2xl border-2 border-emerald-400 shadow-[0_0_0_999px_rgba(2,6,23,.45)]">
+            <div className="pointer-events-none absolute inset-[15%] rounded-2xl border-2 border-success shadow-[0_0_0_999px_rgba(2,6,23,.45)]">
               <span className="absolute -left-0.5 -top-0.5 h-8 w-8 border-l-4 border-t-4 border-white" />
               <span className="absolute -right-0.5 -top-0.5 h-8 w-8 border-r-4 border-t-4 border-white" />
               <span className="absolute -bottom-0.5 -left-0.5 h-8 w-8 border-b-4 border-l-4 border-white" />
@@ -197,7 +197,7 @@ export function InventoryScannerModal({ isOpen, onClose, onFound }: InventorySca
           )}
         </div>
 
-        <p role="status" className={`rounded-lg border px-3 py-2 text-xs font-semibold ${status === 'not-found' || error ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-blue-100 bg-blue-50 text-[#2B5C94]'}`}>
+        <p role="status" className={`rounded-lg border px-3 py-2 text-xs font-semibold ${status === 'not-found' || error ? 'border-danger/30 bg-danger/10 text-danger' : 'border-highlight/35 bg-brand-soft text-brand'}`}>
           {error || STATUS_TEXT[status]}
         </p>
 
@@ -206,7 +206,7 @@ export function InventoryScannerModal({ isOpen, onClose, onFound }: InventorySca
             type="button"
             onClick={() => void startCamera()}
             disabled={status === 'requesting' || status === 'searching' || status === 'decoding'}
-            className="inline-flex w-full touch-manipulation select-none items-center justify-center gap-2 rounded-xl bg-[#2B5C94] px-4 py-3 text-sm font-bold text-white active:scale-[.98] disabled:opacity-50"
+            className="inline-flex w-full touch-manipulation select-none items-center justify-center gap-2 rounded-xl bg-brand px-4 py-3 text-sm font-bold text-white active:scale-[.98] disabled:opacity-50"
           >
             {status === 'scanning' ? <RefreshCw className="h-4 w-4" /> : <Camera className="h-4 w-4" />}
             {status === 'scanning' ? 'Reiniciar cámara' : 'Activar cámara'}
@@ -229,7 +229,7 @@ export function InventoryScannerModal({ isOpen, onClose, onFound }: InventorySca
               type="button"
               onClick={() => captureInputRef.current?.click()}
               disabled={status === 'searching' || status === 'decoding'}
-              className="inline-flex w-full touch-manipulation select-none items-center justify-center gap-2 rounded-xl bg-[#2B5C94] px-4 py-3 text-sm font-bold text-white active:scale-[.98] disabled:opacity-50"
+              className="inline-flex w-full touch-manipulation select-none items-center justify-center gap-2 rounded-xl bg-brand px-4 py-3 text-sm font-bold text-white active:scale-[.98] disabled:opacity-50"
             >
               <Camera className="h-4 w-4" />
               Tomar foto del QR
@@ -253,7 +253,7 @@ export function InventoryScannerModal({ isOpen, onClose, onFound }: InventorySca
               placeholder="Ej. QR-LAP-0001"
               className="h-11 min-w-0 flex-1 rounded-xl border border-slate-300 px-3 text-base sm:text-xs"
             />
-            <button type="button" onClick={() => void findProduct(manualCode)} disabled={!manualCode.trim() || status === 'searching'} className="touch-manipulation select-none rounded-xl border border-blue-200 bg-blue-50 px-4 text-xs font-bold text-[#2B5C94] active:scale-[.98] disabled:opacity-40">Buscar</button>
+            <button type="button" onClick={() => void findProduct(manualCode)} disabled={!manualCode.trim() || status === 'searching'} className="touch-manipulation select-none rounded-xl border border-highlight/65 bg-brand-soft px-4 text-xs font-bold text-brand active:scale-[.98] disabled:opacity-40">Buscar</button>
           </div>
         </div>
 

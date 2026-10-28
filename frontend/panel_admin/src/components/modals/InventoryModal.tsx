@@ -72,8 +72,14 @@ const PURCHASE_FIELDS: CampoConfig[] = [
   { key: 'precio', label: 'Precio de compra (S/)', type: 'number' },
   { key: 'proveedor', label: 'Proveedor', placeholder: 'Empresa proveedora' },
   {
+    key: 'ubicacion',
+    label: 'Ubicación',
+    type: 'select',
+    options: ['Almacén 1', 'Almacén 2', 'Almacén 3', 'Taller'],
+  },
+  {
     key: 'estado',
-    label: 'Estado / Ubicación',
+    label: 'Estado',
     type: 'select',
     options: ['Almacén 1', 'Oficina', 'Alquiler', 'Reparación', 'Taller', 'Mantenimiento'],
   },
@@ -137,10 +143,11 @@ const SPECIFIC_FIELDS: Record<InventarioCategoriaBaseId, CampoConfig[]> = {
 };
 
 const FIELD_CLASS =
-  'w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#2B5C94]';
+  'w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand';
 
 const INITIAL_VALUES: Record<string, string> = {
-  estado: 'Almacén 1',
+  ubicacion: 'Almacén 1',
+  estado: 'Disponible',
   tipoMemoriaInterna: 'SSD',
   alquiler: 'Sí',
 };
@@ -242,8 +249,8 @@ export function InventoryModal({
       field.key === 'qr' ||
       enabledBaseFields.has(field.key as CampoBaseOpcional),
   );
-  const purchaseFields = PURCHASE_FIELDS.filter((field) =>
-    enabledBaseFields.has(field.key as CampoBaseOpcional),
+  const purchaseFields = PURCHASE_FIELDS.filter(
+    (field) => field.key === 'ubicacion' || enabledBaseFields.has(field.key as CampoBaseOpcional),
   );
   const fields = [...baseFields, ...specificFields, ...purchaseFields];
 
@@ -393,6 +400,7 @@ export function InventoryModal({
       facturaGuiaCompra: textValue('facturaGuiaCompra'),
       precio: Number(values.precio) || 0,
       proveedor: textValue('proveedor'),
+      ubicacion: (values.ubicacion || 'Almacén 1') as InventarioRegistro['ubicacion'],
       estado: values.estado ?? estados[0] ?? '',
       observaciones: textValue('observaciones'),
     };
@@ -429,11 +437,11 @@ export function InventoryModal({
           : 'Registra la ficha técnica y los datos de adquisición del nuevo activo'
       }
       icon={<PackagePlus className="h-4 w-4" />}
-      headerClass="bg-[#2B5C94]"
+      headerClass="bg-brand"
       panelClass="max-w-4xl"
     >
       <form onSubmit={handleSubmit} className="flex-1 space-y-5 overflow-y-auto p-5 sm:p-6">
-        <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-4">
+        <div className="rounded-xl border border-highlight/35 bg-brand-soft/60 p-4">
           <label className="mb-1 block text-xs font-bold uppercase text-slate-600">
             Categoría del producto *
           </label>
@@ -449,7 +457,7 @@ export function InventoryModal({
                 </option>
               ))}
             </select>
-            <span className="shrink-0 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-[#2B5C94]">
+            <span className="shrink-0 rounded-lg border border-highlight/65 bg-white px-3 py-2 text-xs font-bold text-brand">
               Código {categoria.codigo}
             </span>
           </div>
@@ -465,16 +473,16 @@ export function InventoryModal({
               }
               setCategoryError('');
             }}
-            className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-bold text-[#2B5C94] transition-colors hover:bg-blue-50"
+            className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-highlight/65 bg-white px-3 py-1.5 text-xs font-bold text-brand transition-colors hover:bg-brand-soft"
           >
             <Plus className="h-3.5 w-3.5" />
             Agregar nueva categoría
           </button>
 
           {isAddingCategory && (
-            <div className="mt-3 rounded-xl border border-blue-200 bg-white p-3 shadow-2xs">
+            <div className="mt-3 rounded-xl border border-highlight/65 bg-white p-3 shadow-2xs">
               <div className="mb-2 flex items-center gap-2 text-xs font-bold text-slate-800">
-                <Tags className="h-4 w-4 text-[#2B5C94]" />
+                <Tags className="h-4 w-4 text-brand" />
                 Nueva categoría de inventario
               </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_140px]">
@@ -526,7 +534,7 @@ export function InventoryModal({
                         key={campo.key}
                         className={`flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[11px] font-medium ${
                           enabled
-                            ? 'border-blue-200 bg-blue-50 text-[#2B5C94]'
+                            ? 'border-highlight/65 bg-brand-soft text-brand'
                             : 'border-slate-200 bg-white text-slate-600'
                         }`}
                       >
@@ -576,7 +584,7 @@ export function InventoryModal({
                   <button
                     type="button"
                     onClick={handleAddSpecification}
-                    className="inline-flex cursor-pointer items-center justify-center gap-1 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-[#2B5C94] hover:bg-blue-100"
+                    className="inline-flex cursor-pointer items-center justify-center gap-1 rounded-xl border border-highlight/65 bg-brand-soft px-3 py-2 text-xs font-bold text-brand hover:bg-highlight/25"
                   >
                     <Plus className="h-3.5 w-3.5" />
                     Añadir
@@ -593,7 +601,7 @@ export function InventoryModal({
                           type="button"
                           onClick={() => setNewCategorySpecs((current) => current.filter((item) => item.id !== field.id))}
                           aria-label={`Eliminar especificación ${field.label}`}
-                          className="cursor-pointer text-slate-400 hover:text-rose-600"
+                          className="cursor-pointer text-slate-400 hover:text-danger"
                         >
                           <X className="h-3 w-3" />
                         </button>
@@ -603,7 +611,7 @@ export function InventoryModal({
                 )}
               </div>
 
-              {categoryError && <p className="mt-2 text-[11px] font-semibold text-rose-600">{categoryError}</p>}
+              {categoryError && <p className="mt-2 text-[11px] font-semibold text-danger">{categoryError}</p>}
               <div className="mt-3 flex items-center justify-between gap-3">
                 <p className="text-[10px] text-slate-500">
                   Podrás completar estas especificaciones al registrar productos en la categoría.
@@ -623,7 +631,7 @@ export function InventoryModal({
           </p>
         </div>
 
-        <div className="rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2 text-[11px] font-medium text-[#2B5C94]">
+        <div className="rounded-xl border border-highlight/35 bg-brand-soft/60 px-3 py-2 text-[11px] font-medium text-brand">
           El SKU y el código QR se generan automáticamente según la categoría y el correlativo existente.
         </div>
 
@@ -631,7 +639,7 @@ export function InventoryModal({
           {fields.map((field) => (
             <div key={field.key} className={field.wide ? 'sm:col-span-2 lg:col-span-3' : ''}>
               <label className="mb-1 block text-xs font-bold uppercase text-slate-600">
-                {field.label} {field.required && <span className="text-rose-500">*</span>}
+                {field.label} {field.required && <span className="text-danger">*</span>}
               </label>
 
               {field.type === 'file' ? (
@@ -667,14 +675,14 @@ export function InventoryModal({
                           setProductError(error instanceof Error ? error.message : 'No se pudo procesar la foto.');
                         }
                       }}
-                      className="block w-full text-xs text-slate-600 file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-[#2B5C94] file:px-3 file:py-2 file:text-xs file:font-bold file:text-white hover:file:bg-[#1F4778]"
+                      className="block w-full text-xs text-slate-600 file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-brand file:px-3 file:py-2 file:text-xs file:font-bold file:text-white hover:file:bg-brand-deep"
                     />
                     <p className="mt-1.5 text-[10px] text-slate-500">PNG, JPG o WebP · Se optimiza automáticamente</p>
                     {values.foto && (
                       <button
                         type="button"
                         onClick={() => setValues((current) => ({ ...current, foto: '' }))}
-                        className="mt-2 cursor-pointer text-[11px] font-bold text-rose-600 hover:underline"
+                        className="mt-2 cursor-pointer text-[11px] font-bold text-danger hover:underline"
                       >
                         Quitar foto
                       </button>
@@ -748,7 +756,7 @@ export function InventoryModal({
         </div>
 
         {productError && (
-          <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+          <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs font-semibold text-danger">
             {productError}
           </p>
         )}
@@ -763,7 +771,7 @@ export function InventoryModal({
           </button>
           <button
             type="submit"
-            className="flex cursor-pointer items-center gap-1.5 rounded-xl bg-[#2B5C94] px-5 py-2 text-xs font-bold text-white shadow-sm transition-colors hover:bg-[#1F4778]"
+            className="flex cursor-pointer items-center gap-1.5 rounded-xl bg-brand px-5 py-2 text-xs font-bold text-white shadow-sm transition-colors hover:bg-brand-deep"
           >
             <PackagePlus className="h-3.5 w-3.5" />
             {editingRegistro ? 'Guardar cambios' : 'Guardar producto'}

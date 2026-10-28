@@ -25,7 +25,7 @@ export const CAMPOS_BASE_OPCIONALES = [
   { key: 'facturaGuiaCompra', label: 'Factura / Guía de compra' },
   { key: 'precio', label: 'Precio de compra' },
   { key: 'proveedor', label: 'Proveedor' },
-  { key: 'estado', label: 'Estado / Ubicación' },
+  { key: 'estado', label: 'Estado' },
   { key: 'observaciones', label: 'Observaciones' },
 ] as const;
 

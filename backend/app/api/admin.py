@@ -127,7 +127,7 @@ def inventory_out(item: InventoryAsset) -> InventoryOut:
         pantalla=item.screen, memoriaRam=item.ram, memoriaInterna=item.storage,
         tipoMemoriaInterna=item.storage_type, modelo=item.model, fechaCompra=item.purchase_date,
         facturaGuiaCompra=item.purchase_document, precio=item.price, proveedor=item.supplier,
-        alquiler=item.rentable, estado=item.status, observaciones=item.notes,
+        alquiler=item.rentable, ubicacion=item.location or "Almacén 1", estado=item.status, observaciones=item.notes,
         especificacionesPersonalizadas=item.custom_specs,
     )
 
@@ -200,6 +200,28 @@ def audit_out(item: AuditLog) -> AuditOut:
 @router.get("/dashboard", response_model=DashboardOut)
 def dashboard(_: AdminUser = Depends(require_module("dashboard")), db: Session = Depends(get_db)) -> DashboardOut:
     by_status = dict(db.execute(select(InventoryAsset.status, func.count()).group_by(InventoryAsset.status)).all())
+    location_status_rows = db.execute(
+        select(InventoryAsset.location, InventoryAsset.status, func.count())
+        .group_by(InventoryAsset.location, InventoryAsset.status)
+    ).all()
+    inventory_locations = {
+        location: {"ubicacion": location, "total": 0, "disponibles": 0, "alquiler": 0, "mantenimiento": 0}
+        for location in ("Almacén 1", "Almacén 2", "Almacén 3", "Taller")
+    }
+    technical_statuses = {
+        "Taller", "Mantenimiento", "Diagnóstico", "Reparación",
+        "Reemplazo requerido", "Reservado para reemplazo",
+    }
+    for location, status, count in location_status_rows:
+        location_name = location if location in inventory_locations else "Almacén 1"
+        summary = inventory_locations[location_name]
+        summary["total"] += count
+        if status == "Disponible":
+            summary["disponibles"] += count
+        elif status == "Alquiler":
+            summary["alquiler"] += count
+        elif status in technical_statuses:
+            summary["mantenimiento"] += count
     orders = list(db.scalars(select(Order)).all())
     tickets_by_status = dict(db.execute(select(SupportTicket.status, func.count()).group_by(SupportTicket.status)).all())
     customer_orders: dict[str, bool] = {}
@@ -225,6 +247,7 @@ def dashboard(_: AdminUser = Depends(require_module("dashboard")), db: Session =
     return DashboardOut(
         inventarioTotal=sum(by_status.values()),
         inventarioPorEstado=by_status,
+        inventarioPorUbicacion=list(inventory_locations.values()),
         pedidosTotal=len(orders),
         pedidosActivos=sum(order.operational_status != "Finalizado" for order in orders),
         pedidosFinalizados=sum(order.operational_status == "Finalizado" for order in orders),
@@ -458,6 +481,7 @@ def delete_inventory_state(
 def inventory(
     category_id: str | None = None,
     estado: str | None = None,
+    ubicacion: str | None = None,
     search: str | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=1000),
@@ -467,6 +491,7 @@ def inventory(
     query = select(InventoryAsset).join(InventoryCategory)
     if category_id: query = query.where(InventoryAsset.category_id == category_id)
     if estado: query = query.where(InventoryAsset.status == estado)
+    if ubicacion: query = query.where(InventoryAsset.location == ubicacion)
     if search:
         term = f"%{search}%"
         query = query.where(InventoryAsset.sku.like(term) | InventoryAsset.serial_number.like(term) | InventoryAsset.description.like(term) | InventoryAsset.brand.like(term))
@@ -531,7 +556,7 @@ def apply_inventory(item: InventoryAsset, payload: InventoryIn) -> None:
     rentable = payload.alquiler
     if isinstance(rentable, str):
         rentable = rentable.strip().lower() in {"sí", "si", "true", "1", "yes"}
-    item.supplier = payload.proveedor; item.rentable = rentable; item.status = payload.estado; item.notes = payload.observaciones
+    item.supplier = payload.proveedor; item.rentable = rentable; item.location = payload.ubicacion; item.status = payload.estado; item.notes = payload.observaciones
     item.custom_specs = payload.especificacionesPersonalizadas
 
 

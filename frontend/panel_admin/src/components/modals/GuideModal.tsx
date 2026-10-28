@@ -12,7 +12,7 @@ interface GuideModalProps {
   onClose: () => void;
 }
 const FIELD_CLASS =
-  'w-full rounded-lg border border-slate-300 px-2.5 py-2 text-xs focus:border-[#2B5C94] focus:outline-none focus:ring-1 focus:ring-[#2B5C94]';
+  'w-full rounded-lg border border-slate-300 px-2.5 py-2 text-xs focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand';
 
 const MOTIVOS = [
   'Venta',
@@ -281,7 +281,7 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
     const html = `<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><title>Guía ${value('numero_guia')}</title>
 <style>
-@page{size:210mm 297mm;margin:0}*{box-sizing:border-box}html,body{width:210mm;min-height:297mm;margin:0}body{padding:7mm;background:#fff;font-family:Arial,sans-serif;color:#183b6a;font-size:9px}.guide{width:100%;min-height:283mm;border:1.5px solid #285a97;padding:6mm;position:relative}.header{display:grid;grid-template-columns:1.15fr .85fr;gap:8px;align-items:stretch}.company{display:grid;grid-template-columns:170px 1fr;gap:9px;align-items:center}.logo{max-width:165px;filter:brightness(0) saturate(100%) invert(34%) sepia(18%) saturate(2026%) hue-rotate(171deg) brightness(89%) contrast(91%)}.company-info{text-align:center;font-weight:700;line-height:1.35}.services{border:1px dashed #285a97;border-radius:7px;padding:5px;margin-bottom:5px;text-align:left;font-size:8px}.docbox{border:2px solid #285a97;border-radius:10px;overflow:hidden;text-align:center}.ruc{font-size:20px;font-weight:900;padding:11px}.doctype{background:#285a97;color:#fff;padding:10px;font-size:15px;font-weight:900}.number{padding:11px;font-size:18px;font-weight:900;color:#c63d3d}.number strong{color:#285a97}.dates{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:7px}.date{display:grid;grid-template-columns:120px 1fr;border:1.5px solid #285a97;border-radius:6px;overflow:hidden}.date b{background:#285a97;color:#fff;padding:7px;text-transform:uppercase}.date span{padding:7px;color:#222}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:7px}.box{border:1.5px solid #285a97;border-radius:8px;overflow:hidden;min-height:59px}.box h3,.goods h3,.bottom h3{margin:0;background:#285a97;color:#fff;text-align:center;text-transform:uppercase;letter-spacing:.5px;padding:5px;font-size:10px}.box-content{padding:7px;color:#222;line-height:1.55;white-space:pre-wrap}.line{border-bottom:1px dotted #667992;min-height:17px;padding:2px 0}.goods{border:1.5px solid #285a97;border-radius:8px;overflow:hidden;margin-top:7px}.goods table{width:100%;border-collapse:collapse;color:#222}.goods .filler td{padding:0}.goods thead{display:table-header-group}.goods th{background:#285a97;color:#fff;padding:5px;border-right:1px solid #fff;text-transform:uppercase}.goods td{border-right:1px solid #285a97;padding:7px;vertical-align:top}.goods tfoot td{border-top:1.5px solid #285a97;background:#eef2f7;font-weight:700}.bottom-grid{display:grid;grid-template-columns:.8fr 1.2fr;gap:7px;margin-top:7px}.bottom{border:1.5px solid #285a97;border-radius:8px;overflow:hidden}.bottom-content{padding:7px;color:#222}.reason-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 10px}.reason{display:flex;gap:5px;align-items:flex-start;line-height:1.2}.check{width:12px;height:12px;border:1px solid #285a97;display:inline-flex;align-items:center;justify-content:center;font-weight:900;flex:none}.signatures{display:grid;grid-template-columns:1fr 1fr;gap:60px;margin:18mm 20mm 0;text-align:center;color:#183b6a;font-weight:700}.signature{border-top:1px solid #183b6a;padding-top:5px}.foot{margin-top:8px;text-align:center;font-size:7px;color:#777}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}.goods tr,.signatures{page-break-inside:avoid}}
+@page{size:210mm 297mm;margin:0}*{box-sizing:border-box}html,body{width:210mm;min-height:297mm;margin:0}body{padding:7mm;background:#fff;font-family:Arial,sans-serif;color:#0E1525;font-size:9px}.guide{width:100%;min-height:283mm;border:1.5px solid #14264A;padding:6mm;position:relative}.header{display:grid;grid-template-columns:1.15fr .85fr;gap:8px;align-items:stretch}.company{display:grid;grid-template-columns:170px 1fr;gap:9px;align-items:center}.logo{max-width:165px;filter:brightness(0) saturate(100%) invert(34%) sepia(18%) saturate(2026%) hue-rotate(171deg) brightness(89%) contrast(91%)}.company-info{text-align:center;font-weight:700;line-height:1.35}.services{border:1px dashed #14264A;border-radius:7px;padding:5px;margin-bottom:5px;text-align:left;font-size:8px}.docbox{border:2px solid #14264A;border-radius:10px;overflow:hidden;text-align:center}.ruc{font-size:20px;font-weight:900;padding:11px}.doctype{background:#14264A;color:#fff;padding:10px;font-size:15px;font-weight:900}.number{padding:11px;font-size:18px;font-weight:900;color:#C2383D}.number strong{color:#14264A}.dates{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:7px}.date{display:grid;grid-template-columns:120px 1fr;border:1.5px solid #14264A;border-radius:6px;overflow:hidden}.date b{background:#14264A;color:#fff;padding:7px;text-transform:uppercase}.date span{padding:7px;color:#222}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:7px}.box{border:1.5px solid #14264A;border-radius:8px;overflow:hidden;min-height:59px}.box h3,.goods h3,.bottom h3{margin:0;background:#14264A;color:#fff;text-align:center;text-transform:uppercase;letter-spacing:.5px;padding:5px;font-size:10px}.box-content{padding:7px;color:#222;line-height:1.55;white-space:pre-wrap}.line{border-bottom:1px dotted #667992;min-height:17px;padding:2px 0}.goods{border:1.5px solid #14264A;border-radius:8px;overflow:hidden;margin-top:7px}.goods table{width:100%;border-collapse:collapse;color:#222}.goods .filler td{padding:0}.goods thead{display:table-header-group}.goods th{background:#14264A;color:#fff;padding:5px;border-right:1px solid #fff;text-transform:uppercase}.goods td{border-right:1px solid #14264A;padding:7px;vertical-align:top}.goods tfoot td{border-top:1.5px solid #14264A;background:#eef2f7;font-weight:700}.bottom-grid{display:grid;grid-template-columns:.8fr 1.2fr;gap:7px;margin-top:7px}.bottom{border:1.5px solid #14264A;border-radius:8px;overflow:hidden}.bottom-content{padding:7px;color:#222}.reason-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 10px}.reason{display:flex;gap:5px;align-items:flex-start;line-height:1.2}.check{width:12px;height:12px;border:1px solid #14264A;display:inline-flex;align-items:center;justify-content:center;font-weight:900;flex:none}.signatures{display:grid;grid-template-columns:1fr 1fr;gap:60px;margin:18mm 20mm 0;text-align:center;color:#0E1525;font-weight:700}.signature{border-top:1px solid #0E1525;padding-top:5px}.foot{margin-top:8px;text-align:center;font-size:7px;color:#777}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}.goods tr,.signatures{page-break-inside:avoid}}
 </style></head><body><main class="guide">
 <section class="header"><div class="company"><img class="logo" src="${escapeHtml(logoUrl)}"><div class="company-info"><div class="services">Tecnología de Información<br>Sistemas Audiovisuales<br>Pantallas LED Gigantes<br>Computadoras y Portátiles<br>Impresoras y Proyectores Multimedia</div>Av. Húsares de Junín 527, Jesús María – Lima – Lima<br>Telf: 01-7353734 · Cel: 957586421 / 944825839<br>E-mail: atencionalcliente@adglobal.com</div></div><div class="docbox"><div class="ruc">RUC 20602583849</div><div class="doctype">GUÍA DE REMISIÓN - REMITENTE</div><div class="number"><strong>0001 -</strong> N° ${value('numero_guia')}</div></div></section>
 <section class="dates"><div class="date"><b>Fecha de emisión</b><span>${value('fecha_emision')}</span></div><div class="date"><b>Inicio del traslado</b><span>${value('fecha_traslado')}</span></div></section>
@@ -323,18 +323,18 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
       title="Guía de remisión - Remitente"
       subtitle={`Documento asociado al pedido ${pedido.numeroPedido}`}
       icon={<FileText className="h-4 w-4" />}
-      headerClass="bg-[#2B5C94]"
+      headerClass="bg-brand"
       panelClass="max-w-6xl"
     >
-      <form ref={formRef} className="flex-1 overflow-y-auto bg-[#eef2f7] p-4 sm:p-6" onSubmit={(event) => event.preventDefault()}>
+      <form ref={formRef} className="flex-1 overflow-y-auto bg-slate-100 p-4 sm:p-6" onSubmit={(event) => event.preventDefault()}>
         <div className="mb-4 flex flex-wrap items-center gap-2">
           {soloLectura ? (
-            <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-700">
+            <span className="inline-flex items-center gap-1.5 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs font-bold text-warning">
               <Lock className="h-3.5 w-3.5" />
               Guía bloqueada · pedido finalizado
             </span>
           ) : (
-            <button type="button" onClick={() => void guardarBorrador()} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[#2B5C94] px-3 py-2 text-xs font-bold text-white hover:bg-[#1F4778]">
+            <button type="button" onClick={() => void guardarBorrador()} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-xs font-bold text-white hover:bg-brand-deep">
               <Save className="h-3.5 w-3.5" />
               Guardar borrador
             </button>
@@ -343,14 +343,14 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
             <Printer className="h-3.5 w-3.5" />
             Imprimir / PDF
           </button>
-          {status && <span role="status" className="text-xs font-semibold text-emerald-700">{status}</span>}
+          {status && <span role="status" className="text-xs font-semibold text-success">{status}</span>}
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-lg sm:p-7">
-          <div className="grid gap-5 border-b-2 border-[#2B5C94] pb-5 md:grid-cols-[1fr_330px]">
+          <div className="grid gap-5 border-b-2 border-brand pb-5 md:grid-cols-[1fr_330px]">
             <div>
               <AdGlobalLogo variant="brand" height={28} />
-              <h2 className="mt-3 text-xl font-black text-[#2B5C94]">AD GLOBAL SOLUTIONS SAC</h2>
+              <h2 className="mt-3 text-xl font-black text-brand">AD GLOBAL SOLUTIONS SAC</h2>
               <p className="mt-1 text-xs leading-relaxed text-slate-500">
                 Av. Húsares de Junín 527, Jesús María – Lima – Lima
                 <br />
@@ -360,23 +360,23 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
                 <br />
                 E-mail: atencionalcliente@adglobal.com
               </p>
-              <p className="mt-2 rounded-lg bg-blue-50 px-3 py-2 text-[10px] text-[#2B5C94]">
+              <p className="mt-2 rounded-lg bg-brand-soft px-3 py-2 text-[10px] text-brand">
                 Formato digital basado en el prototipo de guía proporcionado.
               </p>
             </div>
-            <div className="overflow-hidden rounded-xl border-2 border-[#2B5C94] text-center">
+            <div className="overflow-hidden rounded-xl border-2 border-brand text-center">
               <div className="px-4 py-3 text-lg font-black text-slate-800">RUC 20602583849</div>
-              <div className="bg-[#2B5C94] px-4 py-3 text-sm font-black text-white">
+              <div className="bg-brand px-4 py-3 text-sm font-black text-white">
                 GUÍA DE REMISIÓN – REMITENTE
               </div>
-              <div className="flex items-center justify-center gap-2 px-4 py-3 font-bold text-rose-700">
+              <div className="flex items-center justify-center gap-2 px-4 py-3 font-bold text-danger">
                 <span>0001 - N°</span>
                 <input
                   name="numero_guia"
                   value={numeroGuia}
                   onChange={(event) => setNumeroGuia(event.target.value)}
                   readOnly={soloLectura}
-                  className={`w-28 rounded border border-rose-200 px-2 py-1 text-center font-mono ${soloLectura ? 'bg-slate-100 text-slate-600' : ''}`}
+                  className={`w-28 rounded border border-danger/30 px-2 py-1 text-center font-mono ${soloLectura ? 'bg-slate-100 text-slate-600' : ''}`}
                 />
               </div>
             </div>
@@ -452,7 +452,7 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
 
           <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
             <div className="flex items-center justify-between gap-2 bg-slate-50 px-4 py-2.5">
-              <span className="text-xs font-black uppercase tracking-wider text-[#2B5C94]">
+              <span className="text-xs font-black uppercase tracking-wider text-brand">
                 Descripción de los bienes trasladados
               </span>
               <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-bold text-slate-600">
@@ -493,7 +493,7 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
                         </td>
                         <td className="p-2">
                           <p className="text-xs leading-relaxed text-slate-700">
-                            <span className="font-mono font-bold text-[#2B5C94]">{sku}</span>
+                            <span className="font-mono font-bold text-brand">{sku}</span>
                             {detalle && <span className="text-slate-600"> · {detalle}</span>}
                           </p>
                         </td>
@@ -559,7 +559,7 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
           </div>
 
           <div className="mt-4 rounded-xl border border-slate-200 p-4">
-            <h3 className="mb-3 text-xs font-black uppercase tracking-wider text-[#2B5C94]">Motivo de traslado</h3>
+            <h3 className="mb-3 text-xs font-black uppercase tracking-wider text-brand">Motivo de traslado</h3>
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {MOTIVOS.map((motivo, index) => (
                 <label key={motivo} className="flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-700">
@@ -601,7 +601,7 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
               <button
                 type="button"
                 onClick={imprimirVistaPrevia}
-                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-[#2B5C94] px-3 py-2 text-xs font-bold text-white hover:bg-[#1F4778]"
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-xs font-bold text-white hover:bg-brand-deep"
               >
                 <Printer className="h-3.5 w-3.5" />
                 Imprimir / Guardar PDF
@@ -609,7 +609,7 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
               <button
                 type="button"
                 onClick={() => void descargarPdf()}
-                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-bold text-[#2B5C94] hover:bg-blue-50"
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand/50 bg-white px-3 py-2 text-xs font-bold text-brand hover:bg-brand-soft"
               >
                 <FileText className="h-3.5 w-3.5" />
                 Descargar PDF
@@ -640,7 +640,7 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
 function GuideSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="rounded-xl border border-slate-200 p-4">
-      <h3 className="mb-3 text-xs font-black uppercase tracking-wider text-[#2B5C94]">{title}</h3>
+      <h3 className="mb-3 text-xs font-black uppercase tracking-wider text-brand">{title}</h3>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{children}</div>
     </section>
   );

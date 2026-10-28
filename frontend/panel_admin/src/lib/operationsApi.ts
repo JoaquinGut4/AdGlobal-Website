@@ -29,6 +29,7 @@ export function inventoryFromApi(item: InventarioRegistro & { alquiler?: boolean
   const origin = ADMIN_CONFIG.apiUrl.replace(/\/api\/v1\/?$/, '');
   return {
     ...item,
+    ubicacion: item.ubicacion || 'Almacén 1',
     precio: Number(item.precio) || 0,
     foto: item.foto && !/^(https?:|data:)/i.test(item.foto) ? `${origin}${item.foto.startsWith('/') ? '' : '/'}${item.foto}` : item.foto,
     alquiler:

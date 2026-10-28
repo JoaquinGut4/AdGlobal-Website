@@ -47,6 +47,7 @@ def test_alembic_upgrade_creates_a_fresh_database(tmp_path: Path) -> None:
     inventory_columns = {column["name"]: column for column in inspector.get_columns("inventory_assets")}
     assert inventory_columns["purchase_date"]["nullable"] is True
     assert inventory_columns["serial_number"]["nullable"] is True
+    assert inventory_columns["location"]["nullable"] is False
 
     ticket_columns = {column["name"] for column in inspector.get_columns("support_tickets")}
     assert {"order_or_status", "ticket_type", "order_address", "equipment_status", "asset_ids", "previous_states"}.issubset(

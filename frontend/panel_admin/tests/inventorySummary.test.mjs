@@ -39,6 +39,19 @@ test('ignora estados fuera de la flota operativa y tolera tildes', () => {
   });
 });
 
+test('usa la ubicación independiente para los equipos disponibles', () => {
+  assert.deepEqual(resumirFlota([
+    { estado: 'Disponible', ubicacion: 'Almacén 1' },
+    { estado: 'Disponible', ubicacion: 'Almacén 2' },
+    { estado: 'Disponible', ubicacion: 'Taller' },
+  ]), {
+    alquiler: 0,
+    oficina: 2,
+    taller: 1,
+    total: 3,
+  });
+});
+
 test('calcula porcentajes seguros cuando no hay flota', () => {
   assert.equal(porcentajeFlota(2, 8), 25);
   assert.equal(porcentajeFlota(1, 0), 0);

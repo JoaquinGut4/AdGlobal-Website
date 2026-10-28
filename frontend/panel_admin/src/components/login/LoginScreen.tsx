@@ -32,7 +32,7 @@ export function LoginScreen({ onAuthenticate }: LoginScreenProps) {
   };
 
   return (
-    <div className="min-h-screen bg-[#F0F2F5] text-slate-800 flex flex-col font-sans">
+    <div className="min-h-screen bg-slate-50 text-ink flex flex-col font-sans">
       {/* Top bar */}
       <header className="bg-white border-b border-slate-200 px-4 sm:px-8 py-3.5 shadow-xs">
         <div className="w-full flex items-center justify-between">
@@ -54,7 +54,7 @@ export function LoginScreen({ onAuthenticate }: LoginScreenProps) {
       <main className="flex-1 flex items-center justify-center p-4 sm:p-8">
         <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 p-8 sm:p-10 shadow-xl relative">
           <div className="text-center mb-7">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#2B5C94] to-[#1F4778] flex items-center justify-center mx-auto mb-4 text-white shadow-md">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-brand to-brand-deep flex items-center justify-center mx-auto mb-4 text-white shadow-md">
               <Lock className="w-6 h-6" />
             </div>
             <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
@@ -66,8 +66,8 @@ export function LoginScreen({ onAuthenticate }: LoginScreenProps) {
           </div>
 
           {errorMessage && (
-            <div className="mb-5 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+            <div className="mb-5 p-3 rounded-xl bg-danger/10 border border-danger/30 text-danger text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-danger" />
               <span>{errorMessage}</span>
             </div>
           )}
@@ -92,7 +92,7 @@ export function LoginScreen({ onAuthenticate }: LoginScreenProps) {
                   required
                   autoComplete="username"
                   placeholder="nombre@gmail.com"
-                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#2B5C94] focus:border-transparent transition-all font-mono"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all font-mono"
                 />
               </div>
             </div>
@@ -117,7 +117,7 @@ export function LoginScreen({ onAuthenticate }: LoginScreenProps) {
                   minLength={2}
                   autoComplete="username"
                   placeholder="Tu usuario"
-                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#2B5C94] focus:border-transparent transition-all font-mono"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-300 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all font-mono"
                 />
               </div>
             </div>
@@ -142,7 +142,7 @@ export function LoginScreen({ onAuthenticate }: LoginScreenProps) {
                   minLength={8}
                   autoComplete="current-password"
                   placeholder="••••••••"
-                  className="w-full pl-9 pr-10 py-2.5 rounded-xl border border-slate-300 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-[#2B5C94] focus:border-transparent transition-all font-mono"
+                  className="w-full pl-9 pr-10 py-2.5 rounded-xl border border-slate-300 text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition-all font-mono"
                 />
                 <button
                   type="button"
@@ -160,7 +160,7 @@ export function LoginScreen({ onAuthenticate }: LoginScreenProps) {
                 type="checkbox"
                 checked={remember}
                 onChange={(event) => setRemember(event.target.checked)}
-                className="w-3.5 h-3.5 rounded border-slate-300 text-[#2B5C94] focus:ring-[#2B5C94]"
+                className="w-3.5 h-3.5 rounded border-slate-300 text-brand focus:ring-brand"
               />
               Mantener sesión iniciada en este dispositivo
             </label>
@@ -168,7 +168,7 @@ export function LoginScreen({ onAuthenticate }: LoginScreenProps) {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3 px-4 rounded-xl font-bold text-white bg-[#2B5C94] hover:bg-[#1F4778] active:scale-[0.99] transition-all duration-150 shadow-md flex items-center justify-center gap-2 cursor-pointer mt-5 disabled:opacity-70 disabled:cursor-not-allowed"
+              className="w-full py-3 px-4 rounded-xl font-bold text-white bg-brand hover:bg-brand-deep active:scale-[0.99] transition-all duration-150 shadow-md flex items-center justify-center gap-2 cursor-pointer mt-5 disabled:opacity-70 disabled:cursor-not-allowed"
             >
               {isLoading ? (
                 <span className="flex items-center gap-2 text-sm">

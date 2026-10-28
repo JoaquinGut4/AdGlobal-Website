@@ -43,7 +43,7 @@ const MOTIVOS: MotivoTraslado[] = [
 ];
 
 const FIELD_CLASS =
-  'w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-[#2B5C94]';
+  'w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand';
 
 const CATEGORIA_LABELS: Record<string, string> = {
   laptops: 'Laptops',
@@ -196,7 +196,7 @@ export function OrderModal({ isOpen, onClose, onCreate, inventario, categorias, 
       title={editingPedido ? 'Editar pedido' : 'Aperturar pedido'}
       subtitle={editingPedido ? `Pedido ${editingPedido.numeroPedido}` : 'Datos para la emisión y traslado de los productos'}
       icon={<ClipboardPlus className="h-4 w-4" />}
-      headerClass="bg-[#2B5C94]"
+      headerClass="bg-brand"
       panelClass="max-w-4xl"
     >
       <form onSubmit={handleSubmit} className="flex-1 space-y-5 overflow-y-auto p-5 sm:p-6">
@@ -213,8 +213,8 @@ export function OrderModal({ isOpen, onClose, onCreate, inventario, categorias, 
           </Field>
         </div>
 
-        <section className="rounded-xl border border-blue-100 bg-blue-50/40 p-4">
-          <h4 className="mb-3 text-xs font-bold uppercase tracking-wider text-[#2B5C94]">
+        <section className="rounded-xl border border-highlight/35 bg-brand-soft/40 p-4">
+          <h4 className="mb-3 text-xs font-bold uppercase tracking-wider text-brand">
             Dirección de llegada
           </h4>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -281,18 +281,18 @@ export function OrderModal({ isOpen, onClose, onCreate, inventario, categorias, 
                           type="button"
                           onMouseDown={(event) => event.preventDefault()}
                           onClick={() => agregarProducto(producto)}
-                          className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-blue-50"
+                          className="flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-brand-soft"
                         >
                           <span className="min-w-0">
                             <span className="flex items-center gap-2">
-                              <span className="font-mono text-[11px] font-bold text-[#2B5C94]">{producto.sku}</span>
+                              <span className="font-mono text-[11px] font-bold text-brand">{producto.sku}</span>
                               <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">
                                 {labelCategoria(producto.categoriaId)}
                               </span>
                             </span>
                             <span className="mt-0.5 block truncate text-[11px] text-slate-600">{producto.descripcion}</span>
                           </span>
-                          <Plus className="h-3.5 w-3.5 shrink-0 text-[#2B5C94]" />
+                          <Plus className="h-3.5 w-3.5 shrink-0 text-brand" />
                         </button>
                       ))
                     )}
@@ -310,7 +310,7 @@ export function OrderModal({ isOpen, onClose, onCreate, inventario, categorias, 
         </div>
 
         {orderError && (
-          <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+          <p role="alert" className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-xs font-semibold text-danger">
             {orderError}
           </p>
         )}
@@ -319,7 +319,7 @@ export function OrderModal({ isOpen, onClose, onCreate, inventario, categorias, 
           <button type="button" onClick={onClose} className="cursor-pointer rounded-xl px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100">
             Cancelar
           </button>
-          <button type="submit" className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-[#2B5C94] px-5 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#1F4778]">
+          <button type="submit" className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-brand px-5 py-2 text-xs font-bold text-white shadow-sm hover:bg-brand-deep">
             <ClipboardPlus className="h-3.5 w-3.5" />
             {editingPedido ? 'Guardar cambios' : 'Aperturar pedido'}
           </button>
@@ -333,7 +333,7 @@ function Field({ label, required, full, children }: { label: string; required?: 
   return (
     <div className={full ? 'sm:col-span-2' : ''}>
       <label className="mb-1 block text-xs font-bold uppercase text-slate-600">
-        {label} {required && <span className="text-rose-500">*</span>}
+        {label} {required && <span className="text-danger">*</span>}
       </label>
       {children}
     </div>

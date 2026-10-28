@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  Boxes,
+  Building2,
   Check,
   ChevronDown,
   Laptop,
+  Layers,
   LockKeyhole,
+  MapPin,
   Monitor,
   Package,
   Pencil,
@@ -15,6 +19,8 @@ import {
   Tablet,
   Trash2,
   Tv,
+  Warehouse,
+  Wrench,
 } from 'lucide-react';
 import { InventoryModal } from '@/components/modals/InventoryModal';
 import { InventoryScannerModal } from '@/components/modals/InventoryScannerModal';
@@ -34,11 +40,11 @@ interface InventarioPageProps {
   filtro: InventarioFiltro;
   onFiltroChange: (filtro: InventarioFiltro) => void;
   registrosInventario: InventarioRegistro[];
-  categoriaActiva: InventarioCategoriaId;
+  categoriaActiva: InventarioCategoriaId | 'all';
   pagina: number;
   paginas: number;
   totalRegistros: number;
-  onCategoriaChange: (categoriaId: InventarioCategoriaId) => void;
+  onCategoriaChange: (categoriaId: InventarioCategoriaId | 'all') => void;
   onPaginaChange: (pagina: number) => void;
   onRefresh: () => void;
   estadosInventario: string[];
@@ -67,6 +73,7 @@ const COLUMNAS_COMUNES: ColumnaInventario[] = [
   { key: 'qr', label: 'Código QR', width: 'min-w-32' },
   { key: 'foto', label: 'Foto', width: 'min-w-24' },
   { key: 'categoria', label: 'Categoría', width: 'min-w-24' },
+  { key: 'ubicacion', label: 'Ubicación', width: 'min-w-28' },
 ];
 
 const COLUMNAS_COMPRA: ColumnaInventario[] = [
@@ -190,6 +197,7 @@ function obtenerColumnas(
         columna.key === 'sku' ||
         columna.key === 'qr' ||
         columna.key === 'categoria' ||
+        columna.key === 'ubicacion' ||
         habilitados.has(columna.key as CampoBaseOpcional),
     ),
     ...COLUMNAS_IDENTIDAD.filter((columna) => habilitados.has(columna.key as CampoBaseOpcional)),
@@ -211,10 +219,22 @@ const CATEGORIAS_BASE: Array<InventarioCategoria & { icon: typeof Laptop }> = [
 
 const ESTADOS_BASE = [
   { id: 'all', label: 'Todos los estados' },
-  { id: 'alquiler', label: 'En alquiler' },
-  { id: 'oficina', label: 'En oficina/almacén' },
-  { id: 'taller', label: 'En taller' },
 ] as const;
+
+type UbicacionFiltro = 'all' | 'almacen-1' | 'almacen-2' | 'almacen-3' | 'taller';
+
+const UBICACIONES: Array<{
+  id: UbicacionFiltro;
+  label: string;
+  value?: string;
+  icon: typeof Layers;
+}> = [
+  { id: 'all', label: 'Todas', icon: Layers },
+  { id: 'almacen-1', label: 'Almacén 1', value: 'Almacén 1', icon: Building2 },
+  { id: 'almacen-2', label: 'Almacén 2', value: 'Almacén 2', icon: Warehouse },
+  { id: 'almacen-3', label: 'Almacén 3', value: 'Almacén 3', icon: MapPin },
+  { id: 'taller', label: 'Taller', value: 'Taller', icon: Wrench },
+];
 
 
 
@@ -243,13 +263,19 @@ function coincideEstado(registro: InventarioRegistro, filtro: string) {
   return estado === filtro.replace(/^custom:/, '').toLowerCase();
 }
 
+function coincideUbicacion(registro: InventarioRegistro, ubicacion: UbicacionFiltro) {
+  if (ubicacion === 'all') return true;
+  const option = UBICACIONES.find((item) => item.id === ubicacion);
+  return normalizarBusqueda(registro.ubicacion || 'Almacén 1') === normalizarBusqueda(option?.value ?? '');
+}
+
 function EstadoBadge({ estado }: { estado: string }) {
   const normalizado = estado.toLowerCase();
   const tone = normalizado.includes('alquiler')
-    ? 'bg-blue-50 text-[#2B5C94] border-blue-200'
+    ? 'bg-brand-soft text-brand border-highlight/65'
     : normalizado.includes('reparación') || normalizado.includes('taller') || normalizado.includes('diagnóstico') || normalizado.includes('reemplazo')
-      ? 'bg-amber-50 text-amber-700 border-amber-200'
-      : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+      ? 'bg-warning/10 text-warning border-warning/30'
+      : 'bg-success/10 text-success border-success/30';
 
   return (
     <span className={`inline-flex whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-bold ${tone}`}>
@@ -352,63 +378,61 @@ export function InventarioPage({
   categoriasPersonalizadas,
   onAgregarCategoria,
   onEliminarCategoria,
-  onAgregarEstado,
-  onRenombrarEstado,
-  onEliminarEstado,
   onAgregarRegistro,
   onActualizarRegistro,
   onEliminarRegistro,
 }: InventarioPageProps) {
   const [search, setSearch] = useState('');
   const [estadoActivo, setEstadoActivo] = useState<string>(filtro);
+  const [ubicacionActiva, setUbicacionActiva] = useState<UbicacionFiltro>('all');
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
   const [isStatusMenuOpen, setIsStatusMenuOpen] = useState(false);
   const [isInventoryModalOpen, setIsInventoryModalOpen] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [editingRegistro, setEditingRegistro] = useState<InventarioRegistro | null>(null);
   const [selectedRegistro, setSelectedRegistro] = useState<InventarioRegistro | null>(null);
-  const [nuevoEstado, setNuevoEstado] = useState('');
-  const [editingEstado, setEditingEstado] = useState<string | null>(null);
-  const [isAddingEstado, setIsAddingEstado] = useState(false);
-  const [nombreEstadoEditado, setNombreEstadoEditado] = useState('');
-  const [estadoError, setEstadoError] = useState('');
   const categorias = [
     ...CATEGORIAS_BASE,
     ...categoriasPersonalizadas.map((item) => ({ ...item, icon: Package })),
   ];
-  const estadosRegistro = estadosInventario;
+  const estadosRegistro = estadosInventario.filter(
+    (estado) => esEstadoInmutable(estado) && normalizarBusqueda(estado) !== 'taller',
+  );
   const filtrosEstados = estadosInventario.map((estado) => ({
     id: `custom:${estado}`,
     label: estado,
   }));
-  const estadosProtegidos = filtrosEstados.filter((item) => esEstadoInmutable(item.label));
-  const estadosEditables = filtrosEstados.filter((item) => !esEstadoInmutable(item.label));
-  // Los filtros agrupadores se conservan solo para el Dashboard y las etiquetas.
-  const filtrosEstado = [...ESTADOS_BASE, ...filtrosEstados];
+  const estadosProtegidos = filtrosEstados.filter(
+    (item) => esEstadoInmutable(item.label) && normalizarBusqueda(item.label) !== 'taller',
+  );
+  const filtrosEstado = [...ESTADOS_BASE, ...estadosProtegidos];
   const categoryMenuRef = useRef<HTMLDivElement>(null);
   const statusMenuRef = useRef<HTMLDivElement>(null);
+  const todasLasCategorias = categoriaActiva === 'all';
   const categoria = categorias.find((item) => item.id === categoriaActiva) ?? categorias[0];
-  const CategoriaIcon = categoria.icon;
-  const columnas = obtenerColumnas(categoriaActiva, categoriasPersonalizadas);
+  const CategoriaIcon = todasLasCategorias ? Layers : categoria.icon;
+  const columnas = todasLasCategorias ? [] : obtenerColumnas(categoriaActiva, categoriasPersonalizadas);
   const terminosBusqueda = normalizarBusqueda(search).split(/\s+/).filter(Boolean);
   const isGlobalSearch = terminosBusqueda.length > 0;
   const columnasGlobales: ColumnaInventario[] = [
     { key: 'sku', label: 'SKU' },
     { key: 'qr', label: 'Código QR' },
     { key: 'categoria', label: 'Categoría' },
+    { key: 'ubicacion', label: 'Ubicación' },
     { key: 'descripcion', label: 'Descripción del equipo' },
     { key: 'marca', label: 'Marca' },
     { key: 'numeroSerial', label: 'Número serial' },
     { key: 'estado', label: 'Estado' },
     { key: 'proveedor', label: 'Proveedor' },
   ];
-  const columnasVisibles = isGlobalSearch
+  const columnasVisibles = isGlobalSearch || todasLasCategorias
     ? columnasGlobales
     : columnas.slice(0, 8);
 
   const registros = registrosInventario.filter((registro) => {
     if (!coincideEstado(registro, estadoActivo)) return false;
-    if (!isGlobalSearch) return registro.categoriaId === categoriaActiva;
+    if (!coincideUbicacion(registro, ubicacionActiva)) return false;
+    if (!isGlobalSearch) return todasLasCategorias || registro.categoriaId === categoriaActiva;
 
     const columnasRegistro = obtenerColumnas(registro.categoriaId, categoriasPersonalizadas);
     const contenido = normalizarBusqueda([
@@ -422,6 +446,9 @@ export function InventarioPage({
     return terminosBusqueda.every((termino) => contenido.includes(termino));
   });
   const estadoLabel = filtrosEstado.find((item) => item.id === estadoActivo)?.label ?? 'Estados';
+  const ubicacionActual = UBICACIONES.find((item) => item.id === ubicacionActiva) ?? UBICACIONES[0];
+  const cantidadUbicacion = (ubicacion: UbicacionFiltro) =>
+    registrosInventario.filter((registro) => coincideUbicacion(registro, ubicacion)).length;
 
   const eliminarCategoria = (categoriaItem: InventarioCategoria) => {
     if (esCategoriaPrincipal(categoriaItem.id)) return;
@@ -444,131 +471,10 @@ export function InventarioPage({
 
     onEliminarCategoria(categoriaItem.id);
     if (categoriaActiva === categoriaItem.id) {
-      onCategoriaChange('laptops');
+      onCategoriaChange('all');
       onFiltroChange('all');
     }
     setIsCategoryMenuOpen(false);
-  };
-
-  const toggleStatusMenu = () => {
-    const next = !isStatusMenuOpen;
-    setIsStatusMenuOpen(next);
-    if (!next) {
-      setEditingEstado(null);
-      setIsAddingEstado(false);
-      setEstadoError('');
-    }
-  };
-
-  const iniciarEdicionEstado = (estado: string) => {
-    setEditingEstado(estado);
-    setIsAddingEstado(false);
-    setNombreEstadoEditado(estado);
-    setNuevoEstado('');
-    setEstadoError('');
-  };
-
-  const cancelarEdicionEstado = () => {
-    setEditingEstado(null);
-    setIsAddingEstado(false);
-    setNombreEstadoEditado('');
-    setEstadoError('');
-  };
-
-  const guardarEstadoEditado = () => {
-    if (!editingEstado) return;
-    if (esEstadoInmutable(editingEstado)) {
-      setEstadoError('Este es un estado operativo protegido y no se puede editar.');
-      return;
-    }
-    const nuevo = nombreEstadoEditado.trim();
-    if (!nuevo) {
-      setEstadoError('Escribe un nombre para el estado.');
-      return;
-    }
-    if (esEstadoInmutable(nuevo)) {
-      setEstadoError('Ese nombre está reservado para el flujo operativo.');
-      return;
-    }
-    const duplicado = estadosInventario.some(
-      (estado) => estado.toLowerCase() === nuevo.toLowerCase() && estado.toLowerCase() !== editingEstado.toLowerCase(),
-    );
-    if (duplicado) {
-      setEstadoError('Ya existe un estado con ese nombre.');
-      return;
-    }
-
-    if (nuevo !== editingEstado) {
-      onRenombrarEstado(editingEstado, nuevo);
-      setEstadoActivo((current) =>
-        current === `custom:${editingEstado}` ? `custom:${nuevo}` : current,
-      );
-    }
-
-    setEditingEstado(null);
-    setIsAddingEstado(false);
-    setNombreEstadoEditado('');
-    setEstadoError('');
-    setIsStatusMenuOpen(false);
-  };
-
-  const eliminarEstado = (estado: string) => {
-    if (esEstadoInmutable(estado)) {
-      setEstadoError('Este es un estado operativo protegido y no se puede eliminar.');
-      return;
-    }
-    if (estadosInventario.length <= 1) {
-      setEstadoError('Debe existir al menos un estado en el inventario.');
-      return;
-    }
-
-    const enUso = registrosInventario.filter(
-      (registro) => registro.estado.toLowerCase() === estado.toLowerCase(),
-    ).length;
-    if (enUso > 0) {
-      setEstadoError(
-        `No se puede eliminar "${estado}": ${enUso} ${enUso === 1 ? 'producto lo usa' : 'productos lo usan'}. Cambia su estado primero.`,
-      );
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `¿Eliminar el estado "${estado}"? Esta acción no se puede deshacer.`,
-    );
-    if (!confirmed) return;
-
-    onEliminarEstado(estado);
-    if (estadoActivo === `custom:${estado}`) {
-      setEstadoActivo('all');
-      onFiltroChange('all');
-    }
-    if (editingEstado === estado) {
-      setEditingEstado(null);
-      setNombreEstadoEditado('');
-    }
-    setEstadoError('');
-  };
-
-  const agregarEstado = () => {
-    const estado = nuevoEstado.trim();
-    if (!estado) return;
-    if (esEstadoInmutable(estado)) {
-      setEstadoError('Ese estado ya existe y está protegido por el flujo operativo.');
-      return;
-    }
-    const existente = estadosInventario.find(
-      (item) => item.toLowerCase() === estado.toLowerCase(),
-    );
-    if (existente) {
-      setEstadoError('Ese estado ya existe.');
-      return;
-    }
-    onAgregarEstado(estado);
-    setEstadoActivo(`custom:${estado}`);
-    setNuevoEstado('');
-    setIsAddingEstado(false);
-    setEstadoError('');
-    setIsStatusMenuOpen(false);
   };
 
   const renderFiltroEstado = (item: { id: string; label: string }) => {
@@ -583,51 +489,19 @@ export function InventarioPage({
           onClick={() => {
             const next = active ? 'all' : item.id;
             setEstadoActivo(next);
+            if (next !== 'all') setUbicacionActiva('all');
             if (next === 'all') onFiltroChange('all');
-            setEditingEstado(null);
-            setIsAddingEstado(false);
-            setEstadoError('');
             setIsStatusMenuOpen(false);
           }}
-          className={`flex flex-1 cursor-pointer items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs ${
+          className={`flex flex-1 cursor-pointer items-center justify-between rounded-xl border px-3 py-2.5 text-left text-xs transition-[background-color,border-color,transform] active:scale-[.98] ${
             active
-              ? 'bg-blue-50 font-bold text-[#2B5C94]'
-              : 'font-semibold text-slate-600 hover:bg-slate-50'
+              ? 'border-brand bg-brand font-bold text-white shadow-xs'
+              : 'border-slate-200/80 bg-slate-50/80 font-semibold text-slate-700 hover:border-brand/25 hover:bg-brand-soft/55'
           }`}
         >
-          <span>{item.label}</span>
-          {active && <Check className="h-3.5 w-3.5" />}
+          <span className="flex items-center gap-2.5"><span className={`flex h-7 w-7 items-center justify-center rounded-lg ${active ? 'bg-white/15 text-highlight' : 'bg-white text-brand'}`}><LockKeyhole className="h-3.5 w-3.5" /></span><span><span className="block">{item.label}</span><span className={`mt-0.5 block text-[9px] font-medium ${active ? 'text-slate-300' : 'text-slate-400'}`}>Estado operativo protegido</span></span></span>
+          {active && <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white text-brand"><Check className="h-3 w-3 stroke-[3]" /></span>}
         </button>
-        {esEstadoInmutable(item.label) ? (
-          <span
-            title="Estado inmutable: no se puede editar ni eliminar"
-            aria-label={`${item.label}: estado inmutable`}
-            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-400"
-          >
-            <LockKeyhole className="h-3.5 w-3.5" />
-          </span>
-        ) : (
-          <>
-            <button
-              type="button"
-              onClick={() => iniciarEdicionEstado(item.label)}
-              title={`Editar estado ${item.label}`}
-              aria-label={`Editar estado ${item.label}`}
-              className="inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-slate-200 text-slate-400 hover:border-blue-300 hover:bg-blue-50 hover:text-[#2B5C94]"
-            >
-              <Pencil className="h-3 w-3" />
-            </button>
-            <button
-              type="button"
-              onClick={() => eliminarEstado(item.label)}
-              title={`Eliminar estado ${item.label}`}
-              aria-label={`Eliminar estado ${item.label}`}
-              className="inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-rose-200 text-rose-500 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700"
-            >
-              <Trash2 className="h-3 w-3" />
-            </button>
-          </>
-        )}
       </div>
     );
   };
@@ -649,9 +523,6 @@ export function InventarioPage({
       }
       if (!statusMenuRef.current?.contains(event.target as Node)) {
         setIsStatusMenuOpen(false);
-        setEditingEstado(null);
-        setIsAddingEstado(false);
-        setEstadoError('');
       }
     };
 
@@ -672,7 +543,7 @@ export function InventarioPage({
               <h2 className="text-xl font-bold tracking-tight text-slate-900">
                 Control de Inventario de Equipos
               </h2>
-              <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-[#2B5C94]">
+              <span className="rounded-full border border-highlight/65 bg-brand-soft px-2.5 py-0.5 text-xs font-bold text-brand">
                 {totalRegistros} equipos registrados
               </span>
             </div>
@@ -683,14 +554,14 @@ export function InventarioPage({
 
           <div className="flex gap-2">
           <button type="button" onClick={onRefresh} title="Actualizar inventario" className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50"><RefreshCw className="h-4 w-4" /></button>
-          <button type="button" onClick={() => setIsScannerOpen(true)} className="inline-flex h-9 shrink-0 touch-manipulation select-none items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3.5 text-xs font-bold text-[#2B5C94] hover:bg-blue-100 active:scale-[.98]"><ScanLine className="h-4 w-4" /><span className="hidden sm:inline">Escanear QR</span></button>
+          <button type="button" onClick={() => setIsScannerOpen(true)} className="inline-flex h-9 shrink-0 touch-manipulation select-none items-center gap-1.5 rounded-lg border border-highlight/65 bg-brand-soft px-3.5 text-xs font-bold text-brand hover:bg-highlight/25 active:scale-[.98]"><ScanLine className="h-4 w-4" /><span className="hidden sm:inline">Escanear QR</span></button>
           <button
             type="button"
             onClick={() => {
               setEditingRegistro(null);
               setIsInventoryModalOpen(true);
             }}
-            className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-[#2B5C94] px-3.5 text-xs font-bold text-white shadow-xs transition-colors hover:bg-[#1F4778]"
+            className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-brand px-3.5 text-xs font-bold text-white shadow-xs transition-colors hover:bg-brand-deep"
           >
             <Plus className="h-4 w-4" />
             <span>Agregar</span>
@@ -699,24 +570,88 @@ export function InventarioPage({
         </div>
       </div>
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
-        <div className="flex flex-col justify-between gap-3 border-b border-slate-200 p-3 sm:flex-row sm:items-center sm:p-4">
-          <div className="flex w-full min-w-0 items-center gap-2 sm:max-w-2xl sm:flex-1">
-            <div ref={categoryMenuRef} className="relative shrink-0">
+      <section className="overflow-visible rounded-2xl border border-slate-200 bg-white shadow-xs">
+        <div className="flex items-center justify-between rounded-t-2xl border-b border-slate-100 bg-slate-50/70 px-4 py-3.5">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-soft text-brand"><Layers className="h-4 w-4" /></span>
+            <div><h3 className="text-sm font-extrabold text-ink">Filtros de inventario</h3><p className="text-[10px] text-slate-500">Refina la vista de equipos registrados</p></div>
+          </div>
+          <span className="hidden rounded-md border border-slate-200 bg-white px-2 py-1 font-mono text-[9px] font-bold text-slate-500 sm:inline-flex">{registros.length} visibles</span>
+        </div>
+
+        <div className="border-b border-slate-100 p-4">
+        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+          <div>
+            <h3 className="text-sm font-extrabold text-ink">
+              {ubicacionActual.id === 'all'
+                ? 'Consolidado de almacenes y taller'
+                : ubicacionActual.id === 'taller'
+                  ? 'Taller · equipos en servicio técnico'
+                  : `${ubicacionActual.label} · equipos almacenados`}
+            </h3>
+            <p className="mt-0.5 text-[11px] text-slate-500">
+              La ubicación se administra de forma independiente al estado operativo.
+            </p>
+          </div>
+
+          <div className="max-w-full overflow-x-auto rounded-2xl border border-slate-300/60 bg-slate-200/75 p-1 shadow-inner [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="inline-flex min-w-max items-center" role="radiogroup" aria-label="Filtrar inventario por ubicación">
+              {UBICACIONES.map((option) => {
+                const Icon = option.icon;
+                const active = ubicacionActiva === option.id;
+                const count = cantidadUbicacion(option.id);
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => {
+                      setUbicacionActiva(option.id);
+                      if (option.id !== 'all') {
+                        setEstadoActivo('all');
+                        onFiltroChange('all');
+                      }
+                    }}
+                    className={`relative z-10 flex items-center gap-2 whitespace-nowrap rounded-xl px-3.5 py-2 text-xs transition-[background-color,color,box-shadow,transform] duration-200 active:scale-[.97] ${
+                      active
+                        ? 'border border-slate-200/90 bg-white font-bold text-brand shadow-[0_2px_12px_rgba(20,38,74,.14)]'
+                        : 'border border-transparent font-semibold text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Icon className={`h-3.5 w-3.5 ${active ? 'text-brand' : 'text-slate-500'}`} />
+                    <span>{option.label}</span>
+                    <span className={`rounded-md px-1.5 py-0.5 font-mono text-[9px] tabular-nums ${active ? 'bg-brand-soft text-brand' : 'bg-slate-300/70 text-slate-600'}`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 p-4">
+          <div className="contents">
+            <div ref={categoryMenuRef} className="relative order-2 shrink-0">
               <button
                 type="button"
-                onClick={() => setIsCategoryMenuOpen((current) => !current)}
+                onClick={() => {
+                  setIsCategoryMenuOpen((current) => !current);
+                  setIsStatusMenuOpen(false);
+                }}
                 aria-haspopup="menu"
                 aria-expanded={isCategoryMenuOpen}
                 className={`inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border px-3 text-xs font-bold transition-colors ${
                   isCategoryMenuOpen
-                    ? 'border-[#2B5C94] bg-blue-50 text-[#2B5C94]'
-                    : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300'
+                    ? 'border-brand bg-brand-soft text-brand'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-brand/50'
                 }`}
               >
                 <CategoriaIcon className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">{categoria.label}</span>
-                <span className="text-slate-400">#{categoria.codigo}</span>
+                <span className="hidden sm:inline">{todasLasCategorias ? 'Todas las categorías' : categoria.label}</span>
+                {!todasLasCategorias && <span className="text-slate-400">#{categoria.codigo}</span>}
                 <ChevronDown
                   className={`h-3.5 w-3.5 transition-transform ${isCategoryMenuOpen ? 'rotate-180' : ''}`}
                 />
@@ -725,60 +660,67 @@ export function InventarioPage({
               {isCategoryMenuOpen && (
                 <div
                   role="menu"
-                  className="absolute left-0 top-full z-30 mt-2 w-60 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl"
+                  className="animate-in fade-in absolute right-0 top-full z-30 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200/90 bg-white/95 p-4 shadow-[0_24px_60px_rgba(0,24,48,.18)] backdrop-blur-xl"
                 >
-                  <div className="px-2.5 pb-1.5 pt-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    Filtrar categoría
+                  <div className="mb-3 flex items-center gap-2.5 border-b border-slate-100 pb-3">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-soft text-brand"><Package className="h-4 w-4" /></span>
+                    <div><h4 className="text-xs font-extrabold text-ink">Enfoque de categoría</h4><p className="text-[10px] text-slate-500">Filtra el catálogo técnico</p></div>
                   </div>
-                  {categorias.map((item) => {
-                    const Icon = item.icon;
-                    const active = categoriaActiva === item.id;
-                    const eliminable = !esCategoriaPrincipal(item.id);
-                    return (
-                      <div
-                        key={item.id}
-                        className={`flex items-center gap-1 rounded-lg ${active ? 'bg-blue-50' : ''}`}
-                      >
-                        <button
-                          type="button"
-                          role="menuitemradio"
-                          aria-checked={active}
-                          onClick={() => {
-                            if (!active) onCategoriaChange(item.id);
-                            setIsCategoryMenuOpen(false);
-                          }}
-                          className={`flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs transition-colors ${
-                            active
-                              ? 'font-bold text-[#2B5C94]'
-                              : 'font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                          }`}
-                        >
-                          <Icon className="h-4 w-4 shrink-0" />
-                          <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                          <span className={active ? 'text-blue-400' : 'text-slate-400'}>
-                            #{item.codigo}
-                          </span>
-                          {active && <Check className="h-3.5 w-3.5" />}
-                        </button>
-                        {eliminable && (
+                  <div role="group" aria-label="Categorías de inventario" className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
+                    <button
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={todasLasCategorias}
+                      onClick={() => {
+                        if (!todasLasCategorias) onCategoriaChange('all');
+                        setIsCategoryMenuOpen(false);
+                      }}
+                      className={`flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left text-xs transition-[background-color,border-color,transform] active:scale-[.98] ${todasLasCategorias ? 'border-brand bg-brand text-white shadow-xs' : 'border-slate-200/80 bg-slate-50/80 text-slate-700 hover:border-brand/25 hover:bg-brand-soft/55'}`}
+                    >
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${todasLasCategorias ? 'bg-white/15 text-highlight' : 'bg-white text-brand'}`}><Layers className="h-3.5 w-3.5" /></span>
+                        <span><span className="block font-bold">Todas las categorías</span><span className={`mt-0.5 block text-[9px] font-medium ${todasLasCategorias ? 'text-slate-300' : 'text-slate-400'}`}>Vista consolidada</span></span>
+                      </span>
+                      {todasLasCategorias && <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white text-brand"><Check className="h-3 w-3 stroke-[3]" /></span>}
+                    </button>
+                    {categorias.map((item) => {
+                      const Icon = item.icon;
+                      const active = categoriaActiva === item.id;
+                      const eliminable = !esCategoriaPrincipal(item.id);
+                      return (
+                        <div key={item.id} className={`flex items-center gap-1 rounded-xl border transition-[background-color,border-color,transform] active:scale-[.98] ${active ? 'border-brand bg-brand text-white shadow-xs' : 'border-slate-200/80 bg-slate-50/80 text-slate-700 hover:border-brand/25 hover:bg-brand-soft/55'}`}>
                           <button
                             type="button"
-                            onClick={() => eliminarCategoria(item)}
-                            aria-label={`Eliminar categoría ${item.label}`}
-                            title={`Eliminar categoría ${item.label}`}
-                            className="mr-1 inline-flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600"
+                            role="menuitemradio"
+                            aria-checked={active}
+                            onClick={() => {
+                              if (!active) onCategoriaChange(item.id);
+                              setIsCategoryMenuOpen(false);
+                            }}
+                            className="flex min-w-0 flex-1 items-center justify-between px-3 py-2.5 text-left text-xs"
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
+                            <span className="flex min-w-0 items-center gap-2.5">
+                              <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${active ? 'bg-white/15 text-highlight' : 'bg-white text-brand'}`}><Icon className="h-3.5 w-3.5" /></span>
+                              <span className="min-w-0"><span className="block truncate font-bold">{item.label}</span><span className={`mt-0.5 block font-mono text-[9px] font-medium ${active ? 'text-slate-300' : 'text-slate-400'}`}>Código #{item.codigo}</span></span>
+                            </span>
+                            {active && <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white text-brand"><Check className="h-3 w-3 stroke-[3]" /></span>}
                           </button>
-                        )}
-                      </div>
-                    );
-                  })}
+                          {eliminable && !active && (
+                            <button type="button" onClick={() => eliminarCategoria(item)} aria-label={`Eliminar categoría ${item.label}`} title={`Eliminar categoría ${item.label}`} className="mr-2 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-danger/10 hover:text-danger"><Trash2 className="h-3.5 w-3.5" /></button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-[11px]">
+                    <span className="text-slate-400">{categorias.length} categorías</span>
+                    <button type="button" onClick={() => setIsCategoryMenuOpen(false)} className="rounded-lg bg-brand px-3 py-1.5 font-bold text-white hover:bg-brand-deep">Listo</button>
+                  </div>
                 </div>
               )}
             </div>
 
-            <div className="relative min-w-0 flex-1">
+            <div className="relative order-1 min-w-52 flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 type="search"
@@ -786,23 +728,26 @@ export function InventarioPage({
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="SKU, QR, columna, categoría, serie, proveedor..."
                 aria-label="Buscar en todo el inventario por valores o nombres de columnas"
-                className={`h-9 w-full rounded-lg border pl-9 pr-3 text-xs text-slate-900 focus:border-[#2B5C94] focus:bg-white focus:outline-none ${
-                  isGlobalSearch ? 'border-[#2B5C94] bg-white' : 'border-slate-200 bg-slate-50'
+                className={`h-9 w-full rounded-lg border pl-9 pr-3 text-xs text-slate-900 focus:border-brand focus:bg-white focus:outline-none ${
+                  isGlobalSearch ? 'border-brand bg-white' : 'border-slate-200 bg-slate-50'
                 }`}
               />
             </div>
           </div>
 
-          <div ref={statusMenuRef} className="relative shrink-0">
+          <div ref={statusMenuRef} className="relative order-3 shrink-0">
             <button
               type="button"
-              onClick={toggleStatusMenu}
+              onClick={() => {
+                setIsStatusMenuOpen((current) => !current);
+                setIsCategoryMenuOpen(false);
+              }}
               aria-haspopup="menu"
               aria-expanded={isStatusMenuOpen}
               className={`inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border px-3 text-xs font-bold transition-colors ${
                 isStatusMenuOpen
-                  ? 'border-[#2B5C94] bg-blue-50 text-[#2B5C94]'
-                  : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300'
+                  ? 'border-brand bg-brand-soft text-brand'
+                  : 'border-slate-200 bg-white text-slate-700 hover:border-brand/50'
               }`}
             >
               <span>{estadoLabel}</span>
@@ -810,120 +755,12 @@ export function InventarioPage({
             </button>
 
             {isStatusMenuOpen && (
-              <div role="menu" className="absolute right-0 top-full z-30 mt-2 w-72 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
-                <div className="flex items-center justify-between gap-2 px-2.5 pb-1.5 pt-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    Filtrar por estado
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingEstado(null);
-                      setNuevoEstado('');
-                      setEstadoError('');
-                      setIsAddingEstado((current) => !current);
-                    }}
-                    className="inline-flex items-center gap-1 rounded-md bg-[#2B5C94] px-2 py-1 text-[10px] font-bold text-white transition-colors hover:bg-[#1F4778]"
-                  >
-                    <Plus className="h-3 w-3" />
-                    Agregar
-                  </button>
+              <div role="menu" className="animate-in fade-in absolute right-0 top-full z-30 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200/90 bg-white/95 p-4 shadow-[0_24px_60px_rgba(0,24,48,.18)] backdrop-blur-xl">
+                <div className="mb-3 flex items-center gap-2.5 border-b border-slate-100 pb-3">
+                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-soft text-brand"><LockKeyhole className="h-4 w-4" /></span>
+                  <div><h4 className="text-xs font-extrabold text-ink">Enfoque de estado</h4><p className="text-[10px] text-slate-500">Solo estados operativos no editables</p></div>
                 </div>
-
-                {estadoError && (
-                  <p className="mx-1 mb-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-[11px] font-semibold text-rose-700">
-                    {estadoError}
-                  </p>
-                )}
-
-                {(editingEstado || isAddingEstado) && (
-                  <div className="mx-1 mb-1.5 rounded-lg border border-slate-200 bg-slate-50 p-2">
-                    {editingEstado ? (
-                      <>
-                        <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                          Editar estado: {editingEstado}
-                        </label>
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            value={nombreEstadoEditado}
-                            onChange={(event) => {
-                              setNombreEstadoEditado(event.target.value);
-                              setEstadoError('');
-                            }}
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter') {
-                                event.preventDefault();
-                                guardarEstadoEditado();
-                              }
-                              if (event.key === 'Escape') cancelarEdicionEstado();
-                            }}
-                            autoFocus
-                            className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs focus:border-[#2B5C94] focus:outline-none"
-                          />
-                          <button
-                            type="button"
-                            onClick={guardarEstadoEditado}
-                            className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-[#2B5C94] px-2.5 py-1.5 text-xs font-bold text-white hover:bg-[#1F4778]"
-                          >
-                            <Check className="h-3.5 w-3.5" />
-                            Guardar
-                          </button>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={cancelarEdicionEstado}
-                          className="mt-1.5 cursor-pointer text-[11px] font-semibold text-slate-500 hover:text-slate-800"
-                        >
-                          Cancelar edición
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                          Nuevo estado
-                        </label>
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            value={nuevoEstado}
-                            onChange={(event) => {
-                              setNuevoEstado(event.target.value);
-                              setEstadoError('');
-                            }}
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter') {
-                                event.preventDefault();
-                                agregarEstado();
-                              }
-                              if (event.key === 'Escape') {
-                                setIsAddingEstado(false);
-                                setEstadoError('');
-                              }
-                            }}
-                            autoFocus
-                            placeholder="Ej. En tránsito"
-                            className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs focus:border-[#2B5C94] focus:outline-none"
-                          />
-                          <button
-                            type="button"
-                            onClick={agregarEstado}
-                            className="inline-flex cursor-pointer items-center gap-1 rounded-lg bg-[#2B5C94] px-2.5 py-1.5 text-xs font-bold text-white hover:bg-[#1F4778]"
-                          >
-                            <Plus className="h-3.5 w-3.5" />
-                            Agregar
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-
-                <div
-                  role="group"
-                  aria-label="Filtros y estados"
-                  className="max-h-64 overflow-y-auto overscroll-contain pr-1 [scrollbar-color:#94a3b8_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent"
-                >
+                <div role="group" aria-label="Estados operativos protegidos" className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
                   <button
                     type="button"
                     role="menuitemradio"
@@ -931,40 +768,19 @@ export function InventarioPage({
                     onClick={() => {
                       setEstadoActivo('all');
                       onFiltroChange('all');
-                      setEditingEstado(null);
-                      setIsAddingEstado(false);
-                      setEstadoError('');
                       setIsStatusMenuOpen(false);
                     }}
-                    className={`mx-1 flex w-[calc(100%-0.5rem)] cursor-pointer items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs ${
-                      estadoActivo === 'all'
-                        ? 'bg-blue-50 font-bold text-[#2B5C94]'
-                        : 'font-semibold text-slate-600 hover:bg-slate-50'
-                    }`}
+                    className={`flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left text-xs transition-[background-color,border-color,transform] active:scale-[.98] ${estadoActivo === 'all' ? 'border-brand bg-brand font-bold text-white' : 'border-slate-200/80 bg-slate-50/80 font-semibold text-slate-700 hover:bg-slate-100'}`}
                   >
-                    <span>Todos los estados</span>
-                    {estadoActivo === 'all' && <Check className="h-3.5 w-3.5" />}
+                    <span className="flex items-center gap-2.5"><span className={`flex h-7 w-7 items-center justify-center rounded-lg ${estadoActivo === 'all' ? 'bg-white/15 text-highlight' : 'bg-white text-brand'}`}><Boxes className="h-3.5 w-3.5" /></span><span><span className="block">Todos los estados</span><span className={`mt-0.5 block text-[9px] font-medium ${estadoActivo === 'all' ? 'text-slate-300' : 'text-slate-400'}`}>Sin filtro operativo</span></span></span>
+                    {estadoActivo === 'all' && <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white text-brand"><Check className="h-3 w-3 stroke-[3]" /></span>}
                   </button>
-                  {estadosProtegidos.length > 0 && (
-                    <div role="group" aria-label="Estados protegidos" className="mt-1 border-t border-slate-100 pt-1">
-                      <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-400">
-                        <LockKeyhole className="h-3 w-3" />
-                        Protegidos · no editables
-                      </div>
-                      {estadosProtegidos.map((item) => renderFiltroEstado(item))}
-                    </div>
-                  )}
-                  {estadosEditables.length > 0 && (
-                    <div role="group" aria-label="Estados editables" className="mt-1 border-t border-slate-100 pt-1">
-                      <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-400">
-                        <Pencil className="h-3 w-3" />
-                        Editables
-                      </div>
-                      {estadosEditables.map((item) => renderFiltroEstado(item))}
-                    </div>
-                  )}
+                  {estadosProtegidos.map((item) => renderFiltroEstado(item))}
                 </div>
-
+                <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3 text-[11px]">
+                  <span className="text-slate-400">{estadosProtegidos.length} estados protegidos</span>
+                  <button type="button" onClick={() => setIsStatusMenuOpen(false)} className="rounded-lg bg-brand px-3 py-1.5 font-bold text-white hover:bg-brand-deep">Listo</button>
+                </div>
               </div>
             )}
           </div>
@@ -973,14 +789,14 @@ export function InventarioPage({
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-bold text-slate-800">
-              {isGlobalSearch ? 'Resultados globales' : categoria.label}
+              {isGlobalSearch || todasLasCategorias ? 'Todas las categorías' : categoria.label}
             </span>
             <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
-              isGlobalSearch
-                ? 'border border-blue-200 bg-blue-50 text-[#2B5C94]'
+              isGlobalSearch || todasLasCategorias
+                ? 'border border-highlight/65 bg-brand-soft text-brand'
                 : 'bg-slate-100 text-slate-500'
             }`}>
-              {isGlobalSearch ? 'Todas las categorías' : `Categoría ${categoria.codigo}`}
+              {isGlobalSearch || todasLasCategorias ? 'Vista consolidada' : `Categoría ${categoria.codigo}`}
             </span>
           </div>
           <span className="text-[11px] text-slate-500">
@@ -1040,14 +856,14 @@ export function InventarioPage({
                         setSelectedRegistro(registro);
                       }
                     }}
-                    className="group cursor-pointer hover:bg-blue-50/30 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#2B5C94]"
+                    className="group cursor-pointer hover:bg-brand-soft/30 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand"
                   >
                     {columnasVisibles.map((columna, index) => (
                       <td
                         key={columna.key}
                         className={`break-words px-2 py-2.5 align-top text-[11px] leading-snug ${
                           index === 0
-                            ? 'sticky left-0 z-10 bg-white font-mono font-bold text-[#2B5C94] shadow-[1px_0_0_#f1f5f9] group-hover:bg-[#f8fbff]'
+                            ? 'sticky left-0 z-10 bg-white font-mono font-bold text-brand shadow-[1px_0_0_#f1f5f9] group-hover:bg-brand-soft/30'
                             : ''
                         }`}
                       >
@@ -1068,7 +884,7 @@ export function InventarioPage({
                         }}
                         aria-label={`Eliminar producto ${registro.sku}`}
                         title={`Eliminar ${registro.sku}`}
-                        className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-rose-200 bg-rose-50 px-2 py-1.5 text-[10px] font-bold text-rose-700 transition-colors hover:border-rose-400 hover:bg-rose-100"
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-[10px] font-bold text-danger transition-colors hover:border-danger hover:bg-danger/15"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                         Eliminar
@@ -1084,7 +900,7 @@ export function InventarioPage({
                         }}
                         aria-label={`Editar producto ${registro.sku}`}
                         title={`Editar ${registro.sku}`}
-                        className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-blue-200 bg-blue-50 px-2 py-1.5 text-[10px] font-bold text-[#2B5C94] transition-colors hover:border-[#2B5C94] hover:bg-blue-100"
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-highlight/65 bg-brand-soft px-2 py-1.5 text-[10px] font-bold text-brand transition-colors hover:border-brand hover:bg-highlight/25"
                       >
                         <Pencil className="h-3.5 w-3.5" />
                         Editar
@@ -1159,7 +975,7 @@ export function InventarioPage({
         title={selectedRegistro ? `Activo ${selectedRegistro.sku}` : 'Detalle del activo'}
         subtitle={selectedRegistro?.descripcion}
         icon={<Package className="h-4 w-4" />}
-        headerClass="bg-[#2B5C94]"
+        headerClass="bg-brand"
         panelClass="max-w-4xl"
       >
         {selectedRegistro && (

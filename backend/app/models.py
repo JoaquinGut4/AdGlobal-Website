@@ -95,6 +95,7 @@ class InventoryAsset(TimestampMixin, Base):
     price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     supplier: Mapped[str] = mapped_column(String(160))
     rentable: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    location: Mapped[str] = mapped_column(String(40), default="Almacén 1", index=True)
     status: Mapped[str] = mapped_column(String(80), index=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     custom_specs: Mapped[dict] = mapped_column(JSON, default=dict)
