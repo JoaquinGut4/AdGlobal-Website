@@ -11,6 +11,7 @@ export type AdminSection =
   | 'movimientos'
   | 'tickets'
   | 'gestion-web'
+  | 'reportes'
   | 'configuracion';
 
 export type TicketArea =
@@ -80,7 +81,7 @@ export interface InventarioCategoria {
   camposPersonalizados?: InventarioCampoPersonalizado[];
 }
 
-export type InventarioUbicacion = 'Almacén 1' | 'Almacén 2' | 'Almacén 3' | 'Taller';
+export type InventarioUbicacion = 'Almacén 1' | 'Almacén 2' | 'Almacén 3' | 'Taller' | 'Alquilado';
 
 /** Registro individual de un activo. Los campos opcionales dependen de su categoría. */
 export interface InventarioRegistro {
@@ -107,10 +108,12 @@ export interface InventarioRegistro {
   precio: number;
   proveedor: string;
   alquiler?: string;
-  ubicacion: InventarioUbicacion;
+  ubicacion: string;
   estado: string;
   observaciones: string;
   especificacionesPersonalizadas?: Record<string, string>;
+  /** Número del pedido activo al que pertenece el equipo, si aplica. */
+  pedidoActivo?: string | null;
 }
 
 export type MotivoTraslado =
@@ -134,6 +137,7 @@ export interface PedidoRegistro {
   numeroPedido: string;
   /** Estado operativo del pedido (independiente del estado de cada activo). */
   estadoPedido?: 'Activo' | 'Finalizado';
+  estadoFlujo?: EstadoFlujoPedido;
   fechaFinalizacion?: string;
   /** Estado de cada equipo antes de asignarlo a este pedido; clave = id del activo. */
   estadosAnteriores?: Record<string, string>;
@@ -148,7 +152,32 @@ export interface PedidoRegistro {
   unidadMedida: 'UND';
   motivoTraslado: MotivoTraslado;
   observaciones: string;
+  fechaEntrega?: string;
+  fechaInicio?: string;
+  fechaFin?: string;
+  motivoAnulacion?: string;
+  fechaCambioEstado?: string;
+  renovaciones?: number;
+  historialRenovaciones?: RenovacionPedido[];
 }
+
+export interface RenovacionPedido {
+  fecha: string;
+  fechaAnterior: string;
+  fechaNueva: string;
+  motivo: string;
+  usuario: string;
+}
+
+export type EstadoFlujoPedido =
+  | 'Borrador'
+  | 'Confirmado'
+  | 'Despachado'
+  | 'Alquiler'
+  | 'Por devolver'
+  | 'Vencido'
+  | 'Cerrado'
+  | 'Anulado';
 
 export type MovimientoModulo = 'Pedidos' | 'Inventario' | 'Tickets';
 export type MovimientoAccion = 'Creó' | 'Editó' | 'Eliminó' | 'Agregó' | 'Modificó' | 'Guardó';
@@ -174,6 +203,11 @@ export interface DashboardResumen {
     disponibles: number;
     alquiler: number;
     mantenimiento: number;
+    categorias: Array<{
+      categoria: string;
+      total: number;
+      disponibles: number;
+    }>;
   }>;
   pedidosTotal: number;
   pedidosActivos: number;

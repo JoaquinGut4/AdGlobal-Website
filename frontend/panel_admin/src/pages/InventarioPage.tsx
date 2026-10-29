@@ -4,6 +4,7 @@ import {
   Building2,
   Check,
   ChevronDown,
+  KeyRound,
   Laptop,
   Layers,
   LockKeyhole,
@@ -40,11 +41,15 @@ interface InventarioPageProps {
   filtro: InventarioFiltro;
   onFiltroChange: (filtro: InventarioFiltro) => void;
   registrosInventario: InventarioRegistro[];
+  /** Totales por ubicación de todo el inventario (no solo la página actual). */
+  conteoUbicaciones: Array<{ ubicacion: string; total: number; disponibles: number }>;
   categoriaActiva: InventarioCategoriaId | 'all';
+  ubicacionActiva: UbicacionFiltro;
   pagina: number;
   paginas: number;
   totalRegistros: number;
   onCategoriaChange: (categoriaId: InventarioCategoriaId | 'all') => void;
+  onUbicacionChange: (ubicacion: UbicacionFiltro) => void;
   onPaginaChange: (pagina: number) => void;
   onRefresh: () => void;
   estadosInventario: string[];
@@ -221,7 +226,7 @@ const ESTADOS_BASE = [
   { id: 'all', label: 'Todos los estados' },
 ] as const;
 
-type UbicacionFiltro = 'all' | 'almacen-1' | 'almacen-2' | 'almacen-3' | 'taller';
+export type UbicacionFiltro = 'all' | 'almacen-1' | 'almacen-2' | 'almacen-3' | 'taller' | 'alquilado';
 
 const UBICACIONES: Array<{
   id: UbicacionFiltro;
@@ -234,6 +239,7 @@ const UBICACIONES: Array<{
   { id: 'almacen-2', label: 'Almacén 2', value: 'Almacén 2', icon: Warehouse },
   { id: 'almacen-3', label: 'Almacén 3', value: 'Almacén 3', icon: MapPin },
   { id: 'taller', label: 'Taller', value: 'Taller', icon: Wrench },
+  { id: 'alquilado', label: 'Alquilado', value: 'Alquilado', icon: KeyRound },
 ];
 
 
@@ -267,6 +273,46 @@ function coincideUbicacion(registro: InventarioRegistro, ubicacion: UbicacionFil
   if (ubicacion === 'all') return true;
   const option = UBICACIONES.find((item) => item.id === ubicacion);
   return normalizarBusqueda(registro.ubicacion || 'Almacén 1') === normalizarBusqueda(option?.value ?? '');
+}
+
+/** Un equipo vinculado a un pedido activo no puede editarse ni eliminarse. */
+function estaEnPedidoActivo(registro: InventarioRegistro): boolean {
+  if (registro.pedidoActivo) return true;
+  const ubicacion = normalizarBusqueda(registro.ubicacion ?? '');
+  return ubicacion === 'alquilado' || ubicacion.startsWith('cliente ') || ubicacion.startsWith('pedido ');
+}
+
+/**
+ * Tabla resumen de 9 columnas: Estado en la 8.ª y Ubicación en la 9.ª.
+ * Se conservan las primeras columnas propias de cada categoría.
+ */
+function columnasResumen(columnas: ColumnaInventario[]): ColumnaInventario[] {
+  const estado = columnas.find((columna) => columna.key === 'estado')
+    ?? { key: 'estado' as CampoInventarioTabla, label: 'Estado', width: 'min-w-32' };
+  const ubicacion = columnas.find((columna) => columna.key === 'ubicacion')
+    ?? { key: 'ubicacion' as CampoInventarioTabla, label: 'Ubicación', width: 'min-w-28' };
+  const resto = columnas.filter(
+    (columna) => columna.key !== 'estado' && columna.key !== 'ubicacion',
+  );
+  return [...resto.slice(0, 7), estado, ubicacion];
+}
+
+function UbicacionBadge({ ubicacion }: { ubicacion: string }) {
+  const normalizado = ubicacion.toLowerCase();
+  const tone = normalizado.startsWith('cliente') || normalizado.includes('alquilado')
+    ? 'bg-brand-soft text-brand border-highlight/65'
+    : normalizado.includes('taller')
+      ? 'bg-warning/10 text-warning border-warning/30'
+      : 'bg-success/10 text-success border-success/30';
+
+  return (
+    <span
+      title={ubicacion}
+      className={`inline-flex max-w-full truncate whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-bold ${tone}`}
+    >
+      {ubicacion || 'Almacén 1'}
+    </span>
+  );
 }
 
 function EstadoBadge({ estado }: { estado: string }) {
@@ -315,6 +361,7 @@ function valorCelda(
     );
   }
   if (campoBase === 'precio') return precioFormatter.format(registro.precio);
+  if (campoBase === 'ubicacion') return <UbicacionBadge ubicacion={registro.ubicacion} />;
   if (campoBase === 'estado') return <EstadoBadge estado={registro.estado} />;
   if (campoBase === 'categoria') return categoriaNombre ?? `Categoría ${registro.categoria}`;
   const value = registro[campoBase];
@@ -367,11 +414,14 @@ export function InventarioPage({
   filtro,
   onFiltroChange,
   registrosInventario,
+  conteoUbicaciones,
   categoriaActiva,
+  ubicacionActiva,
   pagina,
   paginas,
   totalRegistros,
   onCategoriaChange,
+  onUbicacionChange,
   onPaginaChange,
   onRefresh,
   estadosInventario,
@@ -384,7 +434,6 @@ export function InventarioPage({
 }: InventarioPageProps) {
   const [search, setSearch] = useState('');
   const [estadoActivo, setEstadoActivo] = useState<string>(filtro);
-  const [ubicacionActiva, setUbicacionActiva] = useState<UbicacionFiltro>('all');
   const [isCategoryMenuOpen, setIsCategoryMenuOpen] = useState(false);
   const [isStatusMenuOpen, setIsStatusMenuOpen] = useState(false);
   const [isInventoryModalOpen, setIsInventoryModalOpen] = useState(false);
@@ -425,9 +474,10 @@ export function InventarioPage({
     { key: 'estado', label: 'Estado' },
     { key: 'proveedor', label: 'Proveedor' },
   ];
+  // Estado ocupa siempre la 8.ª columna y Ubicación la 9.ª.
   const columnasVisibles = isGlobalSearch || todasLasCategorias
-    ? columnasGlobales
-    : columnas.slice(0, 8);
+    ? columnasResumen(columnasGlobales)
+    : columnasResumen(columnas);
 
   const registros = registrosInventario.filter((registro) => {
     if (!coincideEstado(registro, estadoActivo)) return false;
@@ -447,8 +497,18 @@ export function InventarioPage({
   });
   const estadoLabel = filtrosEstado.find((item) => item.id === estadoActivo)?.label ?? 'Estados';
   const ubicacionActual = UBICACIONES.find((item) => item.id === ubicacionActiva) ?? UBICACIONES[0];
-  const cantidadUbicacion = (ubicacion: UbicacionFiltro) =>
-    registrosInventario.filter((registro) => coincideUbicacion(registro, ubicacion)).length;
+  const totalGeneralInventario = conteoUbicaciones.reduce((total, item) => total + item.total, 0);
+  const disponiblesGeneralInventario = conteoUbicaciones.reduce((total, item) => total + item.disponibles, 0);
+  const resumenUbicacion = (ubicacion: UbicacionFiltro) => {
+    if (ubicacion === 'all') {
+      return { total: totalGeneralInventario, disponibles: disponiblesGeneralInventario };
+    }
+    const option = UBICACIONES.find((item) => item.id === ubicacion);
+    const target = normalizarBusqueda(option?.value ?? '');
+    const match = conteoUbicaciones.find((item) => normalizarBusqueda(item.ubicacion) === target);
+    return { total: match?.total ?? 0, disponibles: match?.disponibles ?? 0 };
+  };
+  const cantidadUbicacion = (ubicacion: UbicacionFiltro) => resumenUbicacion(ubicacion).total;
 
   const eliminarCategoria = (categoriaItem: InventarioCategoria) => {
     if (esCategoriaPrincipal(categoriaItem.id)) return;
@@ -489,7 +549,7 @@ export function InventarioPage({
           onClick={() => {
             const next = active ? 'all' : item.id;
             setEstadoActivo(next);
-            if (next !== 'all') setUbicacionActiva('all');
+            if (next !== 'all') onUbicacionChange('all');
             if (next === 'all') onFiltroChange('all');
             setIsStatusMenuOpen(false);
           }}
@@ -587,7 +647,9 @@ export function InventarioPage({
                 ? 'Consolidado de almacenes y taller'
                 : ubicacionActual.id === 'taller'
                   ? 'Taller · equipos en servicio técnico'
-                  : `${ubicacionActual.label} · equipos almacenados`}
+                  : ubicacionActual.id === 'alquilado'
+                    ? 'Alquilado · equipos fuera de almacén'
+                    : `${ubicacionActual.label} · equipos almacenados`}
             </h3>
             <p className="mt-0.5 text-[11px] text-slate-500">
               La ubicación se administra de forma independiente al estado operativo.
@@ -600,14 +662,16 @@ export function InventarioPage({
                 const Icon = option.icon;
                 const active = ubicacionActiva === option.id;
                 const count = cantidadUbicacion(option.id);
+                const disponibles = resumenUbicacion(option.id).disponibles;
                 return (
                   <button
                     key={option.id}
                     type="button"
                     role="radio"
                     aria-checked={active}
+                    title={`${option.label}: ${count} ${count === 1 ? 'producto' : 'productos'} en total · ${disponibles} disponibles`}
                     onClick={() => {
-                      setUbicacionActiva(option.id);
+                      onUbicacionChange(option.id);
                       if (option.id !== 'all') {
                         setEstadoActivo('all');
                         onFiltroChange('all');
@@ -843,7 +907,9 @@ export function InventarioPage({
                   </td>
                 </tr>
               ) : (
-                registros.map((registro) => (
+                registros.map((registro) => {
+                  const bloqueado = estaEnPedidoActivo(registro);
+                  return (
                   <tr
                     key={registro.id}
                     role="button"
@@ -862,6 +928,8 @@ export function InventarioPage({
                       <td
                         key={columna.key}
                         className={`break-words px-2 py-2.5 align-top text-[11px] leading-snug ${
+                          columna.key === 'ubicacion' ? 'overflow-hidden' : ''
+                        } ${
                           index === 0
                             ? 'sticky left-0 z-10 bg-white font-mono font-bold text-brand shadow-[1px_0_0_#f1f5f9] group-hover:bg-brand-soft/30'
                             : ''
@@ -878,13 +946,14 @@ export function InventarioPage({
                     <td className="px-1.5 py-2.5 text-center align-top">
                       <button
                         type="button"
+                        disabled={bloqueado}
                         onClick={(event) => {
                           event.stopPropagation();
                           eliminarProducto(registro);
                         }}
                         aria-label={`Eliminar producto ${registro.sku}`}
-                        title={`Eliminar ${registro.sku}`}
-                        className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-[10px] font-bold text-danger transition-colors hover:border-danger hover:bg-danger/15"
+                        title={bloqueado ? `No se puede eliminar: pertenece al pedido ${registro.pedidoActivo ?? 'activo'}` : `Eliminar ${registro.sku}`}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-danger/30 bg-danger/10 px-2 py-1.5 text-[10px] font-bold text-danger transition-colors hover:border-danger hover:bg-danger/15 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-danger/30 disabled:hover:bg-danger/10"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                         Eliminar
@@ -893,21 +962,23 @@ export function InventarioPage({
                     <td className="px-1.5 py-2.5 text-center align-top">
                       <button
                         type="button"
+                        disabled={bloqueado}
                         onClick={(event) => {
                           event.stopPropagation();
                           setEditingRegistro(registro);
                           setIsInventoryModalOpen(true);
                         }}
-                        aria-label={`Editar producto ${registro.sku}`}
-                        title={`Editar ${registro.sku}`}
-                        className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-highlight/65 bg-brand-soft px-2 py-1.5 text-[10px] font-bold text-brand transition-colors hover:border-brand hover:bg-highlight/25"
+                        aria-label={bloqueado ? `Equipo bloqueado por el pedido ${registro.pedidoActivo ?? 'activo'}` : `Editar producto ${registro.sku}`}
+                        title={bloqueado ? `No se puede editar: pertenece al pedido ${registro.pedidoActivo ?? 'activo'}` : `Editar ${registro.sku}`}
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-md border border-highlight/65 bg-brand-soft px-2 py-1.5 text-[10px] font-bold text-brand transition-colors hover:border-brand hover:bg-highlight/25 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-highlight/65 disabled:hover:bg-brand-soft"
                       >
-                        <Pencil className="h-3.5 w-3.5" />
-                        Editar
+                        {bloqueado ? <LockKeyhole className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
+                        {bloqueado ? 'En pedido' : 'Editar'}
                       </button>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -917,7 +988,7 @@ export function InventarioPage({
           <span className="font-bold text-slate-600">
             {registros.length} {registros.length === 1 ? 'producto mostrado' : 'productos mostrados'}
           </span>
-          en la tabla actual.
+          en esta página · 10 por página.
           <div className="ml-auto flex items-center gap-2"><button type="button" disabled={pagina <= 1} onClick={() => onPaginaChange(pagina - 1)} className="rounded border px-2 py-1 disabled:opacity-40">Anterior</button><span>Página {pagina} de {paginas}</span><button type="button" disabled={pagina >= paginas} onClick={() => onPaginaChange(pagina + 1)} className="rounded border px-2 py-1 disabled:opacity-40">Siguiente</button></div>
         </div>
       </section>

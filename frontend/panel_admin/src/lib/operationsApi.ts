@@ -73,6 +73,10 @@ export function orderPayload(order: PedidoRegistro | Omit<PedidoRegistro, 'id' |
     motivoTraslado: order.motivoTraslado,
     observaciones: order.observaciones,
     skus: order.skus ?? [],
+    fechaEntrega: order.fechaEntrega || null,
+    fechaInicio: order.fechaInicio || null,
+    fechaFin: order.fechaFin || null,
+    aperturarComoBorrador: true,
   };
 }
 

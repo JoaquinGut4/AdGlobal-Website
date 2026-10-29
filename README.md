@@ -103,6 +103,7 @@ de rutas son:
 - `/api/v1/auth/*`: login, renovación y sesión actual.
 - `/api/v1/public/*`: catálogo, imágenes y solicitudes de cotización.
 - `/api/v1/inventario`, `/pedidos`, `/clientes`, `/tickets`: operación administrativa.
+- `/api/v1/reportes/pedidos/pdf`, `/reportes/tickets/pdf`, `/reportes/inventario/pdf`: reportes PDF tabulares.
 - `/api/v1/usuarios`, `/tecnicos`, `/movimientos`, `/servicios`, `/web-assets`: configuración,
   auditoría y gestión de contenido.
 
@@ -270,6 +271,8 @@ Incluye:
 - **Dashboard** con distribución de flota y comparativo alquiler vs ventas.
 - **Control de Inventario** (filtros, búsqueda, estados y categorías personalizadas).
 - **Pedidos**, **Directorio de Clientes**, **Movimientos** y **Tickets de Soporte**.
+- **Reportes** en PDF con tablas para pedidos, tickets de soporte e inventario, con filtros por fecha, estado, categoría y ubicación.
+- Flujo trazable de pedidos: **Borrador → Confirmado → Despachado → Alquiler → Por devolver → Cerrado**, con vencimiento automático, renovación de alquileres con historial y anulación sin eliminación física.
 - **Gestión web** (imágenes y videos de la web pública) y **Configuración** de usuarios.
 - Modales de **apertura de ticket** y **pedido** con notificaciones (toast).
 

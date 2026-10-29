@@ -2,6 +2,7 @@ import {
   ArrowLeftRight,
   Boxes,
   ClipboardList,
+  FileText,
   Globe,
   LayoutDashboard,
   Settings,
@@ -66,6 +67,13 @@ export const NAV_ITEMS: NavItem[] = [
     title: 'Tickets de soporte',
     description: 'Gestionar incidencias técnicas y solicitudes de asistencia.',
     icon: Wrench,
+  },
+  {
+    id: 'reportes',
+    label: 'Reportes',
+    title: 'Reportes',
+    description: 'Descargar reportes en PDF de pedidos, tickets e inventario.',
+    icon: FileText,
   },
   {
     id: 'gestion-web',

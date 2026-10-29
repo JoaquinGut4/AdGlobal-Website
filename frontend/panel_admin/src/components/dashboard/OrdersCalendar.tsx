@@ -9,6 +9,7 @@ import {
   Maximize2,
 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
+import { esPedidoActivo, fechaLocal, rangoPedido } from '@/lib/orderPeriods';
 import type { PedidoRegistro } from '@/types';
 
 interface OrdersCalendarProps {
@@ -19,16 +20,16 @@ interface OrdersCalendarProps {
 const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 const WEEKDAYS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 
-function localDate(value: string): Date | null {
-  const [year, month, day] = (value ?? '').slice(0, 10).split('-').map(Number);
-  if (!year || !month || !day) return null;
-  const date = new Date(year, month - 1, day);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
 function dateKey(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 }
+
+interface CalendarEntry {
+  order: PedidoRegistro;
+  active: boolean;
+}
+
+const MAX_PERIOD_DAYS = 370;
 
 export function OrdersCalendar({ orders, onGoToOrders }: OrdersCalendarProps) {
   const today = useMemo(() => new Date(), []);
@@ -39,12 +40,31 @@ export function OrdersCalendar({ orders, onGoToOrders }: OrdersCalendarProps) {
   const month = viewDate.getMonth();
 
   const ordersByDate = useMemo(() => {
-    const map = new Map<string, PedidoRegistro[]>();
-    for (const order of orders) {
-      const date = localDate(order.fechaEmision);
-      if (!date) continue;
+    const map = new Map<string, CalendarEntry[]>();
+    const add = (date: Date, entry: CalendarEntry) => {
       const key = dateKey(date);
-      map.set(key, [...(map.get(key) ?? []), order]);
+      map.set(key, [...(map.get(key) ?? []), entry]);
+    };
+
+    for (const order of orders) {
+      if (!esPedidoActivo(order)) {
+        // Los pedidos cerrados conservan su fecha de emisión como referencia histórica.
+        const date = fechaLocal(order.fechaEmision);
+        if (date) add(date, { order, active: false });
+        continue;
+      }
+
+      const range = rangoPedido(order);
+      if (!range) continue;
+      const days = Math.min(
+        MAX_PERIOD_DAYS,
+        Math.round((range.fin.getTime() - range.inicio.getTime()) / 86_400_000) + 1,
+      );
+      for (let index = 0; index < days; index += 1) {
+        const date = new Date(range.inicio);
+        date.setDate(range.inicio.getDate() + index);
+        add(date, { order, active: true });
+      }
     }
     return map;
   }, [orders]);
@@ -64,17 +84,23 @@ export function OrdersCalendar({ orders, onGoToOrders }: OrdersCalendarProps) {
       return {
         date,
         currentMonth: date.getMonth() === month,
-        active: dayOrders.some((order) => order.estadoPedido !== 'Finalizado'),
-        finalized: dayOrders.some((order) => order.estadoPedido === 'Finalizado'),
+        active: dayOrders.some((entry) => entry.active),
+        finalized: dayOrders.some((entry) => !entry.active),
       };
     });
   }, [month, ordersByDate, year]);
 
+  const monthStart = new Date(year, month, 1);
+  const monthEnd = new Date(year, month + 1, 0);
   const monthOrders = orders.filter((order) => {
-    const date = localDate(order.fechaEmision);
+    if (esPedidoActivo(order)) {
+      const range = rangoPedido(order);
+      return Boolean(range && range.inicio <= monthEnd && range.fin >= monthStart);
+    }
+    const date = fechaLocal(order.fechaEmision);
     return date?.getFullYear() === year && date.getMonth() === month;
   });
-  const activeCount = monthOrders.filter((order) => order.estadoPedido !== 'Finalizado').length;
+  const activeCount = monthOrders.filter(esPedidoActivo).length;
   const finalizedCount = monthOrders.length - activeCount;
   const selectedOrders = ordersByDate.get(`${year}-${month}-${selectedDay}`) ?? [];
   const isCurrentMonth = year === today.getFullYear() && month === today.getMonth();
@@ -103,7 +129,7 @@ export function OrdersCalendar({ orders, onGoToOrders }: OrdersCalendarProps) {
               <small className="flex h-[18px] items-center justify-center bg-danger text-[7px] font-bold uppercase tracking-[.08em] text-white">{MONTHS[month].slice(0, 3)}</small>
               <strong className="flex flex-1 items-center justify-center text-lg font-semibold tracking-[-.04em] text-slate-900">{selectedDay}</strong>
             </i>
-            <span><strong className="block text-[22px] font-semibold leading-tight tracking-[-.025em] text-slate-950">Calendario</strong><small className="mt-0.5 block text-[12px] font-medium text-slate-500">Pedidos · {MONTHS[month]} {year}</small></span>
+            <span><strong className="block text-[22px] font-semibold leading-tight tracking-[-.025em] text-slate-950">Calendario</strong><small className="mt-0.5 block text-[12px] font-medium text-slate-500">Períodos activos · {MONTHS[month]} {year}</small></span>
           </span>
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100/90 text-slate-600 transition-[transform,background-color] duration-200 group-hover:scale-105 group-hover:bg-slate-200/80"><Maximize2 className="h-4 w-4" /></span>
         </span>
@@ -134,10 +160,10 @@ export function OrdersCalendar({ orders, onGoToOrders }: OrdersCalendarProps) {
           <span className="flex min-w-0 flex-col justify-center">
             <small className="text-[10px] font-semibold uppercase tracking-[.08em] text-danger">Resumen mensual</small>
             <strong className="mt-1 text-3xl font-semibold tracking-[-.035em] text-slate-950">{monthOrders.length}</strong>
-            <small className="mt-0.5 text-[12px] font-medium text-slate-500">{monthOrders.length === 1 ? 'pedido registrado' : 'pedidos registrados'}</small>
+            <small className="mt-0.5 text-[12px] font-medium text-slate-500">{monthOrders.length === 1 ? 'pedido en el período' : 'pedidos en el período'}</small>
             <span className="mt-5 space-y-3">
-              <span className="flex items-center justify-between rounded-xl bg-brand/8 px-3 py-2.5"><span className="flex items-center gap-2 text-[11px] font-semibold text-brand"><i className="h-2 w-2 rounded-full bg-brand" />Activos</span><strong className="text-[12px] font-semibold text-brand">{activeCount}</strong></span>
-              <span className="flex items-center justify-between rounded-xl bg-success/8 px-3 py-2.5"><span className="flex items-center gap-2 text-[11px] font-semibold text-success"><i className="h-2 w-2 rounded-full bg-success" />Finalizados</span><strong className="text-[12px] font-semibold text-success">{finalizedCount}</strong></span>
+              <span className="flex items-center justify-between rounded-xl bg-brand/8 px-3 py-2.5"><span className="flex items-center gap-2 text-[11px] font-semibold text-brand"><i className="h-2 w-2 rounded-full bg-brand" />Activos en el período</span><strong className="text-[12px] font-semibold text-brand">{activeCount}</strong></span>
+              <span className="flex items-center justify-between rounded-xl bg-success/8 px-3 py-2.5"><span className="flex items-center gap-2 text-[11px] font-semibold text-success"><i className="h-2 w-2 rounded-full bg-success" />Finalizados registrados</span><strong className="text-[12px] font-semibold text-success">{finalizedCount}</strong></span>
               <span className="flex items-center justify-between px-3 pt-1 text-[11px] font-medium text-slate-500"><span>Seleccionados hoy</span><strong className="font-semibold text-slate-800">{selectedOrders.length}</strong></span>
             </span>
           </span>
@@ -150,7 +176,7 @@ export function OrdersCalendar({ orders, onGoToOrders }: OrdersCalendarProps) {
         onClose={() => setIsOpen(false)}
         labelledBy="orders-calendar-title"
         title="Calendario de pedidos"
-        subtitle="Pedidos activos y finalizados por fecha de emisión"
+        subtitle="Períodos de pedidos activos y pedidos finalizados por fecha de emisión"
         icon={<CalendarDays className="h-4 w-4" />}
         panelClass="max-w-5xl"
       >
@@ -191,7 +217,7 @@ export function OrdersCalendar({ orders, onGoToOrders }: OrdersCalendarProps) {
             <div className="flex min-h-96 flex-col bg-slate-50/70 p-5 sm:p-6 md:col-span-5">
               <div className="mb-4 flex items-center justify-between border-b border-slate-200 pb-3"><div><p className="text-[9px] font-bold uppercase tracking-[.12em] text-slate-400">Detalle del día</p><h3 className="text-sm font-extrabold text-ink">{selectedDay} de {MONTHS[month]}, {year}</h3></div><span className="rounded-lg border border-slate-200 bg-white px-2 py-1 font-mono text-[10px] font-bold text-slate-600">{selectedOrders.length} pedidos</span></div>
               {selectedOrders.length > 0 ? (
-                <div className="max-h-80 space-y-2 overflow-y-auto pr-1">{selectedOrders.map((order) => { const finalized = order.estadoPedido === 'Finalizado'; return <button key={order.id} type="button" onClick={onGoToOrders} className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white p-3 text-left hover:bg-slate-50"><span className="flex min-w-0 items-center gap-2.5"><i className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${finalized ? 'bg-success/10 text-success' : 'bg-brand-soft text-brand'}`}>{finalized ? <CheckCircle2 className="h-4 w-4" /> : <ClipboardList className="h-4 w-4" />}</i><span className="min-w-0"><strong className="block truncate font-mono text-[11px] text-ink">{order.numeroPedido}</strong><small className="block truncate text-[9px] text-slate-500">{order.motivoTraslado} · {order.cantidadProductos} equipos</small></span></span><span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[8px] font-bold ${finalized ? 'bg-success/10 text-success' : 'bg-brand-soft text-brand-deep'}`}>{finalized ? 'FINALIZADO' : 'ACTIVO'}</span></button>; })}</div>
+                <div className="max-h-80 space-y-2 overflow-y-auto pr-1">{selectedOrders.map(({ order, active }) => <button key={`${order.id}-${active}`} type="button" onClick={onGoToOrders} className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-white p-3 text-left hover:bg-slate-50"><span className="flex min-w-0 items-center gap-2.5"><i className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${active ? 'bg-brand-soft text-brand' : 'bg-success/10 text-success'}`}>{active ? <ClipboardList className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}</i><span className="min-w-0"><strong className="block truncate font-mono text-[11px] text-ink">{order.numeroPedido}</strong><small className="block truncate text-[9px] text-slate-500">{order.motivoTraslado} · {order.cantidadProductos} equipos</small></span></span><span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[8px] font-bold ${active ? 'bg-brand-soft text-brand-deep' : 'bg-success/10 text-success'}`}>{active ? 'ACTIVO' : 'FINALIZADO'}</span></button>)}</div>
               ) : (
                 <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white/70 px-4 py-8 text-center"><CalendarDays className="h-7 w-7 text-slate-300" /><p className="mt-2 text-xs font-bold text-slate-600">Sin pedidos para este día</p><p className="mt-0.5 text-[10px] text-slate-400">Selecciona una fecha con indicadores.</p></div>
               )}

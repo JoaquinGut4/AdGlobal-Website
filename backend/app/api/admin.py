@@ -23,6 +23,7 @@ from backend.app.core.audit_context import request_device, request_ip
 from backend.app.core.config import get_settings
 from backend.app.core.database import get_db
 from backend.app.core.security import hash_password
+from backend.app.reports import table_pdf
 from backend.app.models import (
     AdminUser,
     AuditLog,
@@ -53,6 +54,7 @@ from backend.app.schemas import (
     DerivedCustomerOut,
     InventoryIn,
     InventoryOut,
+    InventoryLocationCountOut,
     PaginatedAuditOut,
     PaginatedInventoryOut,
     InventoryStateIn,
@@ -61,6 +63,8 @@ from backend.app.schemas import (
     OrderIn,
     OrderFinishOut,
     OrderOut,
+    OrderRenewalIn,
+    OrderTransitionIn,
     FAQIn,
     FAQOut,
     ServiceIn,
@@ -119,7 +123,7 @@ def category_out(item: InventoryCategory) -> CategoryOut:
     )
 
 
-def inventory_out(item: InventoryAsset) -> InventoryOut:
+def inventory_out(item: InventoryAsset, pedido_activo: str | None = None) -> InventoryOut:
     return InventoryOut(
         id=item.id, categoriaId=item.category_id, categoria=item.category.code, sku=item.sku, qr=item.qr,
         foto=item.photo_url, item=item.item, marca=item.brand, descripcion=item.description,
@@ -128,8 +132,18 @@ def inventory_out(item: InventoryAsset) -> InventoryOut:
         tipoMemoriaInterna=item.storage_type, modelo=item.model, fechaCompra=item.purchase_date,
         facturaGuiaCompra=item.purchase_document, precio=item.price, proveedor=item.supplier,
         alquiler=item.rentable, ubicacion=item.location or "Almacén 1", estado=item.status, observaciones=item.notes,
-        especificacionesPersonalizadas=item.custom_specs,
+        especificacionesPersonalizadas=item.custom_specs, pedidoActivo=pedido_activo,
     )
+
+
+def active_order_assets(db: Session) -> dict[str, str]:
+    """Equipos vinculados a pedidos activos: id del activo -> número de pedido."""
+    orders = db.scalars(select(Order).where(Order.operational_status == "Activo")).all()
+    return {
+        asset_id: order.order_number
+        for order in orders
+        for asset_id in (order.previous_states or {})
+    }
 
 
 def order_out(item: Order) -> OrderOut:
@@ -149,6 +163,14 @@ def order_out(item: Order) -> OrderOut:
         estadoPedido=item.operational_status,
         fechaFinalizacion=as_utc(item.finalized_at) if item.finalized_at else None,
         estadosAnteriores=item.previous_states or {},
+        estadoFlujo=item.workflow_status,
+        fechaEntrega=item.delivery_date,
+        fechaInicio=item.service_start_date,
+        fechaFin=item.service_end_date,
+        motivoAnulacion=item.cancellation_reason,
+        fechaCambioEstado=as_utc(item.status_changed_at) if item.status_changed_at else None,
+        renovaciones=len(item.renewal_history or []),
+        historialRenovaciones=item.renewal_history or [],
     )
 
 
@@ -173,9 +195,11 @@ def ticket_out(item: SupportTicket) -> TicketOut:
         tecnicoTelefono=item.technician_phone,
         equiposIds=item.asset_ids or [],
         estadosAnteriores=item.previous_states or {},
+        ubicacionesAnteriores=item.previous_locations or {},
         reparable=item.is_repairable,
         flujo=item.workflow_type,
         equiposReemplazoIds=item.replacement_asset_ids or [],
+        ubicacionesReemplazoAnteriores=item.replacement_previous_locations or {},
         evidencias=item.evidence_urls or [],
         descripcionSolucion=item.solution_description or "",
         fechaResolucion=as_utc(item.resolved_at) if item.resolved_at else None,
@@ -205,8 +229,8 @@ def dashboard(_: AdminUser = Depends(require_module("dashboard")), db: Session =
         .group_by(InventoryAsset.location, InventoryAsset.status)
     ).all()
     inventory_locations = {
-        location: {"ubicacion": location, "total": 0, "disponibles": 0, "alquiler": 0, "mantenimiento": 0}
-        for location in ("Almacén 1", "Almacén 2", "Almacén 3", "Taller")
+        location: {"ubicacion": location, "total": 0, "disponibles": 0, "alquiler": 0, "mantenimiento": 0, "categorias": {}}
+        for location in ("Almacén 1", "Almacén 2", "Almacén 3", "Taller", "Alquilado")
     }
     technical_statuses = {
         "Taller", "Mantenimiento", "Diagnóstico", "Reparación",
@@ -222,6 +246,24 @@ def dashboard(_: AdminUser = Depends(require_module("dashboard")), db: Session =
             summary["alquiler"] += count
         elif status in technical_statuses:
             summary["mantenimiento"] += count
+
+    category_rows = db.execute(
+        select(InventoryAsset.location, InventoryCategory.label, InventoryAsset.status, func.count())
+        .join(InventoryCategory)
+        .group_by(InventoryAsset.location, InventoryCategory.label, InventoryAsset.status)
+    ).all()
+    for location, category_label, status, count in category_rows:
+        location_name = location if location in inventory_locations else "Almacén 1"
+        categories = inventory_locations[location_name]["categorias"]
+        category = categories.setdefault(category_label, {"categoria": category_label, "total": 0, "disponibles": 0})
+        category["total"] += count
+        if status == "Disponible":
+            category["disponibles"] += count
+    for summary in inventory_locations.values():
+        summary["categorias"] = sorted(
+            summary["categorias"].values(),
+            key=lambda category: (category["categoria"].lower()),
+        )
     orders = list(db.scalars(select(Order)).all())
     tickets_by_status = dict(db.execute(select(SupportTicket.status, func.count()).group_by(SupportTicket.status)).all())
     customer_orders: dict[str, bool] = {}
@@ -345,7 +387,7 @@ def delete_user(user_id: str, actor: AdminUser = Depends(require_super_admin), d
 
 
 @router.get("/inventario/categorias", response_model=list[CategoryOut])
-def categories(_: AdminUser = Depends(require_any_module("dashboard", "inventario", "pedidos", "tickets")), db: Session = Depends(get_db)) -> list[CategoryOut]:
+def categories(_: AdminUser = Depends(require_any_module("dashboard", "inventario", "pedidos", "tickets", "reportes")), db: Session = Depends(get_db)) -> list[CategoryOut]:
     return [category_out(item) for item in db.scalars(select(InventoryCategory).order_by(InventoryCategory.code)).all()]
 
 
@@ -388,7 +430,7 @@ def inventory_state_out(item: InventoryState) -> InventoryStateOut:
 
 @router.get("/inventario/estados", response_model=list[InventoryStateOut])
 def inventory_states(
-    _: AdminUser = Depends(require_any_module("dashboard", "inventario", "pedidos", "tickets")),
+    _: AdminUser = Depends(require_any_module("dashboard", "inventario", "pedidos", "tickets", "reportes")),
     db: Session = Depends(get_db),
 ) -> list[InventoryStateOut]:
     rows = db.scalars(select(InventoryState).order_by(InventoryState.sort_order, InventoryState.name)).all()
@@ -497,7 +539,34 @@ def inventory(
         query = query.where(InventoryAsset.sku.like(term) | InventoryAsset.serial_number.like(term) | InventoryAsset.description.like(term) | InventoryAsset.brand.like(term))
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
     rows = db.scalars(query.order_by(InventoryAsset.sku).offset((page - 1) * page_size).limit(page_size)).all()
-    return PaginatedInventoryOut(items=[inventory_out(item) for item in rows], total=total, page=page, pageSize=page_size, pages=max(1, math.ceil(total / page_size)))
+    order_assets = active_order_assets(db)
+    return PaginatedInventoryOut(
+        items=[inventory_out(item, order_assets.get(item.id)) for item in rows],
+        total=total, page=page, pageSize=page_size, pages=max(1, math.ceil(total / page_size)),
+    )
+
+
+@router.get("/inventario/resumen-ubicaciones", response_model=list[InventoryLocationCountOut])
+def inventory_location_counts(
+    category_id: str | None = None,
+    _: AdminUser = Depends(require_any_module("dashboard", "inventario", "pedidos", "tickets")),
+    db: Session = Depends(get_db),
+) -> list[InventoryLocationCountOut]:
+    """Totales por ubicación de todo el inventario, independientes de la paginación."""
+    query = select(InventoryAsset.location, InventoryAsset.status, func.count())
+    if category_id:
+        query = query.where(InventoryAsset.category_id == category_id)
+    query = query.group_by(InventoryAsset.location, InventoryAsset.status)
+    counts: dict[str, dict[str, int]] = {}
+    for location, status, total in db.execute(query).all():
+        summary = counts.setdefault(location, {"total": 0, "disponibles": 0})
+        summary["total"] += total
+        if status == "Disponible":
+            summary["disponibles"] += total
+    return [
+        InventoryLocationCountOut(ubicacion=location, total=values["total"], disponibles=values["disponibles"])
+        for location, values in sorted(counts.items())
+    ]
 
 
 @router.get("/inventario/por-qr", response_model=InventoryOut)
@@ -510,7 +579,7 @@ def inventory_by_qr(
     item = db.scalar(select(InventoryAsset).join(InventoryCategory).where(InventoryAsset.qr == normalized))
     if item is None:
         raise HTTPException(404, "No existe un producto asociado a este código QR")
-    return inventory_out(item)
+    return inventory_out(item, active_order_assets(db).get(item.id))
 
 
 @router.post("/inventario/fotos", status_code=201)
@@ -575,6 +644,9 @@ def create_inventory(payload: InventoryIn, actor: AdminUser = Depends(require_mo
 def update_inventory(item_id: str, payload: InventoryIn, actor: AdminUser = Depends(require_module("inventario")), db: Session = Depends(get_db)) -> InventoryOut:
     item = db.get(InventoryAsset, item_id)
     if item is None: raise HTTPException(404, "Activo no encontrado")
+    active_order = active_order_assets(db).get(item.id)
+    if active_order is not None:
+        raise HTTPException(409, f"El equipo pertenece al pedido {active_order} y no se puede editar hasta cerrarlo o anularlo")
     if db.get(InventoryCategory, payload.categoriaId) is None: raise HTTPException(422, "Categoría inexistente")
     if payload.estado and db.get(InventoryState, payload.estado) is None: raise HTTPException(422, "Estado de inventario inexistente")
     old_photo = item.photo_url
@@ -590,8 +662,9 @@ def update_inventory(item_id: str, payload: InventoryIn, actor: AdminUser = Depe
 def delete_inventory(item_id: str, actor: AdminUser = Depends(require_module("inventario")), db: Session = Depends(get_db)) -> None:
     item = db.get(InventoryAsset, item_id)
     if item is None: raise HTTPException(404, "Activo no encontrado")
-    if any(item_id in (order.previous_states or {}) for order in db.scalars(select(Order).where(Order.operational_status == "Activo")).all()):
-        raise HTTPException(409, "El activo pertenece a un pedido activo")
+    active_order = active_order_assets(db).get(item_id)
+    if active_order is not None:
+        raise HTTPException(409, f"El equipo pertenece al pedido {active_order} y no se puede eliminar hasta cerrarlo o anularlo")
     if any(item_id in (ticket.asset_ids or []) for ticket in db.scalars(select(SupportTicket).where(SupportTicket.status != "Resuelto")).all()):
         raise HTTPException(409, "El activo pertenece a un ticket activo")
     photo = item.photo_url
@@ -673,7 +746,10 @@ def derived_customers(
 
 @router.get("/pedidos", response_model=list[OrderOut])
 def orders(_: AdminUser = Depends(require_any_module("dashboard", "pedidos", "clientes", "tickets")), db: Session = Depends(get_db)) -> list[OrderOut]:
-    return [order_out(item) for item in db.scalars(select(Order).order_by(Order.issue_date.desc(), Order.order_number.desc())).all()]
+    items = list(db.scalars(select(Order).order_by(Order.issue_date.desc(), Order.order_number.desc())).all())
+    if any(refresh_timed_order_status(item) for item in items):
+        db.commit()
+    return [order_out(item) for item in items]
 
 
 @router.get("/pedidos/por-numero", response_model=OrderOut)
@@ -686,6 +762,8 @@ def order_by_number(
     item = db.scalar(select(Order).where(func.upper(Order.order_number) == normalized))
     if item is None:
         raise HTTPException(404, "No se encontró un pedido con este número")
+    if refresh_timed_order_status(item):
+        db.commit()
     return order_out(item)
 
 
@@ -698,7 +776,31 @@ def next_order_number(db: Session) -> str:
 
 
 def apply_order(item: Order, payload: OrderIn) -> None:
-    item.issue_date=payload.fechaEmision; item.origin_address=payload.direccionPartida; item.destination_address=payload.direccionLlegada; item.contact_phone=payload.telefonoContacto; item.product_description=payload.descripcionProductos; item.product_quantity=payload.cantidadProductos; item.unit=payload.unidadMedida; item.transfer_reason=payload.motivoTraslado; item.notes=payload.observaciones; item.skus=payload.skus
+    unique_lines = list(dict.fromkeys(line.strip() for line in payload.descripcionProductos.splitlines() if line.strip()))
+    unique_skus = list(dict.fromkeys(sku.strip() for sku in payload.skus if sku.strip()))
+    service_start = payload.fechaInicio or payload.fechaEntrega
+    item.issue_date=payload.fechaEmision; item.origin_address=payload.direccionPartida; item.destination_address=payload.direccionLlegada; item.contact_phone=payload.telefonoContacto; item.product_description="\n".join(unique_lines); item.product_quantity=len(unique_skus) if unique_skus else payload.cantidadProductos; item.unit=payload.unidadMedida; item.transfer_reason=payload.motivoTraslado; item.notes=payload.observaciones; item.skus=unique_skus
+    item.delivery_date=service_start; item.service_start_date=service_start; item.service_end_date=payload.fechaFin
+
+
+def rental_status_for_end(end_date: date) -> str:
+    today = date.today()
+    if today > end_date:
+        return "Vencido"
+    if today >= end_date - timedelta(days=3):
+        return "Por devolver"
+    return "Alquiler"
+
+
+def refresh_timed_order_status(item: Order) -> bool:
+    if item.transfer_reason != "Alquiler" or item.workflow_status not in {"Alquiler", "Por devolver"} or not item.service_end_date:
+        return False
+    next_status = rental_status_for_end(item.service_end_date)
+    if next_status == item.workflow_status:
+        return False
+    item.workflow_status = next_status
+    item.status_changed_at = utcnow()
+    return True
 
 
 def order_target_state(reason: str) -> str | None:
@@ -712,14 +814,12 @@ def order_target_state(reason: str) -> str | None:
 def restore_order_assets(item: Order, db: Session, *, deleting: bool = False) -> int:
     if item.operational_status == "Finalizado" and item.transfer_reason == "Alquiler":
         return 0
-    expected = order_target_state(item.transfer_reason)
-    if expected is None:
-        return 0
     restored = 0
     for asset_id, previous in (item.previous_states or {}).items():
         asset = db.get(InventoryAsset, asset_id)
-        if asset is not None and asset.status == expected:
+        if asset is not None and asset.status in {"Reservado", "Despachado", "Alquiler", "Venta"}:
             asset.status = previous
+            asset.location = (item.previous_locations or {}).get(asset_id, asset.location)
             restored += 1
     return restored
 
@@ -741,9 +841,6 @@ def rebase_tickets_after_order_release(item: Order, db: Session) -> None:
 
 
 def reserve_order_assets(payload: OrderIn, db: Session, *, exclude_order_id: str | None = None) -> dict[str, str]:
-    target = order_target_state(payload.motivoTraslado)
-    if target is None:
-        return {}
     selected_skus = {sku.strip().upper() for sku in payload.skus if sku.strip()}
     if not selected_skus:
         # Compatibilidad con pedidos históricos creados antes de seleccionar
@@ -772,14 +869,25 @@ def reserve_order_assets(payload: OrderIn, db: Session, *, exclude_order_id: str
 
     previous = {asset.id: asset.status for asset in assets}
     for asset in assets:
-        asset.status = target
+        asset.status = "Reservado"
     return previous
 
 
 @router.post("/pedidos", response_model=OrderOut, status_code=201)
 def create_order(payload: OrderIn, actor: AdminUser = Depends(require_module("pedidos")), db: Session = Depends(get_db)) -> OrderOut:
-    previous = reserve_order_assets(payload, db)
-    item=Order(order_number=next_order_number(db), previous_states=previous); apply_order(item,payload); db.add(item); audit(db,actor,"Pedidos","Creó",item.order_number,f"Creó el pedido {item.order_number}.")
+    previous: dict[str, str] = {}
+    workflow_status = "Borrador"
+    if not payload.aperturarComoBorrador:
+        previous = reserve_order_assets(payload, db)
+        assigned = order_target_state(payload.motivoTraslado)
+        if assigned:
+            for asset_id in previous:
+                asset = db.get(InventoryAsset, asset_id)
+                if asset is not None:
+                    asset.status = assigned
+        workflow_status = "Confirmado"
+    previous_locations = {asset_id: db.get(InventoryAsset, asset_id).location for asset_id in previous if db.get(InventoryAsset, asset_id) is not None}
+    item=Order(order_number=next_order_number(db), previous_states=previous, previous_locations=previous_locations, workflow_status=workflow_status, status_changed_at=utcnow()); apply_order(item,payload); item.issue_date=date.today(); db.add(item); audit(db,actor,"Pedidos","Creó",item.order_number,f"Aperturó el pedido {item.order_number} como {workflow_status.lower()}.")
     try: db.commit()
     except IntegrityError: conflict(db,"No se pudo asignar el correlativo; vuelva a intentarlo")
     db.refresh(item); return order_out(item)
@@ -789,10 +897,12 @@ def create_order(payload: OrderIn, actor: AdminUser = Depends(require_module("pe
 def update_order(item_id: str, payload: OrderIn, actor: AdminUser = Depends(require_module("pedidos")), db: Session = Depends(get_db)) -> OrderOut:
     item=db.get(Order,item_id)
     if item is None: raise HTTPException(404,"Pedido no encontrado")
-    if item.operational_status == "Finalizado": raise HTTPException(409,"No se puede editar un pedido finalizado")
-    restore_order_assets(item, db)
-    item.previous_states = reserve_order_assets(payload, db, exclude_order_id=item.id)
-    apply_order(item,payload); audit(db,actor,"Pedidos","Editó",item.order_number,f"Editó el pedido {item.order_number}."); db.commit(); db.refresh(item); return order_out(item)
+    if item.workflow_status != "Borrador" and payload.aperturarComoBorrador:
+        raise HTTPException(409,"Solo se puede editar un pedido en borrador")
+    immutable_issue_date = item.issue_date
+    apply_order(item,payload)
+    item.issue_date = immutable_issue_date
+    audit(db,actor,"Pedidos","Editó",item.order_number,f"Editó el pedido {item.order_number}."); db.commit(); db.refresh(item); return order_out(item)
 
 
 @router.patch("/pedidos/{item_id}/finalizar", response_model=OrderFinishOut)
@@ -803,20 +913,164 @@ def finish_order(item_id: str, actor: AdminUser = Depends(require_module("pedido
     restored = restore_order_assets(item, db)
     rebase_tickets_after_order_release(item, db)
     item.operational_status = "Finalizado"
+    item.workflow_status = "Cerrado"
     item.finalized_at = utcnow()
+    item.status_changed_at = utcnow()
     audit(db, actor, "Pedidos", "Modificó", item.order_number, f"Finalizó el pedido {item.order_number}.")
     db.commit(); db.refresh(item)
     return OrderFinishOut(pedido=order_out(item), inventarioActualizado=restored)
+
+
+ORDER_TRANSITIONS: dict[str, set[str]] = {
+    "Borrador": {"Confirmado", "Anulado"},
+    "Confirmado": {"Despachado", "Anulado"},
+    "Despachado": {"Alquiler", "Cerrado"},
+    "Alquiler": {"Por devolver", "Vencido", "Cerrado"},
+    "Por devolver": {"Vencido", "Cerrado"},
+    "Vencido": {"Alquiler", "Cerrado"},
+    "Cerrado": set(),
+    "Anulado": set(),
+}
+
+
+@router.patch("/pedidos/{item_id}/estado", response_model=OrderFinishOut)
+def transition_order(
+    item_id: str,
+    payload: OrderTransitionIn,
+    actor: AdminUser = Depends(require_module("pedidos")),
+    db: Session = Depends(get_db),
+) -> OrderFinishOut:
+    item = db.get(Order, item_id)
+    if item is None:
+        raise HTTPException(404, "Pedido no encontrado")
+    refresh_timed_order_status(item)
+    current = item.workflow_status
+    target = payload.estadoDestino
+    if target not in ORDER_TRANSITIONS.get(current, set()):
+        raise HTTPException(409, f"No se puede cambiar un pedido de {current} a {target}")
+
+    changed_assets = 0
+    if target == "Confirmado":
+        if not item.destination_address.strip() or not item.contact_phone.strip() or not item.product_description.strip():
+            raise HTTPException(422, "Completa los datos del cliente y los productos antes de confirmar")
+        if not (item.service_start_date and item.service_end_date):
+            raise HTTPException(422, "Completa las fechas de entrega y fin del alquiler antes de confirmar")
+        if item.service_end_date < item.service_start_date:
+            raise HTTPException(422, "La fecha de fin no puede ser anterior a la fecha de inicio")
+        if not item.skus:
+            raise HTTPException(422, "Selecciona al menos un equipo antes de confirmar")
+        payload_for_reservation = OrderIn(
+            fechaEmision=item.issue_date,
+            direccionPartida=item.origin_address,
+            direccionLlegada=item.destination_address,
+            telefonoContacto=item.contact_phone,
+            descripcionProductos=item.product_description,
+            cantidadProductos=item.product_quantity,
+            unidadMedida=item.unit,
+            motivoTraslado=item.transfer_reason,
+            observaciones=item.notes,
+            skus=item.skus or [],
+            fechaEntrega=item.delivery_date,
+            fechaInicio=item.service_start_date,
+            fechaFin=item.service_end_date,
+        )
+        item.previous_states = reserve_order_assets(payload_for_reservation, db, exclude_order_id=item.id)
+        item.previous_locations = {
+            asset_id: asset.location
+            for asset_id in item.previous_states
+            if (asset := db.get(InventoryAsset, asset_id)) is not None
+        }
+        changed_assets = len(item.previous_states)
+    elif target == "Despachado":
+        guide = db.scalar(select(ShippingGuide).where(ShippingGuide.order_id == item.id))
+        if guide is None or guide.status != "Emitida":
+            raise HTTPException(422, "Emite la guía de remisión antes de despachar el pedido")
+        for asset_id in (item.previous_states or {}):
+            asset = db.get(InventoryAsset, asset_id)
+            if asset is not None and asset.status == "Reservado":
+                asset.status = "Despachado"
+                asset.location = "Alquilado"
+                changed_assets += 1
+    elif target == "Alquiler":
+        if item.transfer_reason != "Alquiler":
+            raise HTTPException(422, "El estado Alquiler solo aplica a pedidos de alquiler")
+        for asset_id in (item.previous_states or {}):
+            asset = db.get(InventoryAsset, asset_id)
+            if asset is not None and asset.status in {"Reservado", "Despachado"}:
+                asset.status = "Alquiler"
+                asset.location = "Alquilado"
+                changed_assets += 1
+    elif target in {"Cerrado", "Anulado"}:
+        if target == "Anulado":
+            reason = payload.motivo.strip()
+            if not reason:
+                raise HTTPException(422, "Indica el motivo de la anulación")
+            item.cancellation_reason = reason
+            guide = db.scalar(select(ShippingGuide).where(ShippingGuide.order_id == item.id))
+            if guide is not None:
+                db.delete(guide)
+        changed_assets = restore_order_assets(item, db)
+        rebase_tickets_after_order_release(item, db)
+        item.operational_status = "Finalizado"
+        item.finalized_at = utcnow()
+
+    item.workflow_status = target
+    item.status_changed_at = utcnow()
+    audit(db, actor, "Pedidos", "Modificó", item.order_number, f"Cambió el estado de {current} a {target}.")
+    db.commit()
+    db.refresh(item)
+    return OrderFinishOut(pedido=order_out(item), inventarioActualizado=changed_assets)
+
+
+@router.post("/pedidos/{item_id}/renovar", response_model=OrderOut)
+def renew_order(
+    item_id: str,
+    payload: OrderRenewalIn,
+    actor: AdminUser = Depends(require_module("pedidos")),
+    db: Session = Depends(get_db),
+) -> OrderOut:
+    item = db.get(Order, item_id)
+    if item is None:
+        raise HTTPException(404, "Pedido no encontrado")
+    refresh_timed_order_status(item)
+    if item.workflow_status not in {"Alquiler", "Por devolver", "Vencido"}:
+        raise HTTPException(409, "Solo se puede renovar un pedido entregado y antes de cerrarlo")
+    if item.transfer_reason != "Alquiler":
+        raise HTTPException(422, "Solo los pedidos de alquiler se pueden renovar")
+    if item.service_end_date is None:
+        raise HTTPException(422, "El pedido no tiene una fecha de fin de alquiler")
+    if payload.nuevaFechaFin <= item.service_end_date:
+        raise HTTPException(422, "La nueva fecha de fin debe ser posterior a la fecha actual del pedido")
+    if payload.nuevaFechaFin < date.today():
+        raise HTTPException(422, "La nueva fecha de fin no puede estar en el pasado")
+
+    previous_end = item.service_end_date
+    history = list(item.renewal_history or [])
+    history.append({
+        "fecha": utcnow().isoformat(),
+        "fechaAnterior": previous_end.isoformat(),
+        "fechaNueva": payload.nuevaFechaFin.isoformat(),
+        "motivo": payload.motivo.strip(),
+        "usuario": actor.username,
+    })
+    item.renewal_history = history
+    item.service_end_date = payload.nuevaFechaFin
+    item.workflow_status = rental_status_for_end(payload.nuevaFechaFin)
+    item.status_changed_at = utcnow()
+    audit(
+        db, actor, "Pedidos", "Modificó", item.order_number,
+        f"Renovó el pedido {item.order_number} hasta {payload.nuevaFechaFin}.",
+    )
+    db.commit()
+    db.refresh(item)
+    return order_out(item)
 
 
 @router.delete("/pedidos/{item_id}", status_code=204)
 def delete_order(item_id: str, actor: AdminUser = Depends(require_module("pedidos")), db: Session = Depends(get_db)) -> None:
     item=db.get(Order,item_id)
     if item is None: raise HTTPException(404,"Pedido no encontrado")
-    restore_order_assets(item, db, deleting=True)
-    if not (item.operational_status == "Finalizado" and item.transfer_reason == "Alquiler"):
-        rebase_tickets_after_order_release(item, db)
-    audit(db,actor,"Pedidos","Eliminó",item.order_number,f"Eliminó el pedido {item.order_number}."); db.delete(item); db.commit()
+    raise HTTPException(409, "Los pedidos no se eliminan; anúlalo para conservar la trazabilidad")
 
 
 def guide_out(item: ShippingGuide) -> ShippingGuideOut:
@@ -849,7 +1103,22 @@ def active_order_for_guide(item_id: str, db: Session) -> Order:
         raise HTTPException(404, "Pedido no encontrado")
     if order.operational_status == "Finalizado":
         raise HTTPException(409, "El pedido está finalizado. No se puede aperturar ni editar su guía de remisión")
+    if order.workflow_status != "Confirmado":
+        raise HTTPException(409, "La guía solo se puede aperturar o editar cuando el pedido está confirmado")
     return order
+
+
+@router.get("/guias/emitidas", response_model=list[ShippingGuideOut])
+def emitted_shipping_guides(
+    _: AdminUser = Depends(require_module("pedidos")),
+    db: Session = Depends(get_db),
+) -> list[ShippingGuideOut]:
+    items = db.scalars(
+        select(ShippingGuide)
+        .where(ShippingGuide.status == "Emitida")
+        .order_by(ShippingGuide.updated_at.desc())
+    ).all()
+    return [guide_out(item) for item in items]
 
 
 @router.get("/pedidos/{item_id}/guia", response_model=ShippingGuideOut)
@@ -862,6 +1131,8 @@ def get_shipping_guide(item_id: str, _: AdminUser = Depends(require_module("pedi
 @router.post("/pedidos/{item_id}/guia", response_model=ShippingGuideOut, status_code=201)
 def create_shipping_guide(item_id: str, payload: ShippingGuideIn, actor: AdminUser = Depends(require_module("pedidos")), db: Session = Depends(get_db)) -> ShippingGuideOut:
     order = active_order_for_guide(item_id, db)
+    if payload.estado == "Emitida" and order.workflow_status != "Confirmado":
+        raise HTTPException(409, "La guía solo se puede emitir cuando el pedido está confirmado")
     if db.scalar(select(ShippingGuide).where(ShippingGuide.order_id == item_id)) is not None: raise HTTPException(409, "El pedido ya tiene una guía")
     item = ShippingGuide(order_id=item_id, guide_number=payload.numeroGuia, transfer_date=payload.fechaTraslado)
     apply_guide(item, payload, db); db.add(item)
@@ -871,7 +1142,9 @@ def create_shipping_guide(item_id: str, payload: ShippingGuideIn, actor: AdminUs
 
 @router.put("/pedidos/{item_id}/guia", response_model=ShippingGuideOut)
 def update_shipping_guide(item_id: str, payload: ShippingGuideIn, actor: AdminUser = Depends(require_module("pedidos")), db: Session = Depends(get_db)) -> ShippingGuideOut:
-    active_order_for_guide(item_id, db)
+    order = active_order_for_guide(item_id, db)
+    if payload.estado == "Emitida" and order.workflow_status != "Confirmado":
+        raise HTTPException(409, "La guía solo se puede emitir cuando el pedido está confirmado")
     item = db.scalar(select(ShippingGuide).where(ShippingGuide.order_id == item_id))
     if item is None: raise HTTPException(404, "Guía no encontrada")
     apply_guide(item, payload, db)
@@ -937,15 +1210,21 @@ def restore_ticket_assets(item: SupportTicket, db: Session) -> int:
     if item.status == "Resuelto":
         return 0
     restored = 0
+    previous_locations = item.previous_locations or {}
     for asset_id, previous in (item.previous_states or {}).items():
         asset = db.get(InventoryAsset, asset_id)
         if asset is not None and asset.status in {"Diagnóstico", "Reparación", "Reemplazo requerido"}:
             asset.status = previous
+            if asset_id in previous_locations:
+                asset.location = previous_locations[asset_id]
             restored += 1
+    replacement_locations = item.replacement_previous_locations or {}
     for asset_id, previous in (item.replacement_previous_states or {}).items():
         asset = db.get(InventoryAsset, asset_id)
         if asset is not None and asset.status == "Reservado para reemplazo":
             asset.status = previous
+            if asset_id in replacement_locations:
+                asset.location = replacement_locations[asset_id]
             restored += 1
     return restored
 
@@ -1092,29 +1371,37 @@ def diagnose_ticket(
     if len(set(payload.equiposAfectadosIds)) != len(payload.equiposAfectadosIds):
         raise HTTPException(422, "No puedes repetir un equipo afectado")
     restore_ticket_assets(item, db)
-    item.replacement_asset_ids = []; item.replacement_previous_states = {}
+    item.replacement_asset_ids = []; item.replacement_previous_states = {}; item.replacement_previous_locations = {}
     affected = [db.get(InventoryAsset, asset_id) for asset_id in payload.equiposAfectadosIds]
     if any(asset is None for asset in affected): raise HTTPException(422, "Uno de los equipos afectados no existe")
     active_tickets = db.scalars(select(SupportTicket).where(SupportTicket.status != "Resuelto", SupportTicket.id != item.id)).all()
     occupied = {asset_id for ticket in active_tickets for asset_id in ((ticket.asset_ids or []) + (ticket.replacement_asset_ids or []))}
     if any(asset_id in occupied for asset_id in payload.equiposAfectadosIds): raise HTTPException(409, "Un equipo afectado pertenece a otro ticket activo")
+    if item.ticket_type == "general" and any(
+        asset is not None and (asset.status == "Alquiler" or asset.location == "Alquilado")
+        for asset in affected
+    ):
+        raise HTTPException(422, "Los equipos en alquiler no pueden ingresar a un ticket general; usa un ticket por pedido")
     if item.ticket_type == "pedido":
         order = db.scalar(select(Order).where(Order.order_number == item.order_number, Order.operational_status == "Activo"))
         if order is None: raise HTTPException(409, "El pedido ya no está activo")
         assigned = set((order.previous_states or {}).keys())
         if any(asset_id not in assigned for asset_id in payload.equiposAfectadosIds): raise HTTPException(422, "Uno de los equipos no pertenece al pedido")
         if payload.reparable is None: raise HTTPException(422, "Indica si los equipos son reparables")
-    elif any(asset is not None and asset.status != item.equipment_status for asset in affected):
-        raise HTTPException(422, "Uno de los equipos ya no pertenece al estado seleccionado")
+    # En un ticket general los equipos pueden provenir de cualquier estado del
+    # inventario; el estado seleccionado al crearlo es solo una referencia.
 
     item.asset_ids = payload.equiposAfectadosIds
     item.previous_states = {asset.id: asset.status for asset in affected if asset is not None}
+    item.previous_locations = {asset.id: asset.location for asset in affected if asset is not None}
     item.equipment = "; ".join(f"{asset.sku} — {asset.description}" for asset in affected if asset is not None)
 
     if item.ticket_type == "general":
         for asset in affected:
-            if asset is not None: asset.status = "Diagnóstico"
-        item.is_repairable = None; item.workflow_type = "General"; item.status = "En Diagnóstico"
+            if asset is not None:
+                asset.status = "Reparación"
+                asset.location = "Taller"
+        item.is_repairable = None; item.workflow_type = "General"; item.status = "En Reparación"
     elif payload.reparable:
         for asset in affected:
             if asset is not None: asset.status = "Reparación"
@@ -1133,12 +1420,17 @@ def diagnose_ticket(
             raise HTTPException(409, "Uno de los equipos de reemplazo no está disponible")
         if any(asset_id in occupied for asset_id in payload.equiposReemplazoIds): raise HTTPException(409, "Un reemplazo pertenece a otro ticket activo")
         previous = {asset.id: asset.status for asset in replacements if asset is not None}
+        previous_locations = {asset.id: asset.location for asset in replacements if asset is not None}
         for asset in affected:
             if asset is not None: asset.status = "Reemplazo requerido"
         for asset in replacements:
-            if asset is not None: asset.status = "Reservado para reemplazo"
+            if asset is not None:
+                asset.status = "Reservado para reemplazo"
+                asset.location = "Alquilado"
         item.is_repairable = False; item.workflow_type = "Reemplazo"; item.status = "En Reemplazo"
-        item.replacement_asset_ids = payload.equiposReemplazoIds; item.replacement_previous_states = previous
+        item.replacement_asset_ids = payload.equiposReemplazoIds
+        item.replacement_previous_states = previous
+        item.replacement_previous_locations = previous_locations
     audit(db, actor, "Tickets", "Modificó", item.code, f"Diagnóstico: flujo {item.workflow_type}.")
     db.commit(); db.refresh(item); return ticket_out(item)
 
@@ -1153,7 +1445,7 @@ def rollback_ticket_flow(
     if item is None: raise HTTPException(404, "Ticket no encontrado")
     if item.status == "Resuelto": raise HTTPException(409, "No se puede revertir un ticket resuelto")
     restore_ticket_assets(item, db)
-    item.asset_ids = []; item.previous_states = {}; item.replacement_asset_ids = []; item.replacement_previous_states = {}
+    item.asset_ids = []; item.previous_states = {}; item.previous_locations = {}; item.replacement_asset_ids = []; item.replacement_previous_states = {}
     item.is_repairable = None; item.workflow_type = "Pendiente"; item.status = "Abierto"; item.equipment = "Pendiente de selección"
     audit(db, actor, "Tickets", "Modificó", item.code, "Revirtió el diagnóstico y restauró los estados del inventario.")
     db.commit(); db.refresh(item); return ticket_out(item)
@@ -1177,13 +1469,23 @@ def resolve_ticket(
             affected = db.get(InventoryAsset, affected_id); replacement = db.get(InventoryAsset, replacement_id)
             target_state = (item.previous_states or {}).get(affected_id, "Almacén 1")
             if affected is not None: affected.status = "Baja"
-            if replacement is not None: replacement.status = target_state
+            if replacement is not None:
+                replacement.status = target_state
+                replacement.location = "Alquilado"
             for order in db.scalars(select(Order).where(Order.operational_status == "Activo")).all():
                 states = dict(order.previous_states or {})
                 if affected_id in states and replacement is not None:
                     states.pop(affected_id)
                     states[replacement_id] = (item.replacement_previous_states or {}).get(replacement_id, "Almacén 1")
                     order.previous_states = states
+                    locations = dict(order.previous_locations or {})
+                    original_location = (item.replacement_previous_locations or {}).get(replacement_id)
+                    if original_location is None:
+                        original_location = locations.pop(affected_id, "Almacén 1")
+                    else:
+                        locations.pop(affected_id, None)
+                    locations[replacement_id] = original_location
+                    order.previous_locations = locations
                     order.skus = [replacement.sku if sku.upper() == (affected.sku.upper() if affected else "") else sku for sku in (order.skus or [])]
     else:
         restore_ticket_assets(item, db)
@@ -1198,6 +1500,8 @@ def delete_ticket(item_id: str, actor: AdminUser = Depends(require_module("ticke
     item = db.get(SupportTicket, item_id)
     if item is None:
         raise HTTPException(404, "Ticket no encontrado")
+    if item.status == "Resuelto":
+        raise HTTPException(409, "Los tickets resueltos no se pueden eliminar; conservan su historial de solución")
     restore_ticket_assets(item, db)
     audit(db, actor, "Tickets", "Eliminó", item.code, f"Eliminó el ticket {item.code}.")
     db.delete(item)
@@ -1273,11 +1577,29 @@ def export_movements(
 ):
     rows = db.scalars(movement_query(module, desde, hasta, search).order_by(AuditLog.occurred_at.desc()).limit(5000)).all()
     if format == "pdf":
-        lines = ["AD GLOBAL - Historial de movimientos", ""] + [
-            f"{item.occurred_at:%d/%m/%Y %H:%M} | {item.username} | {item.module} | {item.action} | {item.element} | {item.detail}"
+        data = [
+            [
+                item.occurred_at.strftime("%d/%m/%Y %H:%M"),
+                item.username,
+                item.module,
+                item.action,
+                item.element,
+                item.detail,
+                f"{item.ip_address or '-'} / {item.device or '-'}",
+            ]
             for item in rows
         ]
-        return Response(simple_pdf(lines), media_type="application/pdf", headers={"Content-Disposition": "attachment; filename=movimientos.pdf"})
+        columns = [
+            ("Fecha", 0.9), ("Usuario", 1.0), ("Módulo", 0.8), ("Acción", 0.8),
+            ("Elemento", 1.1), ("Detalle", 2.4), ("IP / dispositivo", 1.5),
+        ]
+        summary = [("Total", len(rows)), ("Módulo", module or "Todos")]
+        subtitle = f"Período: {desde or 'inicio'} al {hasta or 'hoy'} · Módulo: {module or 'Todos'} · Búsqueda: {search or 'Sin filtro'}"
+        return Response(
+            table_pdf("Historial de movimientos", subtitle, columns, data, summary),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=movimientos-{date.today().isoformat()}.pdf"},
+        )
     buffer = io.StringIO(); writer = csv.writer(buffer)
     writer.writerow(["Fecha", "Usuario", "Módulo", "Acción", "Elemento", "Detalle", "IP", "Dispositivo"])
     for item in rows:
@@ -1301,6 +1623,150 @@ def create_movement(payload: AuditIn, actor: AdminUser = Depends(require_any_mod
     db.commit()
     db.refresh(item)
     return audit_out(item)
+
+
+@router.get("/reportes/pedidos/pdf")
+def orders_report_pdf(
+    desde: date | None = None,
+    hasta: date | None = None,
+    estado: str | None = Query(default=None, max_length=30),
+    _: AdminUser = Depends(require_module("reportes")),
+    db: Session = Depends(get_db),
+):
+    query = select(Order)
+    if desde:
+        query = query.where(Order.issue_date >= desde)
+    if hasta:
+        query = query.where(Order.issue_date <= hasta)
+    if estado:
+        query = query.where(Order.workflow_status == estado)
+    orders = db.scalars(query.order_by(Order.issue_date.desc(), Order.order_number.desc())).all()
+    rows = []
+    for item in orders:
+        customer, _, _ = parse_order_destination(item.destination_address)
+        rows.append([
+            item.order_number,
+            item.issue_date.strftime("%d/%m/%Y"),
+            customer,
+            item.transfer_reason,
+            item.workflow_status,
+            item.service_start_date.strftime("%d/%m/%Y") if item.service_start_date else "-",
+            item.service_end_date.strftime("%d/%m/%Y") if item.service_end_date else "-",
+            (item.product_description or "").replace("\n", ", "),
+            item.product_quantity,
+        ])
+    columns = [
+        ("N.º pedido", 1.0), ("Fecha", 0.75), ("Cliente", 1.5), ("Motivo", 1.1),
+        ("Estado", 0.9), ("Inicio", 0.75), ("Fin", 0.75), ("Equipos", 1.8), ("Cant.", 0.45),
+    ]
+    summary = [
+        ("Total", len(orders)),
+        ("Alquiler", sum(item.transfer_reason == "Alquiler" for item in orders)),
+        ("Ventas", sum(item.transfer_reason.startswith("Venta") for item in orders)),
+    ]
+    subtitle = f"Período: {desde or 'inicio'} al {hasta or 'hoy'} · Estado: {estado or 'Todos'}"
+    pdf = table_pdf("Reporte de pedidos", subtitle, columns, rows, summary)
+    return Response(
+        pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=reporte-pedidos-{date.today().isoformat()}.pdf"},
+    )
+
+
+@router.get("/reportes/tickets/pdf")
+def tickets_report_pdf(
+    desde: date | None = None,
+    hasta: date | None = None,
+    estado: str | None = Query(default=None, max_length=30),
+    _: AdminUser = Depends(require_module("reportes")),
+    db: Session = Depends(get_db),
+):
+    query = select(SupportTicket)
+    if desde:
+        query = query.where(SupportTicket.created_at >= datetime.combine(desde, datetime.min.time()))
+    if hasta:
+        query = query.where(SupportTicket.created_at < datetime.combine(hasta + timedelta(days=1), datetime.min.time()))
+    if estado:
+        query = query.where(SupportTicket.status == estado)
+    tickets = db.scalars(query.order_by(SupportTicket.created_at.desc())).all()
+    rows = [
+        [
+            item.code,
+            item.created_at.strftime("%d/%m/%Y %H:%M"),
+            item.customer,
+            item.equipment,
+            item.priority,
+            item.status,
+            item.technician_name or "-",
+            (item.solution_description or "").replace("\n", " "),
+            len(item.evidence_urls or []),
+        ]
+        for item in tickets
+    ]
+    columns = [
+        ("Código", 0.8), ("Fecha", 0.9), ("Cliente", 1.2), ("Equipo", 1.6),
+        ("Prioridad", 0.7), ("Estado", 0.9), ("Técnico", 1.1), ("Solución", 1.8), ("Evid.", 0.4),
+    ]
+    summary = [
+        ("Total", len(tickets)),
+        ("Resueltos", sum(item.status == "Resuelto" for item in tickets)),
+        ("Abiertos", sum(item.status != "Resuelto" for item in tickets)),
+    ]
+    subtitle = f"Período: {desde or 'inicio'} al {hasta or 'hoy'} · Estado: {estado or 'Todos'}"
+    pdf = table_pdf("Reporte de tickets de soporte", subtitle, columns, rows, summary)
+    return Response(
+        pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=reporte-tickets-{date.today().isoformat()}.pdf"},
+    )
+
+
+@router.get("/reportes/inventario/pdf")
+def inventory_report_pdf(
+    categoria_id: str | None = None,
+    estado: str | None = None,
+    ubicacion: str | None = None,
+    _: AdminUser = Depends(require_module("reportes")),
+    db: Session = Depends(get_db),
+):
+    query = select(InventoryAsset).join(InventoryCategory)
+    if categoria_id:
+        query = query.where(InventoryAsset.category_id == categoria_id)
+    if estado:
+        query = query.where(InventoryAsset.status == estado)
+    if ubicacion:
+        query = query.where(InventoryAsset.location == ubicacion)
+    assets = db.scalars(query.order_by(InventoryAsset.sku)).all()
+    rows = [
+        [
+            item.sku,
+            item.category.label,
+            item.description,
+            item.brand,
+            item.location or "Almacén 1",
+            item.status,
+            item.serial_number or "-",
+            f"{item.price:,.2f}",
+            item.supplier or "-",
+        ]
+        for item in assets
+    ]
+    columns = [
+        ("SKU", 0.8), ("Categoría", 0.9), ("Descripción", 2.0), ("Marca", 0.8),
+        ("Ubicación", 0.9), ("Estado", 0.9), ("Serial", 1.1), ("Precio", 0.7), ("Proveedor", 1.2),
+    ]
+    summary = [
+        ("Total", len(assets)),
+        ("Disponibles", sum(item.status == "Disponible" for item in assets)),
+        ("Alquilados", sum(item.status == "Alquiler" for item in assets)),
+    ]
+    subtitle = f"Categoría: {categoria_id or 'Todas'} · Estado: {estado or 'Todos'} · Ubicación: {ubicacion or 'Todas'}"
+    pdf = table_pdf("Reporte de inventario", subtitle, columns, rows, summary)
+    return Response(
+        pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=reporte-inventario-{date.today().isoformat()}.pdf"},
+    )
 
 
 @router.get("/servicios", response_model=list[ServiceIn])

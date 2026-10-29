@@ -1,14 +1,24 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { CheckCircle2, ClipboardList, FileText, Loader2, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { Ban, CheckCircle2, ClipboardList, Download, FileText, Loader2, PackageCheck, Pencil, Plus, RotateCcw, Search, Truck } from 'lucide-react';
 import { GuideModal } from '@/components/modals/GuideModal';
+import { OrderRenewalModal } from '@/components/modals/OrderRenewalModal';
 import { Modal } from '@/components/ui/Modal';
 import { apiRequest } from '@/lib/api';
 import { formatFecha, parseDireccionLlegada } from '@/lib/utils';
-import type { PedidoRegistro } from '@/types';
+import type { EstadoFlujoPedido, PedidoRegistro } from '@/types';
 
 type TipoFiltro = 'all' | 'Alquiler' | 'Venta';
 type SubcategoriaPedidos = 'registro' | 'guia';
+
+interface GuiaEmitida {
+  id: string;
+  pedidoId: string;
+  numeroGuia: string;
+  fechaTraslado: string;
+  estado: 'Emitida';
+  updatedAt: string;
+}
 
 const COLUMNAS_PEDIDOS: Array<{ label: string; width: string }> = [
   { label: 'N.º de pedido', width: '12%' },
@@ -32,6 +42,34 @@ function tipoDelPedido(pedido: PedidoRegistro): 'Alquiler' | 'Venta' | 'Otro' {
   return 'Otro';
 }
 
+const ESTADO_STYLE: Record<EstadoFlujoPedido, string> = {
+  Borrador: 'bg-slate-100 text-slate-600',
+  Confirmado: 'bg-blue-50 text-blue-700',
+  Despachado: 'bg-violet-50 text-violet-700',
+  Alquiler: 'bg-brand-soft text-brand',
+  'Por devolver': 'bg-amber-50 text-amber-700',
+  Vencido: 'bg-danger/10 text-danger',
+  Cerrado: 'bg-success/10 text-success',
+  Anulado: 'bg-slate-200 text-slate-600',
+};
+
+function estadoFlujo(pedido: PedidoRegistro): EstadoFlujoPedido {
+  return pedido.estadoFlujo ?? (pedido.estadoPedido === 'Finalizado' ? 'Cerrado' : 'Borrador');
+}
+
+function puedeRenovar(pedido: PedidoRegistro): boolean {
+  return ['Alquiler', 'Por devolver', 'Vencido'].includes(estadoFlujo(pedido));
+}
+
+function siguienteAccion(pedido: PedidoRegistro): { estado: EstadoFlujoPedido; label: string; icon: ReactNode } | null {
+  const estado = estadoFlujo(pedido);
+  if (estado === 'Borrador') return { estado: 'Confirmado', label: 'Confirmar', icon: <CheckCircle2 className="h-3.5 w-3.5" /> };
+  if (estado === 'Confirmado') return { estado: 'Despachado', label: 'Despachar', icon: <Truck className="h-3.5 w-3.5" /> };
+  if (estado === 'Despachado' && pedido.motivoTraslado === 'Alquiler') return { estado: 'Alquiler', label: 'Entregado', icon: <PackageCheck className="h-3.5 w-3.5" /> };
+  if (['Despachado', 'Alquiler', 'Por devolver', 'Vencido'].includes(estado)) return { estado: 'Cerrado', label: 'Cerrar', icon: <CheckCircle2 className="h-3.5 w-3.5" /> };
+  return null;
+}
+
 function DetallesPedido({ pedido }: { pedido: PedidoRegistro }) {
   const destino = parseDireccionLlegada(pedido.direccionLlegada);
   const detalles: Array<[string, ReactNode]> = [
@@ -43,10 +81,15 @@ function DetallesPedido({ pedido }: { pedido: PedidoRegistro }) {
     ['Provincia', destino.provincia || '—'],
     ['Departamento', destino.departamento || '—'],
     ['Motivo del traslado', pedido.motivoTraslado],
-    ['Estado del pedido', pedido.estadoPedido ?? 'Activo'],
+    ['Estado del pedido', estadoFlujo(pedido)],
+    ['Entrega / inicio del alquiler', pedido.fechaInicio || pedido.fechaEntrega ? formatFecha(pedido.fechaInicio ?? pedido.fechaEntrega ?? '') : '—'],
+    ['Fin del alquiler', pedido.fechaFin ? formatFecha(pedido.fechaFin) : '—'],
+    ...(pedido.renovaciones ? [['Renovaciones', `${pedido.renovaciones}${pedido.historialRenovaciones?.length ? ` · Última hasta ${formatFecha(pedido.historialRenovaciones[0].fechaNueva)}` : ''}`] as [string, string]] : []),
+    ...(pedido.motivoAnulacion ? [['Motivo de anulación', pedido.motivoAnulacion] as [string, string]] : []),
     ...(pedido.fechaFinalizacion ? [['Fecha de finalización', new Date(pedido.fechaFinalizacion).toLocaleString('es-PE')] as [string, string]] : []),
     ['Descripción de los productos', pedido.descripcionProductos],
     ['Cantidad de los productos', pedido.cantidadProductos],
+    ['Comentario', pedido.observaciones || '—'],
   ];
 
   return (
@@ -79,26 +122,30 @@ interface PedidosPageProps {
   pedidos: PedidoRegistro[];
   onOpenOrder: () => void;
   onEdit: (pedido: PedidoRegistro) => void;
-  onFinish: (pedido: PedidoRegistro) => void;
-  onDelete: (pedido: PedidoRegistro) => void;
+  onTransition: (pedido: PedidoRegistro, estado: EstadoFlujoPedido) => void;
+  onRenew: (pedido: PedidoRegistro, nuevaFechaFin: string, motivo: string) => Promise<boolean>;
 }
 
 export function PedidosPage({
   pedidos,
   onOpenOrder,
   onEdit,
-  onFinish,
-  onDelete,
+  onTransition,
+  onRenew,
 }: PedidosPageProps) {
   const [search, setSearch] = useState('');
   const [tipoActivo, setTipoActivo] = useState<TipoFiltro>('all');
   const [subcategoria, setSubcategoria] = useState<SubcategoriaPedidos>('registro');
   const [selectedPedido, setSelectedPedido] = useState<PedidoRegistro | null>(null);
   const [selectedGuide, setSelectedGuide] = useState<PedidoRegistro | null>(null);
+  const [renewalPedido, setRenewalPedido] = useState<PedidoRegistro | null>(null);
   const [numeroPedidoGuia, setNumeroPedidoGuia] = useState('');
   const [guideError, setGuideError] = useState('');
   const [searchingGuide, setSearchingGuide] = useState(false);
   const [guideSearchOpen, setGuideSearchOpen] = useState(false);
+  const [guiasEmitidas, setGuiasEmitidas] = useState<GuiaEmitida[]>([]);
+  const [loadingGuides, setLoadingGuides] = useState(false);
+  const [historyError, setHistoryError] = useState('');
   const terminos = normalizar(search).trim().split(/\s+/).filter(Boolean);
 
   const visibles = pedidos.filter((pedido) => {
@@ -110,13 +157,29 @@ export function PedidosPage({
   });
   const guideQuery = normalizar(numeroPedidoGuia).trim();
   const guideSuggestions = pedidos
-    .filter((pedido) => pedido.estadoPedido !== 'Finalizado')
+    .filter((pedido) => estadoFlujo(pedido) === 'Confirmado')
     .filter((pedido) => {
       if (!guideQuery) return true;
       const destino = parseDireccionLlegada(pedido.direccionLlegada);
       return normalizar(`${pedido.numeroPedido} ${destino.destinatario}`).includes(guideQuery);
     })
     .slice(0, 6);
+
+  const cargarGuiasEmitidas = useCallback(async () => {
+    setLoadingGuides(true);
+    setHistoryError('');
+    try {
+      setGuiasEmitidas(await apiRequest<GuiaEmitida[]>('/guias/emitidas'));
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : 'No se pudo cargar el historial de guías.');
+    } finally {
+      setLoadingGuides(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (subcategoria === 'guia') void cargarGuiasEmitidas();
+  }, [subcategoria, cargarGuiasEmitidas]);
 
   const abrirGuiaPorNumero = async (numero = numeroPedidoGuia) => {
     const normalized = numero.trim().toUpperCase();
@@ -132,8 +195,8 @@ export function PedidosPage({
     setSearchingGuide(true);
     try {
       const pedido = await apiRequest<PedidoRegistro>(`/pedidos/por-numero?numero=${encodeURIComponent(normalized)}`);
-      if (pedido.estadoPedido === 'Finalizado') {
-        setGuideError('El pedido está finalizado. No se puede aperturar ni editar su guía de remisión.');
+      if (estadoFlujo(pedido) !== 'Confirmado') {
+        setGuideError('Primero confirma el pedido para poder aperturar su guía de remisión.');
         return;
       }
       setSelectedGuide(pedido);
@@ -247,7 +310,11 @@ export function PedidosPage({
             <tbody className="divide-y divide-slate-100 text-xs text-slate-600">
               {visibles.length === 0 ? (
                 <tr><td colSpan={6} className="px-6 py-12 text-center text-sm text-slate-500">No se encontraron pedidos.</td></tr>
-              ) : visibles.map((pedido) => (
+              ) : visibles.map((pedido) => {
+                const flujo = estadoFlujo(pedido);
+                const accion = siguienteAccion(pedido);
+                const anulable = flujo === 'Borrador' || flujo === 'Confirmado';
+                return (
                 <tr
                   key={pedido.id}
                   role="button"
@@ -267,9 +334,8 @@ export function PedidosPage({
                     <span className="inline-flex items-center gap-2 font-mono font-bold text-brand group-hover:underline">
                       {pedido.numeroPedido}
                     </span>
-                    <span className={`mt-1 block w-fit rounded px-1.5 py-0.5 text-[10px] font-bold ${pedido.estadoPedido === 'Finalizado'
-                      ? 'bg-success/10 text-success' : 'bg-brand-soft text-brand'}`}>
-                      {pedido.estadoPedido ?? 'Activo'}
+                    <span className={`mt-1 block w-fit rounded px-1.5 py-0.5 text-[10px] font-bold ${ESTADO_STYLE[flujo]}`}>
+                      {flujo}
                     </span>
                   </td>
                   <td className="whitespace-normal break-words px-3 py-3 align-top">{formatFecha(pedido.fechaEmision)}</td>
@@ -278,20 +344,35 @@ export function PedidosPage({
                   <td className="px-3 py-3 text-center align-top font-mono font-bold">{pedido.cantidadProductos}</td>
                   <td className="px-3 py-3 align-top">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      {pedido.estadoPedido !== 'Finalizado' && (
-                        <>
+                      {accion && (
                           <button
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
-                              onFinish(pedido);
+                              onTransition(pedido, accion.estado);
                             }}
-                            title={`Finalizar pedido ${pedido.numeroPedido}`}
+                            title={`${accion.label} pedido ${pedido.numeroPedido}`}
                             className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-success/30 bg-success/10 px-2.5 py-1.5 text-[11px] font-bold text-success hover:bg-success/15"
                           >
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            Finalizar
+                            {accion.icon}
+                            {accion.label}
                           </button>
+                      )}
+                      {puedeRenovar(pedido) && (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setRenewalPedido(pedido);
+                          }}
+                          title={`Renovar pedido ${pedido.numeroPedido}`}
+                          className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-brand/30 bg-brand-soft px-2.5 py-1.5 text-[11px] font-bold text-brand hover:bg-highlight/20"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          Renovar
+                        </button>
+                      )}
+                      {flujo === 'Borrador' && (
                           <button
                             type="button"
                             onClick={(event) => {
@@ -304,24 +385,26 @@ export function PedidosPage({
                           >
                             <Pencil className="h-4 w-4" />
                           </button>
-                        </>
                       )}
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onDelete(pedido);
-                        }}
-                        title={`Eliminar pedido ${pedido.numeroPedido}`}
-                        aria-label={`Eliminar pedido ${pedido.numeroPedido}`}
-                        className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border border-danger/30 bg-danger/10 text-danger hover:border-danger hover:bg-danger/15"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      {anulable && (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onTransition(pedido, 'Anulado');
+                          }}
+                          title={`Anular pedido ${pedido.numeroPedido}`}
+                          aria-label={`Anular pedido ${pedido.numeroPedido}`}
+                          className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border border-danger/30 bg-danger/10 text-danger hover:border-danger hover:bg-danger/15"
+                        >
+                          <Ban className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -343,7 +426,7 @@ export function PedidosPage({
               <div>
                 <h3 className="text-sm font-bold text-slate-900">Guía de remisión</h3>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  Ingresa el número de un pedido activo para aperturar o editar su guía.
+                  Ingresa el número de un pedido confirmado para aperturar o editar su guía.
                 </p>
               </div>
             </div>
@@ -411,7 +494,7 @@ export function PedidosPage({
                           </button>
                         );
                       }) : (
-                        <p className="px-3 py-3 text-xs text-slate-500">No hay pedidos activos que coincidan.</p>
+                        <p className="px-3 py-3 text-xs text-slate-500">No hay pedidos confirmados que coincidan.</p>
                       )}
                     </div>
                   )}
@@ -426,7 +509,7 @@ export function PedidosPage({
                 </button>
               </div>
               <p className="mt-2 text-[11px] text-slate-500">
-                Solo los pedidos activos permiten crear o modificar una guía de remisión.
+                La guía recién puede aperturarse cuando el pedido está confirmado.
               </p>
               {guideError && (
                 <p role="alert" className="mt-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs font-semibold text-warning">
@@ -434,6 +517,54 @@ export function PedidosPage({
                 </p>
               )}
             </form>
+
+            <div className="mt-10 border-t border-slate-200 pt-6">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h4 className="text-sm font-bold text-slate-900">Historial de guías emitidas</h4>
+                  <p className="mt-0.5 text-[11px] text-slate-500">Consulta y descarga las guías que ya fueron emitidas.</p>
+                </div>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold text-slate-600">
+                  {guiasEmitidas.length} emitidas
+                </span>
+              </div>
+              <div className="overflow-hidden rounded-xl border border-slate-200">
+                <table className="w-full border-collapse text-left text-xs">
+                  <thead className="bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                    <tr><th className="px-4 py-3">N.º guía</th><th className="px-4 py-3">Pedido</th><th className="px-4 py-3">Inicio del traslado</th><th className="px-4 py-3 text-right">Acción</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {loadingGuides ? (
+                      <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-500"><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Cargando historial...</td></tr>
+                    ) : historyError ? (
+                      <tr><td colSpan={4} className="px-4 py-6 text-center text-danger">{historyError}</td></tr>
+                    ) : guiasEmitidas.length === 0 ? (
+                      <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-500">Todavía no hay guías emitidas.</td></tr>
+                    ) : guiasEmitidas.map((guia) => {
+                      const pedido = pedidos.find((item) => item.id === guia.pedidoId);
+                      return (
+                        <tr key={guia.id} className="text-slate-700 hover:bg-slate-50/70">
+                          <td className="px-4 py-3 font-mono font-bold text-brand">0001-{guia.numeroGuia}</td>
+                          <td className="px-4 py-3 font-mono">{pedido?.numeroPedido ?? 'Pedido no disponible'}</td>
+                          <td className="px-4 py-3">{formatFecha(guia.fechaTraslado)}</td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              type="button"
+                              disabled={!pedido}
+                              onClick={() => pedido && setSelectedGuide(pedido)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-brand/30 bg-brand-soft px-2.5 py-1.5 text-[11px] font-bold text-brand hover:bg-highlight/20 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              Ver / descargar
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </section>
       )}
@@ -455,6 +586,14 @@ export function PedidosPage({
         isOpen={selectedGuide !== null}
         pedido={selectedGuide}
         onClose={() => setSelectedGuide(null)}
+        onIssued={cargarGuiasEmitidas}
+      />
+
+      <OrderRenewalModal
+        isOpen={renewalPedido !== null}
+        pedido={renewalPedido}
+        onClose={() => setRenewalPedido(null)}
+        onRenew={onRenew}
       />
     </div>
   );

@@ -4,6 +4,7 @@ import { LoginScreen } from '@/components/login/LoginScreen';
 import { OrderModal } from '@/components/modals/OrderModal';
 import { TicketModal } from '@/components/modals/TicketModal';
 import { TicketWorkflowModal } from '@/components/modals/TicketWorkflowModal';
+import { TicketSolutionModal } from '@/components/modals/TicketSolutionModal';
 import { useToast } from '@/context/ToastContext';
 import { CATEGORIAS_BASE_TOTAL } from '@/data/inventario';
 import { useAuth } from '@/hooks/useAuth';
@@ -22,8 +23,10 @@ import { ConfiguracionPage } from '@/pages/ConfiguracionPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { GestionWebPage } from '@/pages/GestionWebPage';
 import { InventarioPage } from '@/pages/InventarioPage';
+import type { UbicacionFiltro } from '@/pages/InventarioPage';
 import { MovimientosPage } from '@/pages/MovimientosPage';
 import { PedidosPage } from '@/pages/PedidosPage';
+import { ReportesPage } from '@/pages/ReportesPage';
 import { TicketsPage } from '@/pages/TicketsPage';
 import type { NuevoTicketInput } from '@/components/modals/TicketModal';
 import type { NuevoPedidoInput } from '@/components/modals/OrderModal';
@@ -37,6 +40,15 @@ import type {
   PedidoRegistro,
   SupportTicket,
 } from '@/types';
+
+/** Filas de inventario mostradas por página. */
+const INVENTORY_PAGE_SIZE = 10;
+
+interface InventoryLocationCount {
+  ubicacion: string;
+  total: number;
+  disponibles: number;
+}
 
 export default function App() {
   const { isAuthenticated, session, authenticate, logout } = useAuth();
@@ -55,32 +67,41 @@ export default function App() {
   const [inventoryCatalog, setInventoryCatalog] = useState<InventarioRegistro[]>([]);
   const [inventoryCategory, setInventoryCategory] = useState<InventarioCategoria['id'] | 'all'>('all');
   const [inventoryPage, setInventoryPage] = useState(1);
+  const [inventoryLocation, setInventoryLocation] = useState<UbicacionFiltro>('all');
   const [inventoryPages, setInventoryPages] = useState(1);
   const [inventoryTotal, setInventoryTotal] = useState(0);
+  const [inventoryLocationCounts, setInventoryLocationCounts] = useState<InventoryLocationCount[]>([]);
 
   const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
   const [workflowTicket, setWorkflowTicket] = useState<SupportTicket | null>(null);
+  const [solutionTicket, setSolutionTicket] = useState<SupportTicket | null>(null);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [editingPedido, setEditingPedido] = useState<PedidoRegistro | null>(null);
 
   const refreshInventory = useCallback(async (
     page = inventoryPage,
     categoryId = inventoryCategory,
+    location = inventoryLocation,
   ) => {
     const categoryQuery = categoryId === 'all' ? '' : `&category_id=${encodeURIComponent(categoryId)}`;
-    const [assets, categories, states] = await Promise.all([
+    const locationQuery = location === 'all' ? '' : `&ubicacion=${encodeURIComponent(location)}`;
+    const [assets, categories, states, locationCounts] = await Promise.all([
       apiRequest<PaginatedApi<InventarioRegistro>>(
-        `/inventario?page=${page}&page_size=50${categoryQuery}`,
+        `/inventario?page=${page}&page_size=${INVENTORY_PAGE_SIZE}${categoryQuery}${locationQuery}`,
       ),
       apiRequest<InventarioCategoria[]>('/inventario/categorias'),
       apiRequest<InventoryStateApi[]>('/inventario/estados'),
+      apiRequest<InventoryLocationCount[]>(
+        `/inventario/resumen-ubicaciones?${categoryQuery.replace(/^&/, '')}`,
+      ),
     ]);
     setInventario(assets.items.map(inventoryFromApi));
+    setInventoryLocationCounts(locationCounts);
     setInventoryPage(assets.page); setInventoryPages(assets.pages); setInventoryTotal(assets.total);
     setInventarioCategorias(categories.filter((category) => category.id.startsWith('custom-')));
     setEstadosInventario(states.map((state) => state.nombre));
     setEstadosTicketEditables(states.filter((state) => !state.inmutable || state.nombre === 'Disponible').map((state) => state.nombre));
-  }, [inventoryCategory, inventoryPage]);
+  }, [inventoryCategory, inventoryLocation, inventoryPage]);
 
   const loadInventoryCatalog = useCallback(async () => {
     const [response, states] = await Promise.all([
@@ -139,7 +160,11 @@ export default function App() {
 
   useEffect(() => {
     if (!isAuthenticated || !session.modulos.includes('dashboard')) return;
-    const updateNotifications = () => void refreshDashboard().catch(() => undefined);
+    // Refresca también los pedidos para que devoluciones vencidas y calendario
+    // reflejen los cambios de estado y fechas sin recargar el panel.
+    const updateNotifications = () => {
+      void Promise.all([refreshDashboard(), refreshOrders()]).catch(() => undefined);
+    };
     updateNotifications();
     const timer = window.setInterval(updateNotifications, 30_000);
     const onVisibility = () => { if (document.visibilityState === 'visible') updateNotifications(); };
@@ -148,7 +173,7 @@ export default function App() {
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [isAuthenticated, refreshDashboard, session.modulos]);
+  }, [isAuthenticated, refreshDashboard, refreshOrders, session.modulos]);
 
   const ticketsActivos = dashboard
     ? Object.entries(dashboard.ticketsPorEstado).filter(([state]) => state !== 'Resuelto').reduce((sum, [, value]) => sum + value, 0)
@@ -257,29 +282,41 @@ export default function App() {
     }
   };
 
-  const finalizarPedido = async (pedido: PedidoRegistro) => {
-    if (pedido.estadoPedido === 'Finalizado') return;
-    if (!window.confirm(`¿Finalizar el pedido ${pedido.numeroPedido}?`)) return;
+  const cambiarEstadoPedido = async (pedido: PedidoRegistro, estadoDestino: NonNullable<PedidoRegistro['estadoFlujo']>) => {
+    let motivo = '';
+    if (estadoDestino === 'Anulado') {
+      motivo = window.prompt(`Indica el motivo para anular ${pedido.numeroPedido}:`)?.trim() ?? '';
+      if (!motivo) return;
+    } else if (!window.confirm(`¿Cambiar el pedido ${pedido.numeroPedido} a ${estadoDestino}?`)) return;
     try {
-      const result = await apiRequest<OrderFinishApi>(`/pedidos/${pedido.id}/finalizar`, { method: 'PATCH' });
+      const result = await apiRequest<OrderFinishApi>(`/pedidos/${pedido.id}/estado`, {
+        method: 'PATCH',
+        body: JSON.stringify({ estadoDestino, motivo }),
+      });
       await Promise.all([refreshOrdersAndCustomers(), refreshInventory(), refreshTickets(), refreshMovements()]);
-      notify(`Pedido ${pedido.numeroPedido} finalizado. ${result.inventarioActualizado} equipo(s) restaurados.`);
+      const detalleInventario = result.inventarioActualizado > 0 ? ` ${result.inventarioActualizado} equipo(s) actualizados.` : '';
+      notify(`Pedido ${pedido.numeroPedido}: ${estadoDestino}.${detalleInventario}`);
     } catch (error) {
-      notify(error instanceof Error ? error.message : 'No se pudo finalizar el pedido.');
+      notify(error instanceof Error ? error.message : 'No se pudo cambiar el estado del pedido.');
     }
   };
 
-  const eliminarPedido = async (pedido: PedidoRegistro) => {
-    const confirmed = window.confirm(
-      `¿Eliminar el pedido ${pedido.numeroPedido}? Esta acción no se puede deshacer.`,
-    );
-    if (!confirmed) return;
+  const renovarPedido = async (
+    pedido: PedidoRegistro,
+    nuevaFechaFin: string,
+    motivo: string,
+  ): Promise<boolean> => {
     try {
-      await apiRequest<void>(`/pedidos/${pedido.id}`, { method: 'DELETE' });
+      const actualizado = await apiRequest<PedidoRegistro>(`/pedidos/${pedido.id}/renovar`, {
+        method: 'POST',
+        body: JSON.stringify({ nuevaFechaFin, motivo }),
+      });
       await Promise.all([refreshOrdersAndCustomers(), refreshInventory(), refreshTickets(), refreshMovements()]);
-      notify(`Pedido ${pedido.numeroPedido} eliminado.`);
+      notify(`Pedido ${actualizado.numeroPedido} renovado hasta ${actualizado.fechaFin ?? nuevaFechaFin}.`);
+      return true;
     } catch (error) {
-      notify(error instanceof Error ? error.message : 'No se pudo eliminar el pedido.');
+      notify(error instanceof Error ? error.message : 'No se pudo renovar el pedido.');
+      return false;
     }
   };
 
@@ -425,17 +462,24 @@ export default function App() {
             filtro={inventarioFiltro}
             onFiltroChange={setInventarioFiltro}
             registrosInventario={inventario}
+            conteoUbicaciones={inventoryLocationCounts}
             categoriaActiva={inventoryCategory}
+            ubicacionActiva={inventoryLocation}
             pagina={inventoryPage}
             paginas={inventoryPages}
             totalRegistros={inventoryTotal}
             onCategoriaChange={(categoryId) => {
               setInventoryCategory(categoryId);
               setInventoryPage(1);
-              void refreshInventory(1, categoryId);
+              void refreshInventory(1, categoryId, inventoryLocation);
             }}
-            onPaginaChange={(page) => void refreshInventory(page)}
-            onRefresh={() => void refreshInventory(inventoryPage)}
+            onUbicacionChange={(location) => {
+              setInventoryLocation(location);
+              setInventoryPage(1);
+              void refreshInventory(1, inventoryCategory, location);
+            }}
+            onPaginaChange={(page) => void refreshInventory(page, inventoryCategory, inventoryLocation)}
+            onRefresh={() => void refreshInventory(inventoryPage, inventoryCategory, inventoryLocation)}
             estadosInventario={estadosInventario}
             categoriasPersonalizadas={inventarioCategorias}
             onAgregarCategoria={(categoria) => void agregarCategoriaInventario(categoria)}
@@ -454,8 +498,8 @@ export default function App() {
             pedidos={pedidos}
             onOpenOrder={() => void abrirPedido()}
             onEdit={editarPedido}
-            onFinish={finalizarPedido}
-            onDelete={eliminarPedido}
+            onTransition={cambiarEstadoPedido}
+            onRenew={renovarPedido}
           />
         );
       case 'movimientos':
@@ -466,11 +510,14 @@ export default function App() {
             tickets={tickets}
             onOpenWorkflow={(ticket) => setWorkflowTicket(ticket)}
             onEliminar={eliminarTicket}
-              onOpenTicket={() => void abrirTicket()}
+            onOpenSolution={(ticket) => setSolutionTicket(ticket)}
+            onOpenTicket={() => void abrirTicket()}
           />
         );
       case 'clientes':
         return <ClientesPage clientes={clientes} />;
+      case 'reportes':
+        return <ReportesPage />;
       case 'gestion-web':
         return <GestionWebPage />;
       case 'configuracion':
@@ -509,9 +556,19 @@ export default function App() {
         pedidos={pedidos}
         onClose={() => setWorkflowTicket(null)}
         onUpdated={async (updated) => {
-          setWorkflowTicket(updated.estado === 'Resuelto' ? null : updated);
+          if (updated.estado === 'Resuelto') {
+            setWorkflowTicket(null);
+            setSolutionTicket(updated);
+          } else {
+            setWorkflowTicket(updated);
+          }
           await Promise.all([refreshTickets(), loadInventoryCatalog(), refreshDashboard()]);
         }}
+      />
+
+      <TicketSolutionModal
+        ticket={solutionTicket}
+        onClose={() => setSolutionTicket(null)}
       />
 
       <OrderModal

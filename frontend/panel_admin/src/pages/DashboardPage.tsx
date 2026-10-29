@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArrowRight,
@@ -18,6 +18,8 @@ import { FlotaChart } from '@/components/dashboard/FlotaChart';
 import { InventoryDistribution } from '@/components/dashboard/InventoryDistribution';
 import { OrdersCalendar } from '@/components/dashboard/OrdersCalendar';
 import { Modal } from '@/components/ui/Modal';
+import { esPedidoActivo, fechaLocal } from '@/lib/orderPeriods';
+import { formatFecha, parseDireccionLlegada } from '@/lib/utils';
 import type { AdminSection, DashboardResumen, PedidoRegistro } from '@/types';
 
 interface DashboardPageProps {
@@ -28,19 +30,76 @@ interface DashboardPageProps {
 
 type DashboardCounter = 'inventory' | 'orders' | 'tickets' | 'clients' | 'returns' | 'renewals';
 
-// Datos exclusivamente visuales. Serán reemplazados por información del backend.
-const overdueReturns = [
-  { code: 'PED-1048', client: 'Constructora Andina', detail: '8 laptops y 4 monitores', date: '21 oct 2026', delay: '7 días' },
-  { code: 'PED-1056', client: 'Grupo Nova Perú', detail: '3 proyectores multimedia', date: '24 oct 2026', delay: '4 días' },
-  { code: 'PED-1061', client: 'Instituto San Marcos', detail: '12 tablets', date: '26 oct 2026', delay: '2 días' },
-];
+interface DevolucionVencida {
+  code: string;
+  client: string;
+  detail: string;
+  date: string;
+  delay: string;
+  delayDays: number;
+}
 
-const contractsToRenew = [
-  { code: 'CTR-0284', client: 'Clínica Los Álamos', detail: 'Alquiler de 18 equipos', date: '31 oct 2026', delay: '3 días' },
-  { code: 'CTR-0291', client: 'Logística Pacífico', detail: 'Alquiler de 10 laptops', date: '02 nov 2026', delay: '5 días' },
-  { code: 'CTR-0303', client: 'Colegio Santa Elena', detail: 'Alquiler de 6 proyectores', date: '05 nov 2026', delay: '8 días' },
-  { code: 'CTR-0310', client: 'Estudio Valdivia', detail: 'Alquiler de 14 monitores', date: '08 nov 2026', delay: '11 días' },
-];
+/** Devoluciones de alquiler cuyo fin de período ya pasó y siguen activas. */
+function calcularDevolucionesVencidas(pedidos: PedidoRegistro[]): DevolucionVencida[] {
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+
+  return pedidos
+    .filter((pedido) => esPedidoActivo(pedido) && pedido.motivoTraslado === 'Alquiler')
+    .flatMap((pedido) => {
+      const fin = fechaLocal(pedido.fechaFin);
+      if (!fin || fin >= hoy) return [];
+      const dias = Math.max(1, Math.round((hoy.getTime() - fin.getTime()) / 86_400_000));
+      const cliente = parseDireccionLlegada(pedido.direccionLlegada).destinatario;
+      return [{
+        code: pedido.numeroPedido,
+        client: cliente || 'Cliente sin identificar',
+        detail: `${pedido.cantidadProductos} ${pedido.cantidadProductos === 1 ? 'equipo' : 'equipos'} · ${pedido.descripcionProductos.split('\n').filter(Boolean).join(', ')}`,
+        date: formatFecha(pedido.fechaFin ?? ''),
+        delay: `${dias} ${dias === 1 ? 'día' : 'días'}`,
+        delayDays: dias,
+      }];
+    })
+    .sort((a, b) => b.delayDays - a.delayDays);
+}
+
+interface ContratoPorRenovar {
+  code: string;
+  client: string;
+  detail: string;
+  date: string;
+  days: number;
+  label: string;
+}
+
+/** Pedidos de alquiler activos cuyo contrato vence en los próximos 15 días. */
+function calcularContratosPorRenovar(pedidos: PedidoRegistro[]): ContratoPorRenovar[] {
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+
+  return pedidos
+    .filter((pedido) => (
+      esPedidoActivo(pedido)
+      && pedido.motivoTraslado === 'Alquiler'
+      && ['Alquiler', 'Por devolver'].includes(pedido.estadoFlujo ?? '')
+    ))
+    .flatMap((pedido) => {
+      const fin = fechaLocal(pedido.fechaFin);
+      if (!fin) return [];
+      const dias = Math.round((fin.getTime() - hoy.getTime()) / 86_400_000);
+      if (dias < 0 || dias > 15) return [];
+      const cliente = parseDireccionLlegada(pedido.direccionLlegada).destinatario;
+      return [{
+        code: pedido.numeroPedido,
+        client: cliente || 'Cliente sin identificar',
+        detail: `${pedido.cantidadProductos} ${pedido.cantidadProductos === 1 ? 'equipo' : 'equipos'} · ${pedido.descripcionProductos.split('\n').filter(Boolean).join(', ')}`,
+        date: formatFecha(pedido.fechaFin ?? ''),
+        days: dias,
+        label: dias === 0 ? 'Vence hoy' : `En ${dias} ${dias === 1 ? 'día' : 'días'}`,
+      }];
+    })
+    .sort((a, b) => a.days - b.days);
+}
 
 function CounterSummaryModal({
   counter,
@@ -56,8 +115,10 @@ function CounterSummaryModal({
   onNavigate: (section: AdminSection) => void;
 }) {
   const activeTickets = Object.entries(resumen.ticketsPorEstado).filter(([status]) => status !== 'Resuelto');
-  const activeOrders = pedidos.filter((pedido) => pedido.estadoPedido !== 'Finalizado');
-  const isDemo = counter === 'returns' || counter === 'renewals';
+  const activeOrders = pedidos.filter(esPedidoActivo);
+  const overdueReturns = calcularDevolucionesVencidas(pedidos);
+  const contractsToRenew = calcularContratosPorRenovar(pedidos);
+  const isDemo = false;
   const config = (() => {
     switch (counter) {
       case 'inventory':
@@ -91,16 +152,16 @@ function CounterSummaryModal({
         };
       case 'returns':
         return {
-          title: 'Devoluciones vencidas', subtitle: 'Equipos pendientes de retorno', total: overdueReturns.length,
-          icon: <RotateCcw className="h-4 w-4" />, headerClass: 'bg-danger',
-          rows: overdueReturns.map((item) => ({ label: item.client, value: `+${item.delay}`, detail: `${item.code} · ${item.detail}`, footer: `Retorno programado: ${item.date}` })),
+          title: 'Devoluciones vencidas', subtitle: 'Pedidos de alquiler activos con fecha de retorno pasada', total: overdueReturns.length,
+          icon: <RotateCcw className="h-4 w-4" />, headerClass: 'bg-danger', section: 'pedidos' as AdminSection,
+          rows: overdueReturns.map((item) => ({ label: item.client, value: item.delay, detail: `${item.code} · ${item.detail}`, footer: `Retorno programado: ${item.date}` })),
         };
       case 'renewals':
       default:
         return {
-          title: 'Contratos por renovar', subtitle: 'Vencimientos durante los próximos 15 días', total: contractsToRenew.length,
-          icon: <CalendarClock className="h-4 w-4" />, headerClass: 'bg-brand',
-          rows: contractsToRenew.map((item) => ({ label: item.client, value: `En ${item.delay}`, detail: `${item.code} · ${item.detail}`, footer: `Renovación: ${item.date}` })),
+          title: 'Contratos por renovar', subtitle: 'Pedidos de alquiler activos que vencen en los próximos 15 días', total: contractsToRenew.length,
+          icon: <CalendarClock className="h-4 w-4" />, headerClass: 'bg-warning', section: 'pedidos' as AdminSection,
+          rows: contractsToRenew.map((item) => ({ label: item.client, value: item.label, detail: `${item.code} · ${item.detail}`, footer: `Fin del alquiler: ${item.date}` })),
         };
     }
   })();
@@ -162,6 +223,8 @@ function CounterSummaryModal({
 
 export function DashboardPage({ resumen, pedidos, onNavigate }: DashboardPageProps) {
   const [selectedCounter, setSelectedCounter] = useState<DashboardCounter | null>(null);
+  const overdueReturns = useMemo(() => calcularDevolucionesVencidas(pedidos), [pedidos]);
+  const contractsToRenew = useMemo(() => calcularContratosPorRenovar(pedidos), [pedidos]);
 
   if (!resumen) {
     return (
@@ -194,11 +257,11 @@ export function DashboardPage({ resumen, pedidos, onNavigate }: DashboardPagePro
     },
     {
       label: 'Devoluciones vencidas', value: overdueReturns.length, icon: RotateCcw, modal: 'returns' as const,
-      accent: 'danger', meta: 'Requieren atención', code: 'DEVOLUCIONES',
+      accent: 'danger', meta: overdueReturns.length === 0 ? 'Sin retrasos' : 'Requieren atención', code: 'DEVOLUCIONES',
     },
     {
       label: 'Contratos por renovar', value: contractsToRenew.length, icon: CalendarClock, modal: 'renewals' as const,
-      accent: 'warning', meta: 'Próximos 15 días', code: 'CONTRATOS',
+      accent: 'warning', meta: contractsToRenew.length === 0 ? 'Sin vencimientos próximos' : 'Próximos 15 días', code: 'CONTRATOS',
     },
   ];
 

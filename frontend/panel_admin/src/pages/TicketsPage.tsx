@@ -1,10 +1,11 @@
-import { Clock, Laptop, Plus, Trash2, User, Wrench } from 'lucide-react';
+import { CheckCircle2, Clock, Eye, Laptop, Plus, Trash2, User, Wrench } from 'lucide-react';
 import type { SupportTicket } from '@/types';
 
 interface TicketsPageProps {
   tickets: SupportTicket[];
   onOpenWorkflow: (ticket: SupportTicket) => void;
   onEliminar: (ticket: SupportTicket) => void | Promise<void>;
+  onOpenSolution: (ticket: SupportTicket) => void;
   onOpenTicket: () => void;
 }
 
@@ -23,7 +24,7 @@ const ESTADO_CLASSES: Record<SupportTicket['estado'], string> = {
   Abierto: 'bg-purple-100 text-purple-800',
 };
 
-export function TicketsPage({ tickets, onOpenWorkflow, onEliminar, onOpenTicket }: TicketsPageProps) {
+export function TicketsPage({ tickets, onOpenWorkflow, onEliminar, onOpenSolution, onOpenTicket }: TicketsPageProps) {
   const enTaller = tickets.filter((ticket) => ticket.estado !== 'Resuelto').length;
   const abiertos = tickets.filter((t) => t.estado === 'Abierto').length;
   const urgentes = tickets.filter((t) => t.prioridad === 'Urgente' && t.estado !== 'Resuelto').length;
@@ -127,7 +128,17 @@ export function TicketsPage({ tickets, onOpenWorkflow, onEliminar, onOpenTicket 
                 >
                   {ticket.estado}
                 </span>
-                {ticket.estado !== 'Resuelto' && (
+                {ticket.estado === 'Resuelto' ? (
+                  <button
+                    type="button"
+                    onClick={() => onOpenSolution(ticket)}
+                    title={`Ver solución de ${ticket.codigo}`}
+                    className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-success/30 bg-success/10 px-2 py-1 text-[11px] font-bold text-success transition-colors hover:bg-success/15"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    Ver solución
+                  </button>
+                ) : (
                   <button
                     type="button"
                     onClick={() => onOpenWorkflow(ticket)}
@@ -138,15 +149,17 @@ export function TicketsPage({ tickets, onOpenWorkflow, onEliminar, onOpenTicket 
                     Gestionar flujo
                   </button>
                 )}
-                <button
-                  type="button"
-                  onClick={() => void onEliminar(ticket)}
-                  title={`Eliminar ${ticket.codigo}`}
-                  className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-danger/30 bg-danger/10 px-2 py-1 text-[11px] font-bold text-danger transition-colors hover:bg-danger/15"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Eliminar
-                </button>
+                {ticket.estado !== 'Resuelto' && (
+                  <button
+                    type="button"
+                    onClick={() => void onEliminar(ticket)}
+                    title={`Eliminar ${ticket.codigo}`}
+                    className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-danger/30 bg-danger/10 px-2 py-1 text-[11px] font-bold text-danger transition-colors hover:bg-danger/15"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Eliminar
+                  </button>
+                )}
               </div>
             </div>
 
@@ -175,8 +188,24 @@ export function TicketsPage({ tickets, onOpenWorkflow, onEliminar, onOpenTicket 
                 </p>
               )}
               {ticket.flujo && ticket.flujo !== 'Pendiente' && <p className="text-xs text-slate-600"><span className="font-bold">Flujo: </span>{ticket.flujo}</p>}
-              {ticket.descripcionSolucion && <p className="rounded-lg border border-success/20 bg-success/10 p-3 text-xs text-success"><span className="font-bold">Solución: </span>{ticket.descripcionSolucion}</p>}
-              {(ticket.evidencias?.length ?? 0) > 0 && <p className="text-xs text-slate-600"><span className="font-bold">Evidencias: </span>{ticket.evidencias?.length} archivo(s)</p>}
+              {ticket.estado === 'Resuelto' && (
+                <button
+                  type="button"
+                  onClick={() => onOpenSolution(ticket)}
+                  className="w-full rounded-lg border border-success/20 bg-success/8 p-3 text-left transition-colors hover:bg-success/12"
+                >
+                  <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wide text-success">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Solución registrada
+                  </span>
+                  <span className="mt-1 block line-clamp-2 text-xs leading-relaxed text-slate-700">
+                    {ticket.descripcionSolucion?.trim() || 'Sin descripción de solución.'}
+                  </span>
+                  <span className="mt-1.5 flex items-center gap-1 text-[10px] font-bold text-success">
+                    <Eye className="h-3 w-3" />
+                    Ver descripción y {ticket.evidencias?.length ?? 0} {(ticket.evidencias?.length ?? 0) === 1 ? 'evidencia' : 'evidencias'}
+                  </span>
+                </button>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400 pt-1">

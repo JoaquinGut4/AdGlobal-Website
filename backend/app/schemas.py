@@ -14,6 +14,7 @@ ADMIN_MODULES = {
     "movimientos",
     "tickets",
     "gestion-web",
+    "reportes",
     "configuracion",
 }
 
@@ -199,7 +200,7 @@ class InventoryIn(Schema):
     precio: Decimal = Field(default=Decimal("0"), ge=0)
     proveedor: str = ""
     alquiler: bool | str | None = None
-    ubicacion: Literal["Almacén 1", "Almacén 2", "Almacén 3", "Taller"] = "Almacén 1"
+    ubicacion: str = Field(default="Almacén 1", min_length=1, max_length=255)
     estado: str = "Disponible"
     observaciones: str = ""
     especificacionesPersonalizadas: dict[str, str] = {}
@@ -208,6 +209,7 @@ class InventoryIn(Schema):
 class InventoryOut(InventoryIn):
     id: str
     categoria: int
+    pedidoActivo: str | None = None
 
 
 class OrderIn(Schema):
@@ -221,6 +223,13 @@ class OrderIn(Schema):
     motivoTraslado: str
     observaciones: str = ""
     skus: list[str] = Field(default_factory=list)
+    fechaEntrega: date | None = None
+    fechaInicio: date | None = None
+    fechaFin: date | None = None
+    # Compatibilidad: los clientes anteriores no conocían el estado Borrador y
+    # esperaban que el alta reservara inmediatamente. El panel actual siempre
+    # envía este indicador.
+    aperturarComoBorrador: bool = False
 
     @field_validator("telefonoContacto")
     @classmethod
@@ -232,6 +241,23 @@ class OrderIn(Schema):
                 raise ValueError("El número de contacto debe tener entre 7 y 15 dígitos")
         return value
 
+    @model_validator(mode="after")
+    def valid_order_dates(self) -> "OrderIn":
+        start = self.fechaInicio or self.fechaEntrega
+        if start and self.fechaFin and self.fechaFin < start:
+            raise ValueError("La fecha de fin no puede ser anterior a la fecha de inicio")
+        if self.aperturarComoBorrador and not self.observaciones.strip():
+            raise ValueError("El comentario es obligatorio para aperturar el pedido")
+        return self
+
+
+class OrderRenewalOut(Schema):
+    fecha: datetime
+    fechaAnterior: date
+    fechaNueva: date
+    motivo: str
+    usuario: str
+
 
 class OrderOut(OrderIn):
     id: str
@@ -239,6 +265,21 @@ class OrderOut(OrderIn):
     estadoPedido: Literal["Activo", "Finalizado"] = "Activo"
     fechaFinalizacion: datetime | None = None
     estadosAnteriores: dict[str, str] = Field(default_factory=dict)
+    estadoFlujo: Literal["Borrador", "Confirmado", "Despachado", "Alquiler", "Por devolver", "Vencido", "Cerrado", "Anulado"] = "Borrador"
+    motivoAnulacion: str = ""
+    fechaCambioEstado: datetime | None = None
+    renovaciones: int = 0
+    historialRenovaciones: list[OrderRenewalOut] = Field(default_factory=list)
+
+
+class OrderTransitionIn(Schema):
+    estadoDestino: Literal["Confirmado", "Despachado", "Alquiler", "Por devolver", "Vencido", "Cerrado", "Anulado"]
+    motivo: str = Field(default="", max_length=1000)
+
+
+class OrderRenewalIn(Schema):
+    nuevaFechaFin: date
+    motivo: str = Field(min_length=3, max_length=1000)
 
 
 class OrderFinishOut(Schema):
@@ -288,9 +329,11 @@ class TicketOut(TicketIn):
     estado: str
     fecha: datetime
     estadosAnteriores: dict[str, str] = Field(default_factory=dict)
+    ubicacionesAnteriores: dict[str, str] = Field(default_factory=dict)
     reparable: bool | None = None
     flujo: str = "Pendiente"
     equiposReemplazoIds: list[str] = Field(default_factory=list)
+    ubicacionesReemplazoAnteriores: dict[str, str] = Field(default_factory=dict)
     evidencias: list[str] = Field(default_factory=list)
     descripcionSolucion: str = ""
     fechaResolucion: datetime | None = None
@@ -355,6 +398,12 @@ class PaginatedInventoryOut(Schema):
     pages: int
 
 
+class InventoryLocationCountOut(Schema):
+    ubicacion: str
+    total: int
+    disponibles: int
+
+
 class ShippingGuideItemIn(Schema):
     descripcion: str
     cantidad: Decimal = Field(ge=0)
@@ -408,12 +457,19 @@ class FAQOut(FAQIn):
     id: str
 
 
+class InventoryCategoryAvailability(Schema):
+    categoria: str
+    total: int
+    disponibles: int
+
+
 class InventoryLocationSummary(Schema):
-    ubicacion: Literal["Almacén 1", "Almacén 2", "Almacén 3", "Taller"]
+    ubicacion: Literal["Almacén 1", "Almacén 2", "Almacén 3", "Taller", "Alquilado"]
     total: int
     disponibles: int
     alquiler: int
     mantenimiento: int
+    categorias: list[InventoryCategoryAvailability] = Field(default_factory=list)
 
 
 class DashboardOut(Schema):

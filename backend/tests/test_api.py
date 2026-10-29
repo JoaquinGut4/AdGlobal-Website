@@ -326,6 +326,9 @@ def test_shipping_guide_requires_an_active_order(client: TestClient, auth_header
     )
     assert updated.status_code == 200, updated.text
     assert updated.json()["estado"] == "Emitida"
+    history = client.get("/api/v1/guias/emitidas", headers=auth_headers)
+    assert history.status_code == 200, history.text
+    assert any(item["pedidoId"] == order["id"] and item["estado"] == "Emitida" for item in history.json())
 
     finished = client.patch(f"/api/v1/pedidos/{order['id']}/finalizar", headers=auth_headers)
     assert finished.status_code == 200, finished.text
@@ -350,6 +353,184 @@ def test_shipping_guide_requires_an_active_order(client: TestClient, auth_header
         headers=auth_headers,
     )
     assert blocked_create.status_code == 409
+
+
+def test_order_lifecycle_reserves_on_confirmation_and_requires_emitted_guide(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    asset = client.post("/api/v1/inventario", headers=auth_headers, json={
+        "categoriaId": "laptops", "sku": "LAP-WORKFLOW-001", "qr": "QR-LAP-WORKFLOW-001",
+        "foto": "", "marca": "Dell", "descripcion": "Equipo para flujo de pedidos",
+        "numeroSerial": "SER-WORKFLOW-001", "fechaCompra": "2026-10-20",
+        "facturaGuiaCompra": "F001", "precio": 2000, "proveedor": "Proveedor",
+        "estado": "Disponible", "observaciones": "",
+    })
+    assert asset.status_code == 201, asset.text
+    payload = {
+        "fechaEmision": "2026-10-29", "direccionPartida": "Almacén",
+        "direccionLlegada": "Empresa: Cliente SAC · Dirección: Calle 1 · Distrito: Lima · Provincia: Lima · Departamento: Lima",
+        "telefonoContacto": "999999999", "descripcionProductos": "LAP-WORKFLOW-001 · Laptop\nLAP-WORKFLOW-001 · Laptop",
+        "cantidadProductos": 1, "unidadMedida": "UND", "motivoTraslado": "Alquiler",
+        "observaciones": "Pedido de prueba", "skus": ["LAP-WORKFLOW-001", "LAP-WORKFLOW-001"],
+        "fechaInicio": "2026-11-02", "fechaFin": "2026-11-10", "aperturarComoBorrador": True,
+    }
+    created = client.post("/api/v1/pedidos", headers=auth_headers, json=payload)
+    assert created.status_code == 201, created.text
+    order = created.json()
+    assert order["estadoFlujo"] == "Borrador"
+    assert order["estadosAnteriores"] == {}
+    assert order["descripcionProductos"] == "LAP-WORKFLOW-001 · Laptop"
+    assert order["skus"] == ["LAP-WORKFLOW-001"]
+    assert order["fechaEntrega"] == order["fechaInicio"] == "2026-11-02"
+
+    blocked_renewal = client.post(
+        f"/api/v1/pedidos/{order['id']}/renovar", headers=auth_headers,
+        json={"nuevaFechaFin": "2026-11-20", "motivo": "Aún no fue entregado"},
+    )
+    assert blocked_renewal.status_code == 409
+
+    confirmed = client.patch(
+        f"/api/v1/pedidos/{order['id']}/estado", headers=auth_headers,
+        json={"estadoDestino": "Confirmado"},
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["pedido"]["estadoFlujo"] == "Confirmado"
+    inventory = client.get("/api/v1/inventario?page_size=50", headers=auth_headers).json()["items"]
+    reserved_asset = next(row for row in inventory if row["sku"] == "LAP-WORKFLOW-001")
+    assert reserved_asset["estado"] == "Reservado"
+    assert reserved_asset["ubicacion"] == "Almacén 1"
+
+    blocked = client.patch(
+        f"/api/v1/pedidos/{order['id']}/estado", headers=auth_headers,
+        json={"estadoDestino": "Despachado"},
+    )
+    assert blocked.status_code == 422
+
+    guide_payload = {
+        "numeroGuia": "WF-001", "fechaTraslado": "2026-11-02", "estado": "Emitida",
+        "bienes": [{"descripcion": "Laptop", "cantidad": 1, "unidad": "UND", "observaciones": "", "peso": 2}],
+    }
+    created_guide = client.post(
+        f"/api/v1/pedidos/{order['id']}/guia", headers=auth_headers, json=guide_payload,
+    )
+    assert created_guide.status_code == 201, created_guide.text
+    assert created_guide.json()["bienes"][0]["observaciones"] == ""
+    assert created_guide.json()["bienes"][0]["observaciones"] != order["observaciones"]
+    dispatched = client.patch(
+        f"/api/v1/pedidos/{order['id']}/estado", headers=auth_headers,
+        json={"estadoDestino": "Despachado"},
+    )
+    assert dispatched.status_code == 200, dispatched.text
+    inventory = client.get("/api/v1/inventario?page_size=50", headers=auth_headers).json()["items"]
+    dispatched_asset = next(row for row in inventory if row["sku"] == "LAP-WORKFLOW-001")
+    assert dispatched_asset["estado"] == "Despachado"
+    assert dispatched_asset["ubicacion"] == "Alquilado"
+    assert dispatched_asset["pedidoActivo"] == order["numeroPedido"]
+
+    blocked_edit = client.put(
+        f"/api/v1/inventario/{asset.json()['id']}", headers=auth_headers,
+        json={**asset.json(), "descripcion": "Intento de edición durante el pedido"},
+    )
+    assert blocked_edit.status_code == 409
+    assert "pedido" in blocked_edit.json()["detail"]
+    rented = client.patch(
+        f"/api/v1/pedidos/{order['id']}/estado", headers=auth_headers,
+        json={"estadoDestino": "Alquiler"},
+    )
+    assert rented.status_code == 200, rented.text
+    inventory = client.get("/api/v1/inventario?page_size=50", headers=auth_headers).json()["items"]
+    rented_asset = next(row for row in inventory if row["sku"] == "LAP-WORKFLOW-001")
+    assert rented_asset["estado"] == "Alquiler"
+    assert rented_asset["ubicacion"] == "Alquilado"
+
+    earlier_renewal = client.post(
+        f"/api/v1/pedidos/{order['id']}/renovar", headers=auth_headers,
+        json={"nuevaFechaFin": "2026-11-05", "motivo": "Fecha anterior al fin actual"},
+    )
+    assert earlier_renewal.status_code == 422
+
+    renewed = client.post(
+        f"/api/v1/pedidos/{order['id']}/renovar", headers=auth_headers,
+        json={"nuevaFechaFin": "2026-11-20", "motivo": "El cliente extendió el alquiler"},
+    )
+    assert renewed.status_code == 200, renewed.text
+    renewed_order = renewed.json()
+    assert renewed_order["fechaFin"] == "2026-11-20"
+    assert renewed_order["estadoFlujo"] == "Alquiler"
+    assert renewed_order["renovaciones"] == 1
+    assert renewed_order["historialRenovaciones"][0]["fechaAnterior"] == "2026-11-10"
+    assert renewed_order["historialRenovaciones"][0]["fechaNueva"] == "2026-11-20"
+    assert renewed_order["historialRenovaciones"][0]["motivo"] == "El cliente extendió el alquiler"
+    inventory = client.get("/api/v1/inventario?page_size=50", headers=auth_headers).json()["items"]
+    assert next(row for row in inventory if row["sku"] == "LAP-WORKFLOW-001")["estado"] == "Alquiler"
+
+    closed = client.patch(
+        f"/api/v1/pedidos/{order['id']}/estado", headers=auth_headers,
+        json={"estadoDestino": "Cerrado"},
+    )
+    assert closed.status_code == 200, closed.text
+    assert closed.json()["pedido"]["estadoPedido"] == "Finalizado"
+    inventory = client.get("/api/v1/inventario?page_size=50", headers=auth_headers).json()["items"]
+    restored_asset = next(row for row in inventory if row["sku"] == "LAP-WORKFLOW-001")
+    assert restored_asset["estado"] == "Disponible"
+    assert restored_asset["ubicacion"] == "Almacén 1"
+    assert restored_asset["pedidoActivo"] is None
+
+
+def test_order_can_be_opened_with_only_initial_fields(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    response = client.post("/api/v1/pedidos", headers=auth_headers, json={
+        "fechaEmision": "2000-01-01",
+        "direccionPartida": "Almacén",
+        "direccionLlegada": "",
+        "telefonoContacto": "",
+        "descripcionProductos": "",
+        "cantidadProductos": 1,
+        "unidadMedida": "UND",
+        "motivoTraslado": "Alquiler",
+        "observaciones": "Cliente solicita separar el número de pedido",
+        "skus": [],
+        "aperturarComoBorrador": True,
+    })
+    assert response.status_code == 201, response.text
+    order = response.json()
+    assert order["numeroPedido"].startswith("PED-")
+    assert order["estadoFlujo"] == "Borrador"
+    assert order["fechaEmision"] != "2000-01-01"
+    assert order["observaciones"] == "Cliente solicita separar el número de pedido"
+
+
+def test_order_cancellation_requires_reason_and_keeps_record(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    payload = {
+        "fechaEmision": "2026-10-29", "direccionPartida": "Almacén", "direccionLlegada": "Cliente",
+        "telefonoContacto": "999999999", "descripcionProductos": "Pendiente", "cantidadProductos": 1,
+        "unidadMedida": "UND", "motivoTraslado": "Alquiler", "observaciones": "Cliente por confirmar", "skus": [],
+        "aperturarComoBorrador": True,
+    }
+    order = client.post("/api/v1/pedidos", headers=auth_headers, json=payload).json()
+    blocked_guide = client.post(
+        f"/api/v1/pedidos/{order['id']}/guia", headers=auth_headers, json={
+            "numeroGuia": "DRAFT-001", "fechaTraslado": "2026-10-30", "estado": "Emitida",
+            "bienes": [{"descripcion": "Pendiente", "cantidad": 1, "unidad": "UND", "observaciones": "", "peso": 0}],
+        },
+    )
+    assert blocked_guide.status_code == 409
+    missing_reason = client.patch(
+        f"/api/v1/pedidos/{order['id']}/estado", headers=auth_headers,
+        json={"estadoDestino": "Anulado", "motivo": ""},
+    )
+    assert missing_reason.status_code == 422
+    cancelled = client.patch(
+        f"/api/v1/pedidos/{order['id']}/estado", headers=auth_headers,
+        json={"estadoDestino": "Anulado", "motivo": "El cliente canceló la contratación"},
+    )
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["pedido"]["estadoFlujo"] == "Anulado"
+    assert cancelled.json()["pedido"]["motivoAnulacion"] == "El cliente canceló la contratación"
+    assert client.delete(f"/api/v1/pedidos/{order['id']}", headers=auth_headers).status_code == 409
 
 
 def test_inventory_crud(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -428,11 +609,38 @@ def test_dashboard_groups_real_inventory_by_location(client: TestClient, auth_he
     dashboard = response.json()
     assert dashboard["inventarioTotal"] == 3
     assert dashboard["inventarioPorUbicacion"] == [
-        {"ubicacion": "Almacén 1", "total": 1, "disponibles": 1, "alquiler": 0, "mantenimiento": 0},
-        {"ubicacion": "Almacén 2", "total": 1, "disponibles": 0, "alquiler": 1, "mantenimiento": 0},
-        {"ubicacion": "Almacén 3", "total": 0, "disponibles": 0, "alquiler": 0, "mantenimiento": 0},
-        {"ubicacion": "Taller", "total": 1, "disponibles": 0, "alquiler": 0, "mantenimiento": 1},
+        {"ubicacion": "Almacén 1", "total": 1, "disponibles": 1, "alquiler": 0, "mantenimiento": 0,
+         "categorias": [{"categoria": "Laptops", "total": 1, "disponibles": 1}]},
+        {"ubicacion": "Almacén 2", "total": 1, "disponibles": 0, "alquiler": 1, "mantenimiento": 0,
+         "categorias": [{"categoria": "Laptops", "total": 1, "disponibles": 0}]},
+        {"ubicacion": "Almacén 3", "total": 0, "disponibles": 0, "alquiler": 0, "mantenimiento": 0,
+         "categorias": []},
+        {"ubicacion": "Taller", "total": 1, "disponibles": 0, "alquiler": 0, "mantenimiento": 1,
+         "categorias": [{"categoria": "Laptops", "total": 1, "disponibles": 0}]},
+        {"ubicacion": "Alquilado", "total": 0, "disponibles": 0, "alquiler": 0, "mantenimiento": 0,
+         "categorias": []},
     ]
+
+
+def test_reports_generate_table_pdfs(client: TestClient, auth_headers: dict[str, str]) -> None:
+    for path in (
+        "/api/v1/reportes/pedidos/pdf",
+        "/api/v1/reportes/tickets/pdf",
+        "/api/v1/reportes/inventario/pdf",
+    ):
+        response = client.get(path, headers=auth_headers)
+        assert response.status_code == 200, (path, response.text)
+        assert response.headers["content-type"] == "application/pdf"
+        assert response.content.startswith(b"%PDF-1.4")
+        assert len(response.content) > 800
+
+
+def test_movements_pdf_uses_table_report(client: TestClient, auth_headers: dict[str, str]) -> None:
+    response = client.get("/api/v1/movimientos/export?format=pdf", headers=auth_headers)
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF-1.4")
+    assert len(response.content) > 800
 
 
 def test_inventory_purchase_date_is_optional(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -574,7 +782,9 @@ def test_ticket_persists_inventory_transition(client: TestClient, auth_headers: 
     assert diagnosed.json()["equiposIds"] == [asset["id"]]
     assert diagnosed.json()["estadosAnteriores"] == {asset["id"]: "Oficina"}
     inventory = client.get("/api/v1/inventario", headers=auth_headers).json()["items"]
-    assert next(item for item in inventory if item["id"] == asset["id"])["estado"] == "Diagnóstico"
+    diagnosed_asset = next(item for item in inventory if item["id"] == asset["id"])
+    assert diagnosed_asset["estado"] == "Reparación"
+    assert diagnosed_asset["ubicacion"] == "Taller"
 
     resolved = client.post(
         f"/api/v1/tickets/{ticket.json()['id']}/resolver",
@@ -583,7 +793,67 @@ def test_ticket_persists_inventory_transition(client: TestClient, auth_headers: 
     )
     assert resolved.status_code == 200, resolved.text
     inventory = client.get("/api/v1/inventario", headers=auth_headers).json()["items"]
-    assert next(item for item in inventory if item["id"] == asset["id"])["estado"] == "Oficina"
+    restored_asset = next(item for item in inventory if item["id"] == asset["id"])
+    assert restored_asset["estado"] == "Oficina"
+    assert restored_asset["ubicacion"] == "Almacén 1"
+    assert client.delete(f"/api/v1/tickets/{ticket.json()['id']}", headers=auth_headers).status_code == 409
+
+
+def test_general_ticket_accepts_assets_from_any_inventory_state(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    asset = client.post("/api/v1/inventario", headers=auth_headers, json={
+        "categoriaId": "laptops", "sku": "LAP-BAD-001", "qr": "QR-LAP-BAD-001",
+        "foto": "", "marca": "Dell", "descripcion": "Equipo en mal estado",
+        "numeroSerial": "SER-BAD-001", "fechaCompra": "2026-10-20",
+        "facturaGuiaCompra": "F001", "precio": 2000, "proveedor": "Proveedor",
+        "estado": "Taller", "observaciones": "",
+    })
+    assert asset.status_code == 201, asset.text
+    ticket = client.post("/api/v1/tickets", headers=auth_headers, json={
+        "cliente": "Inventario interno",
+        "equipo": "Pendiente de selección",
+        "numeroPedidoEstado": "Oficina",
+        "tipoTicket": "general",
+        "estadoEquipo": "Oficina",
+        "prioridad": "Alta",
+        "descripcion": "Equipo que no enciende",
+        "equiposIds": [],
+    })
+    assert ticket.status_code == 201, ticket.text
+    diagnosed = client.post(
+        f"/api/v1/tickets/{ticket.json()['id']}/diagnostico",
+        headers=auth_headers,
+        json={"equiposAfectadosIds": [asset.json()["id"]]},
+    )
+    assert diagnosed.status_code == 200, diagnosed.text
+    assert diagnosed.json()["equiposIds"] == [asset.json()["id"]]
+    inventory = client.get("/api/v1/inventario?page_size=50", headers=auth_headers).json()["items"]
+    diagnosed_asset = next(row for row in inventory if row["sku"] == "LAP-BAD-001")
+    assert diagnosed_asset["estado"] == "Reparación"
+    assert diagnosed_asset["ubicacion"] == "Taller"
+
+    rented = client.post("/api/v1/inventario", headers=auth_headers, json={
+        "categoriaId": "laptops", "sku": "LAP-RENT-001", "qr": "QR-LAP-RENT-001",
+        "foto": "", "marca": "Dell", "descripcion": "Equipo alquilado",
+        "numeroSerial": "SER-RENT-001", "fechaCompra": "2026-10-20",
+        "facturaGuiaCompra": "F001", "precio": 2000, "proveedor": "Proveedor",
+        "ubicacion": "Alquilado", "estado": "Alquiler", "observaciones": "",
+    })
+    assert rented.status_code == 201, rented.text
+    second_ticket = client.post("/api/v1/tickets", headers=auth_headers, json={
+        "cliente": "Inventario interno", "equipo": "Pendiente de selección",
+        "numeroPedidoEstado": "Almacén 1", "tipoTicket": "general",
+        "estadoEquipo": "Almacén 1", "prioridad": "Alta",
+        "descripcion": "Revisar equipo alquilado", "equiposIds": [],
+    }).json()
+    blocked = client.post(
+        f"/api/v1/tickets/{second_ticket['id']}/diagnostico",
+        headers=auth_headers,
+        json={"equiposAfectadosIds": [rented.json()["id"]]},
+    )
+    assert blocked.status_code == 422
+    assert "alquiler" in blocked.json()["detail"].lower()
 
 
 def test_replacement_workflow_updates_inventory_and_order(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -617,7 +887,9 @@ def test_replacement_workflow_updates_inventory_and_order(client: TestClient, au
     assert diagnosed.json()["estado"] == "En Reemplazo"
     inventory = client.get("/api/v1/inventario?page_size=50", headers=auth_headers).json()["items"]
     assert next(item for item in inventory if item["id"] == affected["id"])["estado"] == "Reemplazo requerido"
-    assert next(item for item in inventory if item["id"] == replacement["id"])["estado"] == "Reservado para reemplazo"
+    replacement_asset = next(item for item in inventory if item["id"] == replacement["id"])
+    assert replacement_asset["estado"] == "Reservado para reemplazo"
+    assert replacement_asset["ubicacion"] == "Alquilado"
 
     rolled_back = client.post(f"/api/v1/tickets/{ticket['id']}/volver", headers=auth_headers)
     assert rolled_back.status_code == 200, rolled_back.text
@@ -625,7 +897,9 @@ def test_replacement_workflow_updates_inventory_and_order(client: TestClient, au
     assert rolled_back.json()["equiposIds"] == []
     inventory = client.get("/api/v1/inventario?page_size=50", headers=auth_headers).json()["items"]
     assert next(item for item in inventory if item["id"] == affected["id"])["estado"] == "Alquiler"
-    assert next(item for item in inventory if item["id"] == replacement["id"])["estado"] == "Almacén 1"
+    replacement_asset = next(item for item in inventory if item["id"] == replacement["id"])
+    assert replacement_asset["estado"] == "Almacén 1"
+    assert replacement_asset["ubicacion"] == "Almacén 1"
 
     diagnosed = client.post(f"/api/v1/tickets/{ticket['id']}/diagnostico", headers=auth_headers, json={
         "equiposAfectadosIds": [affected["id"]], "reparable": False, "equiposReemplazoIds": [replacement["id"]],
@@ -638,14 +912,18 @@ def test_replacement_workflow_updates_inventory_and_order(client: TestClient, au
     assert resolved.status_code == 200, resolved.text
     inventory = client.get("/api/v1/inventario?page_size=50", headers=auth_headers).json()["items"]
     assert next(item for item in inventory if item["id"] == affected["id"])["estado"] == "Baja"
-    assert next(item for item in inventory if item["id"] == replacement["id"])["estado"] == "Alquiler"
+    replacement_asset = next(item for item in inventory if item["id"] == replacement["id"])
+    assert replacement_asset["estado"] == "Alquiler"
+    assert replacement_asset["ubicacion"] == "Alquilado"
     updated_order = next(item for item in client.get("/api/v1/pedidos", headers=auth_headers).json() if item["id"] == order["id"])
     assert updated_order["skus"] == ["LAP-REP-002"]
 
     finished = client.patch(f"/api/v1/pedidos/{order['id']}/finalizar", headers=auth_headers)
     assert finished.status_code == 200
     inventory = client.get("/api/v1/inventario?page_size=50", headers=auth_headers).json()["items"]
-    assert next(item for item in inventory if item["id"] == replacement["id"])["estado"] == "Almacén 1"
+    replacement_asset = next(item for item in inventory if item["id"] == replacement["id"])
+    assert replacement_asset["estado"] == "Almacén 1"
+    assert replacement_asset["ubicacion"] == "Almacén 1"
 
 
 def login_as(client: TestClient, email: str, usuario: str, password: str) -> dict:

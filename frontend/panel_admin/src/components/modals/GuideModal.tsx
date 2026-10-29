@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { FileText, Lock, Printer, Save } from 'lucide-react';
+import { FileCheck2, FileText, Lock, Printer, Save } from 'lucide-react';
 import { AdGlobalLogo } from '@/components/AdGlobalLogo';
 import { Modal } from '@/components/ui/Modal';
 import { ApiError, apiRequest } from '@/lib/api';
@@ -10,6 +10,7 @@ interface GuideModalProps {
   isOpen: boolean;
   pedido: PedidoRegistro | null;
   onClose: () => void;
+  onIssued?: () => void | Promise<void>;
 }
 const FIELD_CLASS =
   'w-full rounded-lg border border-slate-300 px-2.5 py-2 text-xs focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand';
@@ -41,6 +42,18 @@ function escapeHtml(value: unknown) {
   })[character] ?? character);
 }
 
+async function imageAsDataUrl(url: string): Promise<string> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error('No se pudo cargar el logo para la guía.');
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('No se pudo procesar el logo para la guía.'));
+    reader.readAsDataURL(blob);
+  });
+}
+
 interface BienTrasladado {
   id: string;
   descripcion: string;
@@ -63,7 +76,8 @@ function crearBienes(pedido: PedidoRegistro): BienTrasladado[] {
   const lineas = pedido.descripcionProductos
     .split('\n')
     .map((linea) => linea.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((linea, index, all) => all.findIndex((candidate) => candidate.toLocaleLowerCase() === linea.toLocaleLowerCase()) === index);
   if (lineas.length === 0) return [];
 
   const total = Math.max(0, Number(pedido.cantidadProductos) || 0);
@@ -75,16 +89,19 @@ function crearBienes(pedido: PedidoRegistro): BienTrasladado[] {
     descripcion: linea,
     cantidad: String(base + (index < resto ? 1 : 0)),
     unidad: pedido.unidadMedida,
-    observaciones: index === 0 ? pedido.observaciones : '',
+    // Las observaciones de la guía pertenecen al bien trasladado y no deben
+    // heredar el comentario interno registrado al aperturar el pedido.
+    observaciones: '',
     peso: '0',
   }));
 }
 
-export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
+export function GuideModal({ isOpen, pedido, onClose, onIssued }: GuideModalProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const [numeroGuia, setNumeroGuia] = useState('');
   const [fechaTraslado, setFechaTraslado] = useState('');
   const [status, setStatus] = useState('');
+  const [guideStatus, setGuideStatus] = useState<'Borrador' | 'Emitida'>('Borrador');
   const [bienes, setBienes] = useState<BienTrasladado[]>([]);
   const previewRef = useRef<HTMLIFrameElement>(null);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
@@ -93,18 +110,22 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
     if (!pedido || !isOpen) return;
     const sequence = pedido.numeroPedido.match(/(\d+)$/)?.[1] ?? '1';
     setNumeroGuia(sequence.padStart(6, '0'));
-    setFechaTraslado(pedido.fechaEmision);
+    setFechaTraslado(pedido.fechaInicio ?? pedido.fechaEntrega ?? pedido.fechaEmision);
     setStatus('');
+    setGuideStatus('Borrador');
     setBienes(crearBienes(pedido));
     void apiRequest<GuideRecord>(`/pedidos/${pedido.id}/guia`).then((guide) => {
       setNumeroGuia(guide.numeroGuia);
       setFechaTraslado(guide.fechaTraslado);
       setBienes(guide.bienes.map((item, index) => ({ id: `bien-${index}`, descripcion: item.descripcion, cantidad: String(item.cantidad), unidad: item.unidad, observaciones: item.observaciones, peso: String(item.peso) })));
+      setGuideStatus(guide.estado);
       window.setTimeout(() => {
         if (!formRef.current) return;
         const values: Record<string, string> = { destinatario_ruc: guide.destinatarioRuc, destinatario_dni: guide.destinatarioDocumento, vehiculo: guide.vehiculo, certificado: guide.certificado, licencia: guide.licencia, conductor_dni: guide.conductorDocumento, transportista: guide.transportista, transportista_ruc: guide.transportistaRuc, costo_traslado: String(guide.costoTraslado), comprobante_tipo: guide.comprobanteTipo, comprobante_numero: guide.comprobanteNumero };
         for (const [name, value] of Object.entries(values)) { const field = formRef.current.elements.namedItem(name) as HTMLInputElement | null; if (field) field.value = value; }
-        formRef.current.querySelectorAll<HTMLInputElement>('input[name="motivo"]').forEach(input => { input.checked = guide.motivos.includes(input.value); });
+        formRef.current.querySelectorAll<HTMLInputElement>('input[name="motivo"]').forEach(input => {
+          input.checked = input.value === pedido.motivoTraslado;
+        });
       });
       setStatus(`Guía cargada · ${guide.estado}`);
     }).catch((error) => { if (!(error instanceof ApiError && error.status === 404)) setStatus(error instanceof Error ? error.message : 'No se pudo cargar la guía.'); });
@@ -112,7 +133,8 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
 
   if (!pedido) return null;
 
-  const soloLectura = pedido.estadoPedido === 'Finalizado';
+  const pedidoFinalizado = pedido.estadoPedido === 'Finalizado';
+  const soloLectura = pedidoFinalizado || guideStatus === 'Emitida';
   const fieldClass = `${FIELD_CLASS} ${soloLectura ? 'bg-slate-100 text-slate-600' : 'bg-white text-slate-800'}`;
   const formatearNumero = (value: number) =>
     value.toLocaleString('es-PE', { maximumFractionDigits: 2 });
@@ -175,9 +197,30 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
     if (soloLectura) return;
     try {
       await guardar('Borrador');
+      setGuideStatus('Borrador');
       setStatus('Borrador guardado en la base de datos.');
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'No se pudo guardar el borrador.');
+    }
+  };
+
+  const emitirGuia = async () => {
+    if (soloLectura) return;
+    if (pedido.estadoFlujo !== 'Confirmado') {
+      setStatus('Confirma el pedido antes de emitir la guía.');
+      return;
+    }
+    if (!formRef.current?.reportValidity()) {
+      setStatus('Completa los campos obligatorios antes de emitir la guía.');
+      return;
+    }
+    try {
+      await guardar('Emitida');
+      setGuideStatus('Emitida');
+      setStatus('Guía emitida. El pedido ya puede pasar a Despachado.');
+      await onIssued?.();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'No se pudo emitir la guía.');
     }
   };
 
@@ -190,6 +233,11 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
     }
     setStatus('Generando PDF con el diseño de la guía...');
     try {
+      const images = Array.from(previewDocument.images);
+      await Promise.all(images.map(async (image) => {
+        if (image.complete && image.naturalWidth > 0) return;
+        await image.decode();
+      }));
       const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
         import('html2canvas'),
         import('jspdf'),
@@ -228,8 +276,8 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
   };
 
   const imprimirGuia = async () => {
-    if (soloLectura) {
-      setStatus('El pedido está finalizado. No se puede aperturar ni editar su guía de remisión.');
+    if (guideStatus !== 'Emitida') {
+      setStatus('Primero emite la guía para habilitar la impresión.');
       return;
     }
     if (!formRef.current) return;
@@ -237,13 +285,6 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
       setStatus('Completa los campos obligatorios antes de imprimir.');
       return;
     }
-    try {
-      await guardar('Emitida');
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'No se pudo guardar la guía.');
-      return;
-    }
-
     const data = new FormData(formRef.current);
     const value = (name: string) => escapeHtml(data.get(name));
     const motivosSeleccionados = new Set(
@@ -251,7 +292,13 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
         (input) => input.value,
       ),
     );
-    const logoUrl = new URL(logo, window.location.href).href;
+    let logoUrl: string;
+    try {
+      logoUrl = await imageAsDataUrl(new URL(logo, window.location.href).href);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'No se pudo cargar el logo para la guía.');
+      return;
+    }
 
     const bienesHtml = bienes.length > 0
       ? bienes
@@ -331,15 +378,21 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
           {soloLectura ? (
             <span className="inline-flex items-center gap-1.5 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs font-bold text-warning">
               <Lock className="h-3.5 w-3.5" />
-              Guía bloqueada · pedido finalizado
+              {guideStatus === 'Emitida' ? 'Guía emitida · solo lectura' : 'Guía bloqueada · pedido finalizado'}
             </span>
           ) : (
-            <button type="button" onClick={() => void guardarBorrador()} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-xs font-bold text-white hover:bg-brand-deep">
-              <Save className="h-3.5 w-3.5" />
-              Guardar borrador
-            </button>
+            <>
+              <button type="button" onClick={() => void guardarBorrador()} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-xs font-bold text-white hover:bg-brand-deep">
+                <Save className="h-3.5 w-3.5" />
+                Guardar borrador
+              </button>
+              <button type="button" onClick={() => void emitirGuia()} disabled={pedido.estadoFlujo !== 'Confirmado'} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-success px-3 py-2 text-xs font-bold text-white hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50" title={pedido.estadoFlujo !== 'Confirmado' ? 'Confirma el pedido para emitir la guía' : 'Emitir guía'}>
+                <FileCheck2 className="h-3.5 w-3.5" />
+                Emitir guía
+              </button>
+            </>
           )}
-          <button type="button" onClick={() => void imprimirGuia()} disabled={soloLectura} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400">
+          <button type="button" onClick={() => void imprimirGuia()} disabled={guideStatus !== 'Emitida'} className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400">
             <Printer className="h-3.5 w-3.5" />
             Imprimir / PDF
           </button>
@@ -396,7 +449,7 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
                 />
               </GuideField>
               <GuideField label="Inicio del traslado">
-                <input type="date" name="fecha_traslado" value={fechaTraslado} onChange={(event) => setFechaTraslado(event.target.value)} readOnly={soloLectura} className={fieldClass} />
+                <input type="date" name="fecha_traslado" value={fechaTraslado} readOnly aria-readonly="true" className={`${FIELD_CLASS} cursor-not-allowed bg-slate-100 text-slate-600`} />
               </GuideField>
             </GuideSection>
 
@@ -430,9 +483,9 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
               </GuideField>
             </GuideSection>
 
-            <GuideSection title="Dirección de partida">
+            <GuideSection title="Destinatario">
               <GuideField label="Apellidos y nombres / Razón social" full>
-                <input name="destinatario" defaultValue={destinatario} readOnly={soloLectura} className={fieldClass} />
+                <input name="destinatario" defaultValue={destinatario} readOnly aria-readonly="true" className={`${FIELD_CLASS} cursor-not-allowed bg-slate-100 text-slate-600`} />
               </GuideField>
               <GuideField label="R.U.C.">
                 <input name="destinatario_ruc" inputMode="numeric" maxLength={11} readOnly={soloLectura} className={fieldClass} />
@@ -563,7 +616,7 @@ export function GuideModal({ isOpen, pedido, onClose }: GuideModalProps) {
             <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
               {MOTIVOS.map((motivo, index) => (
                 <label key={motivo} className="flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-700">
-                  <input type="checkbox" name="motivo" value={motivo} defaultChecked={pedido.motivoTraslado === motivo} disabled={soloLectura} className="mt-0.5" />
+                  <input type="checkbox" name="motivo" value={motivo} defaultChecked={pedido.motivoTraslado === motivo} disabled className="mt-0.5 cursor-not-allowed" />
                   <span>{index + 1}. {motivo}</span>
                 </label>
               ))}

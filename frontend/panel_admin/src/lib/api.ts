@@ -85,6 +85,51 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   return request<T>(path, init, true);
 }
 
+/** Descarga un archivo binario (por ejemplo un PDF) usando la sesión actual. */
+export async function apiDownload(path: string, filename: string, init: RequestInit = {}): Promise<void> {
+  return download(path, filename, init, true);
+}
+
+async function download(path: string, filename: string, init: RequestInit, canRefresh: boolean): Promise<void> {
+  if (!ADMIN_CONFIG.apiUrl) throw new Error('VITE_API_URL no está configurada.');
+
+  const token = readTokenWithStorage(AUTH_TOKEN_STORAGE_KEY)?.token ?? null;
+  const headers = new Headers(init.headers);
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+
+  const response = await fetch(`${ADMIN_CONFIG.apiUrl}${path}`, { ...init, headers, credentials: 'include' });
+
+  if (response.status === 401) {
+    if (canRefresh) {
+      const refreshed = await refreshAccessToken();
+      if ('token' in refreshed) return download(path, filename, init, false);
+      if (refreshed.error === 'unauthenticated') dispatchUnauthorized();
+    } else {
+      dispatchUnauthorized();
+    }
+  }
+
+  if (!response.ok) {
+    let message = `Error ${response.status}`;
+    try {
+      message = extractApiErrorMessage(await response.json(), message);
+    } catch {
+      // La respuesta no contiene JSON.
+    }
+    throw new ApiError(message, response.status);
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 async function request<T>(path: string, init: RequestInit, canRefresh: boolean): Promise<T> {
   if (!ADMIN_CONFIG.apiUrl) throw new Error('VITE_API_URL no está configurada.');
 
