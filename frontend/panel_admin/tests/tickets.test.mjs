@@ -59,3 +59,48 @@ test('mantiene un ticket creado mientras la lista estaba en vuelo', () => {
 
   assert.deepEqual(merged.map((ticket) => ticket.id), ['t2', 't1']);
 });
+
+test('normaliza los campos opcionales que el servidor puede omitir', () => {
+  const ticket = toSupportTicket({
+    ...row,
+    area: null,
+    tipoTicket: null,
+    reparable: null,
+    flujo: undefined,
+    equiposReemplazoIds: undefined,
+    evidencias: undefined,
+    descripcionSolucion: undefined,
+    fechaResolucion: undefined,
+    tecnicoTelefono: undefined,
+  });
+
+  assert.equal(ticket.area, undefined);
+  assert.equal(ticket.tipoTicket, undefined);
+  assert.equal(ticket.reparable, null);
+  assert.equal(ticket.flujo, undefined);
+  assert.deepEqual(ticket.equiposReemplazoIds, []);
+  assert.deepEqual(ticket.evidencias, []);
+  assert.equal(ticket.descripcionSolucion, '');
+  assert.equal(ticket.fechaResolucion, undefined);
+  assert.equal(ticket.tecnicoTelefono, undefined);
+});
+
+test('conserva la fecha original cuando el servidor envía un valor inválido', () => {
+  const ticket = toSupportTicket({ ...row, fecha: 'sin-fecha' });
+  assert.equal(ticket.fecha, 'sin-fecha');
+});
+
+test('descarta un ticket conocido que el servidor ya no devuelve', () => {
+  const local = toSupportTicket(row);
+  const merged = mergeServerTickets([], [local], new Set(['t1']));
+  assert.deepEqual(merged, []);
+});
+
+test('conserva varios tickets creados durante la petición y los ordena antes de la respuesta', () => {
+  const first = toSupportTicket({ ...row, id: 't2', codigo: 'TKT-2026-002' });
+  const second = toSupportTicket({ ...row, id: 't3', codigo: 'TKT-2026-003' });
+  const merged = mergeServerTickets([row], [first, second], new Set());
+
+  assert.deepEqual(merged.map((ticket) => ticket.id), ['t2', 't3', 't1']);
+});
+

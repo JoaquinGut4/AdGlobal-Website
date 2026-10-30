@@ -77,7 +77,18 @@ export function TicketWorkflowModal({ ticket, inventario, pedidos, onClose, onUp
 
   if (!current) return null;
   const flowPending = (current.flujo ?? 'Pendiente') === 'Pendiente';
-  const showSolution = !flowPending && (
+  const savedAffectedIds = current.equiposIds ?? [];
+  const savedReplacementIds = current.equiposReemplazoIds ?? [];
+  const diagnosisChanged = !flowPending && (
+    affectedIds.length !== savedAffectedIds.length ||
+    affectedIds.some((id) => !savedAffectedIds.includes(id)) ||
+    (repairable !== null && repairable !== (current.reparable ?? null)) ||
+    (repairable === false && (
+      replacementIds.length !== savedReplacementIds.length ||
+      replacementIds.some((id) => !savedReplacementIds.includes(id))
+    ))
+  );
+  const showSolution = !flowPending && !diagnosisChanged && (
     current.flujo === 'General' ||
     (current.flujo === 'Reparación' && repairable === true) ||
     (current.flujo === 'Reemplazo' && repairable === false)
@@ -89,8 +100,8 @@ export function TicketWorkflowModal({ ticket, inventario, pedidos, onClose, onUp
   const saveDiagnosis = async () => {
     if (affectedIds.length === 0) { setError('Selecciona al menos un equipo afectado.'); return; }
     if (current.tipoTicket === 'pedido' && repairable === null) { setError('Indica si los equipos son reparables.'); return; }
-    if (current.tipoTicket === 'pedido' && repairable === false && replacementIds.length !== affected.length) {
-      setError(`Selecciona ${affected.length} equipo(s) de reemplazo.`); return;
+    if (current.tipoTicket === 'pedido' && repairable === false && replacementIds.length !== affectedIds.length) {
+      setError(`Selecciona ${affectedIds.length} equipo(s) de reemplazo.`); return;
     }
     setSaving(true); setError('');
     try {

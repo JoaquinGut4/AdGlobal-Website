@@ -485,12 +485,13 @@ def update_inventory_state(
                 for asset_id, value in states.items()
             }
     for ticket in db.scalars(select(SupportTicket)).all():
-        states = ticket.previous_states or {}
-        if state_name in states.values():
-            ticket.previous_states = {
-                asset_id: payload.nombre if value == state_name else value
-                for asset_id, value in states.items()
-            }
+        for field in ("previous_states", "replacement_previous_states"):
+            states = getattr(ticket, field) or {}
+            if state_name in states.values():
+                setattr(ticket, field, {
+                    asset_id: payload.nombre if value == state_name else value
+                    for asset_id, value in states.items()
+                })
     db.delete(item)
     audit(db, actor, "Inventario", "Editó", state_name, f"Renombró el estado {state_name} a {payload.nombre}.")
     db.commit()
@@ -512,7 +513,11 @@ def delete_inventory_state(
         raise HTTPException(409, "El estado está en uso")
     if any(state_name in (order.previous_states or {}).values() for order in db.scalars(select(Order)).all()):
         raise HTTPException(409, "El estado está referenciado por un pedido")
-    if any(state_name in (ticket.previous_states or {}).values() for ticket in db.scalars(select(SupportTicket)).all()):
+    if any(
+        state_name in (states or {}).values()
+        for ticket in db.scalars(select(SupportTicket)).all()
+        for states in (ticket.previous_states, ticket.replacement_previous_states)
+    ):
         raise HTTPException(409, "El estado está referenciado por un ticket")
     audit(db, actor, "Inventario", "Eliminó", state_name, f"Eliminó el estado {state_name}.")
     db.delete(item)
@@ -665,7 +670,7 @@ def delete_inventory(item_id: str, actor: AdminUser = Depends(require_module("in
     active_order = active_order_assets(db).get(item_id)
     if active_order is not None:
         raise HTTPException(409, f"El equipo pertenece al pedido {active_order} y no se puede eliminar hasta cerrarlo o anularlo")
-    if any(item_id in (ticket.asset_ids or []) for ticket in db.scalars(select(SupportTicket).where(SupportTicket.status != "Resuelto")).all()):
+    if any(item_id in ((ticket.asset_ids or []) + (ticket.replacement_asset_ids or [])) for ticket in db.scalars(select(SupportTicket).where(SupportTicket.status != "Resuelto")).all()):
         raise HTTPException(409, "El activo pertenece a un ticket activo")
     photo = item.photo_url
     audit(db, actor, "Inventario", "Eliminó", item.sku, f"Eliminó el producto {item.sku}."); db.delete(item); db.commit()
@@ -863,7 +868,11 @@ def reserve_order_assets(payload: OrderIn, db: Session, *, exclude_order_id: str
         raise HTTPException(409, "Uno de los equipos ya está asignado a otro pedido activo")
 
     active_tickets = db.scalars(select(SupportTicket).where(SupportTicket.status != "Resuelto")).all()
-    ticket_assets = {asset_id for ticket in active_tickets for asset_id in (ticket.asset_ids or [])}
+    ticket_assets = {
+        asset_id
+        for ticket in active_tickets
+        for asset_id in ((ticket.asset_ids or []) + (ticket.replacement_asset_ids or []))
+    }
     if any(asset.id in ticket_assets for asset in assets):
         raise HTTPException(409, "Uno de los equipos tiene un ticket de soporte activo")
 
@@ -1203,7 +1212,15 @@ def tickets(_: AdminUser = Depends(require_module("tickets")), db: Session = Dep
 
 
 def next_ticket_code(db: Session) -> str:
-    year=date.today().year; prefix=f"TKT-{year}-"; latest=db.scalar(select(SupportTicket.code).where(SupportTicket.code.like(f"{prefix}%")).order_by(SupportTicket.code.desc()).limit(1)); seq=int(latest.rsplit("-",1)[-1])+1 if latest else 1; return f"{prefix}{seq:03d}"
+    year = date.today().year
+    prefix = f"TKT-{year}-"
+    codes = db.scalars(select(SupportTicket.code).where(SupportTicket.code.like(f"{prefix}%"))).all()
+    sequences = [
+        int(code.rsplit("-", 1)[-1])
+        for code in codes
+        if code.rsplit("-", 1)[-1].isdigit()
+    ]
+    return f"{prefix}{(max(sequences) + 1) if sequences else 1:03d}"
 
 
 def restore_ticket_assets(item: SupportTicket, db: Session) -> int:
@@ -1231,6 +1248,8 @@ def restore_ticket_assets(item: SupportTicket, db: Session) -> int:
 
 @router.post("/tickets", response_model=TicketOut, status_code=201)
 def create_ticket(payload: TicketIn, actor: AdminUser = Depends(require_module("tickets")), db: Session = Depends(get_db)) -> TicketOut:
+    if payload.tipoTicket not in {"pedido", "general"}:
+        raise HTTPException(422, "Indica si el ticket es por pedido o general")
     support_user: AdminUser | None = None
 
     if payload.tecnicoId:
@@ -1317,7 +1336,7 @@ def update_ticket(item_id: str, payload: TicketUpdate, actor: AdminUser = Depend
     if "tecnicoId" in changes:
         support_id = changes["tecnicoId"].removeprefix("soporte:") if changes["tecnicoId"] else None
         support = db.get(AdminUser, support_id) if support_id else None
-        if support is not None and (support.role != "Soporte" or not support.is_active):
+        if support_id and (support is None or support.role != "Soporte" or not support.is_active):
             raise HTTPException(422, "El usuario de soporte no existe o está inactivo")
         item.support_user_id=support.id if support else None; item.technician_name=support.full_name if support else ""; item.technician_phone=support.phone if support else ""
     audit(db,actor,"Tickets","Editó",item.code,f"Actualizó el ticket {item.code}."); db.commit(); return ticket_out(item)
@@ -1351,13 +1370,6 @@ async def upload_ticket_evidence(
     return {"url": f"{settings.public_upload_url.rstrip('/')}/tickets/{path.name}"}
 
 
-def restore_replacement_reservations(item: SupportTicket, db: Session) -> None:
-    for asset_id, previous in (item.replacement_previous_states or {}).items():
-        asset = db.get(InventoryAsset, asset_id)
-        if asset is not None and asset.status == "Reservado para reemplazo":
-            asset.status = previous
-
-
 @router.post("/tickets/{item_id}/diagnostico", response_model=TicketOut)
 def diagnose_ticket(
     item_id: str,
@@ -1368,6 +1380,8 @@ def diagnose_ticket(
     item = db.get(SupportTicket, item_id)
     if item is None: raise HTTPException(404, "Ticket no encontrado")
     if item.status == "Resuelto": raise HTTPException(409, "El ticket ya está resuelto")
+    if item.ticket_type not in {"pedido", "general"}:
+        raise HTTPException(422, "El ticket no tiene un tipo definido; vuelve a aperturarlo")
     if len(set(payload.equiposAfectadosIds)) != len(payload.equiposAfectadosIds):
         raise HTTPException(422, "No puedes repetir un equipo afectado")
     restore_ticket_assets(item, db)
@@ -1382,6 +1396,7 @@ def diagnose_ticket(
         for asset in affected
     ):
         raise HTTPException(422, "Los equipos en alquiler no pueden ingresar a un ticket general; usa un ticket por pedido")
+    order = None
     if item.ticket_type == "pedido":
         order = db.scalar(select(Order).where(Order.order_number == item.order_number, Order.operational_status == "Activo"))
         if order is None: raise HTTPException(409, "El pedido ya no está activo")
@@ -1426,7 +1441,8 @@ def diagnose_ticket(
         for asset in replacements:
             if asset is not None:
                 asset.status = "Reservado para reemplazo"
-                asset.location = "Alquilado"
+                if order.transfer_reason == "Alquiler":
+                    asset.location = "Alquilado"
         item.is_repairable = False; item.workflow_type = "Reemplazo"; item.status = "En Reemplazo"
         item.replacement_asset_ids = payload.equiposReemplazoIds
         item.replacement_previous_states = previous
@@ -1445,7 +1461,8 @@ def rollback_ticket_flow(
     if item is None: raise HTTPException(404, "Ticket no encontrado")
     if item.status == "Resuelto": raise HTTPException(409, "No se puede revertir un ticket resuelto")
     restore_ticket_assets(item, db)
-    item.asset_ids = []; item.previous_states = {}; item.previous_locations = {}; item.replacement_asset_ids = []; item.replacement_previous_states = {}
+    item.asset_ids = []; item.previous_states = {}; item.previous_locations = {}
+    item.replacement_asset_ids = []; item.replacement_previous_states = {}; item.replacement_previous_locations = {}
     item.is_repairable = None; item.workflow_type = "Pendiente"; item.status = "Abierto"; item.equipment = "Pendiente de selección"
     audit(db, actor, "Tickets", "Modificó", item.code, "Revirtió el diagnóstico y restauró los estados del inventario.")
     db.commit(); db.refresh(item); return ticket_out(item)
@@ -1471,7 +1488,8 @@ def resolve_ticket(
             if affected is not None: affected.status = "Baja"
             if replacement is not None:
                 replacement.status = target_state
-                replacement.location = "Alquilado"
+                if target_state == "Alquiler":
+                    replacement.location = "Alquilado"
             for order in db.scalars(select(Order).where(Order.operational_status == "Activo")).all():
                 states = dict(order.previous_states or {})
                 if affected_id in states and replacement is not None:
